@@ -1,0 +1,181 @@
+// Modelo de dados da plataforma contábil.
+// SQLite nesta fase; o mesmo schema migra para PostgreSQL trocando o provider.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Escritório contábil — dados institucionais e papel timbrado.
+// ---------------------------------------------------------------------------
+model Escritorio {
+  id            String   @id @default(cuid())
+  razaoSocial   String
+  nomeFantasia  String?
+  cnpj          String?
+  crc           String?
+  endereco      String?
+  telefone      String?
+  email         String?
+  site          String?
+  // Papel timbrado
+  logoDataUrl      String? // imagem em data URL (base64)
+  assinaturaDataUrl String?
+  corPrimaria      String  @default("#1e3a5f")
+  corSecundaria    String  @default("#2c7a7b")
+  rodapePadrao     String?
+
+  usuarios Usuario[]
+  clientes Cliente[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// ---------------------------------------------------------------------------
+// Usuários internos e clientes (papel define o nível de acesso).
+// papel: ADMIN | CONTADOR | ANALISTA | CLIENTE
+// ---------------------------------------------------------------------------
+model Usuario {
+  id           String  @id @default(cuid())
+  nome         String
+  email        String  @unique
+  senhaHash    String
+  papel        String
+  crc          String? // para o contador responsável
+  ativo        Boolean @default(true)
+
+  escritorio   Escritorio @relation(fields: [escritorioId], references: [id])
+  escritorioId String
+
+  // Quando papel = CLIENTE, vincula ao Cliente correspondente.
+  cliente   Cliente? @relation(fields: [clienteId], references: [id])
+  clienteId String?
+
+  aceiteTermos     Boolean   @default(false)
+  aceiteTermosData DateTime?
+
+  logs      LogAcesso[]
+  createdAt DateTime    @default(now())
+}
+
+// ---------------------------------------------------------------------------
+// Cliente (empresa analisada) — dados cadastrais e tributários.
+// ---------------------------------------------------------------------------
+model Cliente {
+  id              String  @id @default(cuid())
+  razaoSocial     String
+  nomeFantasia    String?
+  cnpj            String
+  inscricaoEstadual String?
+  inscricaoMunicipal String?
+  cnaePrincipal   String?
+  regimeTributario String? // Simples Nacional | Lucro Presumido | Lucro Real | MEI
+  porte           String? // ME | EPP | Demais
+  naturezaJuridica String?
+  municipio       String?
+  uf              String?
+  setorAtividade  String? // comercio | industria | servico | rural | holding | construcao | outro
+  responsavelLegal String?
+  contadorResponsavel String?
+  crcContador     String?
+  email           String?
+  telefone        String?
+
+  escritorio   Escritorio @relation(fields: [escritorioId], references: [id])
+  escritorioId String
+
+  exercicios Exercicio[]
+  relatorios Relatorio[]
+  usuarios   Usuario[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// ---------------------------------------------------------------------------
+// Exercício (ano-base) — demonstrativos estruturados em JSON.
+// ---------------------------------------------------------------------------
+model Exercicio {
+  id        String @id @default(cuid())
+  ano       Int
+  // JSON serializado de DemonstrativosExercicio (balanco + dre).
+  dadosJson String
+  documentos String? // JSON: lista de documentos fornecidos
+
+  cliente   Cliente @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+  clienteId String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([clienteId, ano])
+}
+
+// ---------------------------------------------------------------------------
+// Relatório técnico gerado.
+// status: EM_ANALISE | AGUARDANDO_REVISAO | APROVADO | LIBERADO
+// ---------------------------------------------------------------------------
+model Relatorio {
+  id           String  @id @default(cuid())
+  titulo       String  @default("Relatório de Análise Financeira e Contábil")
+  periodo      String  // ex.: "2023 a 2024"
+  status       String  @default("EM_ANALISE")
+  situacao     String? // favoravel | regular_com_atencao | critica | inconclusiva
+  bloqueado    Boolean @default(false)
+  // Snapshot completo do resultado da análise + texto do relatório (JSON).
+  conteudoJson String
+  origemTexto  String? // ia | deterministico
+  observacaoIA String?
+  comentarioContador String?
+
+  cliente   Cliente @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+  clienteId String
+
+  criadoPor   String?
+  aprovadoPor String?
+  aprovadoEm  DateTime?
+  liberadoEm  DateTime?
+
+  // Token do link rastreável (compartilhamento externo).
+  shareToken String? @unique
+  acessos    AcessoRelatorio[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// ---------------------------------------------------------------------------
+// Trilha de acessos a um relatório (rastreio): cada abertura/download do
+// link rastreável é registrada — inclusive por quem recebeu por encaminhamento.
+// ---------------------------------------------------------------------------
+model AcessoRelatorio {
+  id          String   @id @default(cuid())
+  relatorio   Relatorio @relation(fields: [relatorioId], references: [id], onDelete: Cascade)
+  relatorioId String
+  tipo        String   // ABERTURA | DOWNLOAD
+  ip          String?
+  userAgent   String?
+  dispositivo String?  // resumo legível (navegador/SO)
+  referer     String?
+  createdAt   DateTime @default(now())
+
+  @@index([relatorioId])
+}
+
+// ---------------------------------------------------------------------------
+// Registro de acessos e alterações (LGPD / auditoria).
+// ---------------------------------------------------------------------------
+model LogAcesso {
+  id        String   @id @default(cuid())
+  acao      String
+  detalhe   String?
+  usuario   Usuario? @relation(fields: [usuarioId], references: [id])
+  usuarioId String?
+  createdAt DateTime @default(now())
+}

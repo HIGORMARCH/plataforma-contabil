@@ -1,0 +1,37 @@
+==================================================
+  MARCH CONTABILIDADE - Plataforma Contabil
+  Como usar sem depender do Claude
+==================================================
+
+PARA ABRIR A PLATAFORMA
+-----------------------
+1. Na Area de Trabalho, de dois cliques no atalho "March Contabilidade".
+   (Ou abra a pasta do projeto e de dois cliques em "Iniciar-March.bat".)
+2. Vai abrir uma janela preta - DEIXE ELA ABERTA.
+3. Em alguns segundos o navegador abre sozinho em http://localhost:3000.
+4. Faca login:
+      Administrador: admin@marchcontabilidade.com.br  /  admin123
+      Contador:     contador@marchcontabilidade.com.br /  contador123
+
+PARA FECHAR
+-----------
+Feche a janela preta (ou aperte Ctrl + C nela). A plataforma desliga.
+
+OBSERVACOES IMPORTANTES
+-----------------------
+- A plataforma roda no SEU computador. Ela fica disponivel enquanto o
+  computador estiver ligado e a janela preta aberta.
+- Os dados (clientes, relatorios) ficam salvos no arquivo "dev.db" dentro
+  da pasta do projeto. Faca backup dessa pasta de vez em quando.
+- Para acessar de qualquer lugar, por varios computadores ao mesmo tempo,
+  o proximo passo e publicar a plataforma na nuvem (hospedagem) - isso e
+  uma etapa separada, quando quiser dar esse passo.
+
+SE PRECISAR REINSTALAR / ATUALIZAR
+----------------------------------
+Caso o codigo seja alterado, e necessario gerar a versao nova com:
+   npm run build
+E depois usar o atalho normalmente.
+
+Pasta do projeto:
+C:\Users\higor\OneDrive\Desktop\Habilidades\plataforma-contabil

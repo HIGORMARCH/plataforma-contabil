@@ -1,0 +1,53 @@
+==================================================
+  PUBLICAR A PLATAFORMA NO GITHUB - passo a passo
+==================================================
+
+IMPORTANTE (seguranca / LGPD):
+- O repositorio deve ser PRIVADO (e uma plataforma contabil com dados de clientes).
+- O arquivo do banco (prisma/dev.db), o .env e os relatorios reais JA ESTAO
+  protegidos pelo .gitignore - eles NUNCA sobem para o GitHub.
+- O que sobe e apenas o CODIGO, a configuracao e a identidade visual.
+
+--------------------------------------------------
+PASSO 1 - Criar o repositorio no GitHub
+--------------------------------------------------
+1. Acesse https://github.com e faca login (crie conta se nao tiver).
+2. Clique em "New" (novo repositorio).
+3. Nome sugerido:  plataforma-contabil
+4. Marque a opcao  Private  (PRIVADO).
+5. NAO marque "Add a README" nem "Add .gitignore" (o projeto ja tem).
+6. Clique em "Create repository".
+
+--------------------------------------------------
+PASSO 2 - No terminal, na pasta do projeto
+--------------------------------------------------
+cd "C:\Users\higor\OneDrive\Desktop\Habilidades\plataforma-contabil"
+
+# Configure sua identidade (so na primeira vez):
+git config user.name  "Higor Noleto"
+git config user.email "higornoleto@marchcontabilidade.com.br"
+
+# Primeiro commit:
+git add -A
+git commit -m "Primeiro commit - Plataforma Contabil March"
+
+# Conecte ao GitHub e envie (TROQUE SEU-USUARIO pelo seu usuario do GitHub):
+git branch -M main
+git remote add origin https://github.com/SEU-USUARIO/plataforma-contabil.git
+git push -u origin main
+
+(Na primeira vez o GitHub vai pedir login - autentique pelo navegador.)
+
+--------------------------------------------------
+PASSO 3 - Dia a dia (depois de mudar algo)
+--------------------------------------------------
+git add -A
+git commit -m "descricao da mudanca"
+git push
+
+--------------------------------------------------
+DEPOIS (opcional) - Publicar na nuvem
+--------------------------------------------------
+Com o codigo no GitHub, da para conectar na Vercel (vercel.com) e publicar
+em poucos cliques + um banco PostgreSQL gratuito (Neon/Supabase). E o passo
+natural para acessar de qualquer lugar pelo celular. Me chame quando chegar la.
