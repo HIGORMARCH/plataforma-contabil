@@ -13,6 +13,10 @@ echo  - O navegador abre sozinho em alguns segundos.
 echo  - Para encerrar: feche esta janela.
 echo.
 
+rem Garante que o Prisma Client esta gerado (necessario apos npm install)
+echo  Verificando Prisma Client...
+call npx prisma generate --silent 2>nul
+
 rem Abre o navegador automaticamente apos o servidor subir (em paralelo)
 start "" /min powershell -NoProfile -WindowStyle Hidden -Command "Start-Sleep -Seconds 8; Start-Process 'http://localhost:3000'"
 
