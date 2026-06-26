@@ -36,7 +36,9 @@ export async function criarSessao(s: Sessao) {
   jar.set(COOKIE, token, {
     httpOnly: true,
     sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
+    // Sistema interno acessado por HTTP (localhost e IP da LAN, ex.: de casa).
+    // Cookie Secure só seria enviado em HTTPS, o que impediria o login pela rede.
+    secure: false,
     path: "/",
     maxAge: 60 * 60 * 24 * 30, // 30 dias
   });
