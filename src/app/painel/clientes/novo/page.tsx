@@ -2,6 +2,7 @@ import Link from "next/link";
 import { requirePapel, PAPEIS_INTERNOS } from "@/lib/auth";
 import { BuscarCNPJ } from "@/components/BuscarCNPJ";
 import { criarClienteAction } from "../actions";
+import { AcessoEcacFields } from "../_components/AcessoEcacFields";
 
 function Campo({
   nome,
@@ -102,6 +103,8 @@ export default async function NovoClientePage({
             <Campo nome="uf" label="UF" placeholder="SP" />
           </div>
         </section>
+
+        <AcessoEcacFields />
 
         <section className="card p-5">
           <h2 className="mb-4 text-sm font-bold uppercase tracking-wide text-slate-500">Responsáveis e contato</h2>

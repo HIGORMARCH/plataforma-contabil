@@ -14,21 +14,21 @@ datasource db {
 // Escritório contábil — dados institucionais e papel timbrado.
 // ---------------------------------------------------------------------------
 model Escritorio {
-  id            String   @id @default(cuid())
-  razaoSocial   String
-  nomeFantasia  String?
-  cnpj          String?
-  crc           String?
-  endereco      String?
-  telefone      String?
-  email         String?
-  site          String?
+  id                String  @id @default(cuid())
+  razaoSocial       String
+  nomeFantasia      String?
+  cnpj              String?
+  crc               String?
+  endereco          String?
+  telefone          String?
+  email             String?
+  site              String?
   // Papel timbrado
-  logoDataUrl      String? // imagem em data URL (base64)
+  logoDataUrl       String? // imagem em data URL (base64)
   assinaturaDataUrl String?
-  corPrimaria      String  @default("#1e3a5f")
-  corSecundaria    String  @default("#2c7a7b")
-  rodapePadrao     String?
+  corPrimaria       String  @default("#1e3a5f")
+  corSecundaria     String  @default("#2c7a7b")
+  rodapePadrao      String?
 
   usuarios Usuario[]
   clientes Cliente[]
@@ -42,13 +42,13 @@ model Escritorio {
 // papel: ADMIN | CONTADOR | ANALISTA | CLIENTE
 // ---------------------------------------------------------------------------
 model Usuario {
-  id           String  @id @default(cuid())
-  nome         String
-  email        String  @unique
-  senhaHash    String
-  papel        String
-  crc          String? // para o contador responsável
-  ativo        Boolean @default(true)
+  id        String  @id @default(cuid())
+  nome      String
+  email     String  @unique
+  senhaHash String
+  papel     String
+  crc       String? // para o contador responsável
+  ativo     Boolean @default(true)
 
   escritorio   Escritorio @relation(fields: [escritorioId], references: [id])
   escritorioId String
@@ -68,31 +68,44 @@ model Usuario {
 // Cliente (empresa analisada) — dados cadastrais e tributários.
 // ---------------------------------------------------------------------------
 model Cliente {
-  id              String  @id @default(cuid())
-  razaoSocial     String
-  nomeFantasia    String?
-  cnpj            String
-  inscricaoEstadual String?
-  inscricaoMunicipal String?
-  cnaePrincipal   String?
-  regimeTributario String? // Simples Nacional | Lucro Presumido | Lucro Real | MEI
-  porte           String? // ME | EPP | Demais
-  naturezaJuridica String?
-  municipio       String?
-  uf              String?
-  setorAtividade  String? // comercio | industria | servico | rural | holding | construcao | outro
-  responsavelLegal String?
+  id                  String  @id @default(cuid())
+  razaoSocial         String
+  nomeFantasia        String?
+  cnpj                String
+  inscricaoEstadual   String?
+  inscricaoMunicipal  String?
+  cnaePrincipal       String?
+  regimeTributario    String? // Simples Nacional | Lucro Presumido | Lucro Real | MEI
+  porte               String? // ME | EPP | Demais
+  naturezaJuridica    String?
+  municipio           String?
+  uf                  String?
+  setorAtividade      String? // comercio | industria | servico | rural | holding | construcao | outro
+  atividadeTributaria String? // varejo | atacado | fabricante | importador — pra escolher aba correta da Econet
+  responsavelLegal    String?
   contadorResponsavel String?
-  crcContador     String?
-  email           String?
-  telefone        String?
+  crcContador         String?
+  email               String?
+  telefone            String?
+
+  // ---- Acesso ao e-CAC via SERPRO (Auditoria Tributária) ----
+  // A plataforma NÃO armazena o .pfx do certificado — só aponta e usa em runtime.
+  // PROCURACAO_MARCH: usa cert do escritório + procuração eletrônica ativa em nome desse cliente.
+  // CERTIFICADO_PROPRIO: o cliente tem cert dele; a plataforma lê do path informado com a senha cifrada.
+  metodoAcessoEcac   String  @default("PROCURACAO_MARCH") // PROCURACAO_MARCH | CERTIFICADO_PROPRIO
+  certificadoCaminho String? // path absoluto do .pfx (só quando CERTIFICADO_PROPRIO)
+  certificadoSenha   String? // cifrada AES-256-GCM com chave em ENCRYPTION_KEY (env)
 
   escritorio   Escritorio @relation(fields: [escritorioId], references: [id])
   escritorioId String
 
-  exercicios Exercicio[]
-  relatorios Relatorio[]
-  usuarios   Usuario[]
+  exercicios       Exercicio[]
+  relatorios       Relatorio[]
+  usuarios         Usuario[]
+  vigenciasNcm     VigenciaNcm[]
+  pagamentosEcac   EcacPagamento[]
+  razaoLancamentos RazaoLancamento[]
+  razaoImportacoes RazaoImportacao[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -102,10 +115,10 @@ model Cliente {
 // Exercício (ano-base) — demonstrativos estruturados em JSON.
 // ---------------------------------------------------------------------------
 model Exercicio {
-  id        String @id @default(cuid())
-  ano       Int
+  id         String  @id @default(cuid())
+  ano        Int
   // JSON serializado de DemonstrativosExercicio (balanco + dre).
-  dadosJson String
+  dadosJson  String
   documentos String? // JSON: lista de documentos fornecidos
 
   cliente   Cliente @relation(fields: [clienteId], references: [id], onDelete: Cascade)
@@ -122,16 +135,16 @@ model Exercicio {
 // status: EM_ANALISE | AGUARDANDO_REVISAO | APROVADO | LIBERADO
 // ---------------------------------------------------------------------------
 model Relatorio {
-  id           String  @id @default(cuid())
-  titulo       String  @default("Relatório de Análise Financeira e Contábil")
-  periodo      String  // ex.: "2023 a 2024"
-  status       String  @default("EM_ANALISE")
-  situacao     String? // favoravel | regular_com_atencao | critica | inconclusiva
-  bloqueado    Boolean @default(false)
+  id                 String  @id @default(cuid())
+  titulo             String  @default("Relatório de Análise Financeira e Contábil")
+  periodo            String // ex.: "2023 a 2024"
+  status             String  @default("EM_ANALISE")
+  situacao           String? // favoravel | regular_com_atencao | critica | inconclusiva
+  bloqueado          Boolean @default(false)
   // Snapshot completo do resultado da análise + texto do relatório (JSON).
-  conteudoJson String
-  origemTexto  String? // ia | deterministico
-  observacaoIA String?
+  conteudoJson       String
+  origemTexto        String? // ia | deterministico
+  observacaoIA       String?
   comentarioContador String?
 
   cliente   Cliente @relation(fields: [clienteId], references: [id], onDelete: Cascade)
@@ -143,7 +156,7 @@ model Relatorio {
   liberadoEm  DateTime?
 
   // Token do link rastreável (compartilhamento externo).
-  shareToken String? @unique
+  shareToken String?           @unique
   acessos    AcessoRelatorio[]
 
   createdAt DateTime @default(now())
@@ -155,15 +168,15 @@ model Relatorio {
 // link rastreável é registrada — inclusive por quem recebeu por encaminhamento.
 // ---------------------------------------------------------------------------
 model AcessoRelatorio {
-  id          String   @id @default(cuid())
+  id          String    @id @default(cuid())
   relatorio   Relatorio @relation(fields: [relatorioId], references: [id], onDelete: Cascade)
   relatorioId String
-  tipo        String   // ABERTURA | DOWNLOAD
+  tipo        String // ABERTURA | DOWNLOAD
   ip          String?
   userAgent   String?
-  dispositivo String?  // resumo legível (navegador/SO)
+  dispositivo String? // resumo legível (navegador/SO)
   referer     String?
-  createdAt   DateTime @default(now())
+  createdAt   DateTime  @default(now())
 
   @@index([relatorioId])
 }
@@ -178,4 +191,262 @@ model LogAcesso {
   usuario   Usuario? @relation(fields: [usuarioId], references: [id])
   usuarioId String?
   createdAt DateTime @default(now())
+}
+
+// ===========================================================================
+// MÓDULO DE TRIBUTAÇÃO NCM (PIS/COFINS) — cadastros e cache
+// ===========================================================================
+
+// ---------------------------------------------------------------------------
+// Configuração de tributação NCM. Ex: "ALIQUOTA ZERO - 109" (código 1),
+// "MONOFASICO - 202" (código 32), "Tributacao Normal - 0" (código 55).
+// Compartilhada entre todos os escritórios (base seed do Autmais + as novas).
+// ---------------------------------------------------------------------------
+model ConfiguracaoNcm {
+  id           String        @id @default(cuid())
+  codigo       Int           @unique // 1..N — bate com o código do TXT importado no Domínio
+  descricao    String // ex: "ALIQUOTA ZERO - 109"
+  tipo         String // aliquota_zero | monofasico | isenta | substituicao | suspensao | sem_incidencia | normal
+  cstEntrada   String // ex: "73"
+  cstSaida     String // ex: "6"
+  natureza     String // ex: "109" (ou "0" pra tributação normal)
+  origem       String        @default("seed_autmais") // seed_autmais | manual | econet
+  ncmsBase     NcmBase[]
+  ncmsVigencia NcmVigencia[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// ---------------------------------------------------------------------------
+// Base de NCMs conhecidos — semente do arquivo pai da Autmais.
+// Um mesmo NCM só pode estar em UMA configuração base (última classificação conhecida).
+// ---------------------------------------------------------------------------
+model NcmBase {
+  ncm               String          @id // 8 dígitos numéricos, ex: "01051110"
+  configuracao      ConfiguracaoNcm @relation(fields: [configuracaoId], references: [id])
+  configuracaoId    String
+  origem            String          @default("seed_autmais") // seed_autmais | econet_cache | manual
+  atividadeContexto String? // varejo | atacado | fabricante — pra qual atividade essa classificação vale
+  atualizadoEm      DateTime        @default(now())
+}
+
+// ---------------------------------------------------------------------------
+// Vigência de tributação por cliente — equivalente ao "Vigência (1) TRIBUTAÇÃO"
+// que o Domínio mostra na tela "Configurar Dados de Impostos por NCM/CEST".
+// ---------------------------------------------------------------------------
+model VigenciaNcm {
+  id                 String   @id @default(cuid())
+  cliente            Cliente  @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+  clienteId          String
+  dataVigencia       DateTime // ex: 2025-01-01
+  descricao          String   @default("TRIBUTAÇÃO")
+  status             String   @default("EM_ELABORACAO") // EM_ELABORACAO | REVISADA | EXPORTADA
+  // Caminho para o Excel de estoque salvo em Z:\ — auditoria + reprocessamento
+  arquivoEstoquePath String?
+  arquivoEstoqueNome String?
+
+  ncms NcmVigencia[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([clienteId, dataVigencia])
+}
+
+// ---------------------------------------------------------------------------
+// Associação NCM ↔ Configuração dentro de uma vigência de cliente.
+// Uma linha por NCM da vigência (deduplicado).
+// ---------------------------------------------------------------------------
+model NcmVigencia {
+  id             String          @id @default(cuid())
+  vigencia       VigenciaNcm     @relation(fields: [vigenciaId], references: [id], onDelete: Cascade)
+  vigenciaId     String
+  ncm            String // 8 dígitos
+  configuracao   ConfiguracaoNcm @relation(fields: [configuracaoId], references: [id])
+  configuracaoId String
+  origem         String // seed_autmais | econet_auto | manual
+  observacao     String?
+
+  createdAt DateTime @default(now())
+
+  @@unique([vigenciaId, ncm]) // um NCM só uma vez por vigência
+  @@index([vigenciaId])
+}
+
+// ---------------------------------------------------------------------------
+// Cache de consultas Econet — não repete pesquisa do mesmo NCM/atividade.
+// TTL: 30 dias (regenera quando ficar velho).
+// ---------------------------------------------------------------------------
+model CacheEconet {
+  id          String  @id @default(cuid())
+  ncm         String // 8 dígitos
+  atividade   String // varejo | atacado | fabricante | importador
+  tipo        String // tipo detectado (aliquota_zero | monofasico | ...)
+  natureza    String?
+  cstEntrada  String?
+  cstSaida    String?
+  abasHtml    String? // json com todas as abas + naturezas encontradas
+  observacoes String? // notas do parser
+
+  consultadoEm DateTime @default(now())
+
+  @@unique([ncm, atividade])
+  @@index([consultadoEm])
+}
+
+// ---------------------------------------------------------------------------
+// PAGTOWEB / PAGAMENTOS71 (SERPRO Integra Contador) — documentos de arrecadação
+// pagos no e-CAC por cada cliente. Serve de Coluna B da Auditoria Tributária.
+// Um EcacPagamento = 1 DARF/DAS/GPS (identificado por numeroDocumento).
+// Cada pagamento pode ter N EcacDesmembramento (uma sub-receita cada).
+// ---------------------------------------------------------------------------
+model EcacPagamento {
+  id        String @id @default(cuid())
+  clienteId String
+
+  numeroDocumento String // nº de autenticação bancária (único por cliente)
+  tipoCodigo      String // ex.: "4" (DARF), "5" (DAS), ...
+  tipoDescricao   String
+  referencia      String?
+
+  periodoApuracao DateTime
+  dataArrecadacao DateTime
+  dataVencimento  DateTime
+
+  // Receita principal do documento (código-mestre; o desdobramento vai em EcacDesmembramento)
+  codigoReceitaPrincipal    String
+  descricaoReceitaPrincipal String?
+
+  valorTotal          Decimal
+  valorPrincipal      Decimal
+  valorMulta          Decimal?
+  valorJuros          Decimal?
+  valorSaldoTotal     Decimal?
+  valorSaldoPrincipal Decimal?
+  valorSaldoMulta     Decimal?
+  valorSaldoJuros     Decimal?
+
+  sincronizadoEm DateTime @default(now())
+
+  cliente         Cliente              @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+  desmembramentos EcacDesmembramento[]
+
+  @@unique([clienteId, numeroDocumento])
+  @@index([clienteId, dataArrecadacao])
+  @@index([clienteId, periodoApuracao])
+}
+
+model EcacDesmembramento {
+  id          String @id @default(cuid())
+  pagamentoId String
+
+  sequencial        String
+  codigoReceita     String
+  descricaoReceita  String?
+  extensaoCodigo    String?
+  extensaoDescricao String?
+
+  periodoApuracao DateTime
+  dataVencimento  DateTime
+
+  valorTotal          Decimal
+  valorPrincipal      Decimal
+  valorMulta          Decimal?
+  valorJuros          Decimal?
+  valorSaldoTotal     Decimal?
+  valorSaldoPrincipal Decimal?
+  valorSaldoMulta     Decimal?
+  valorSaldoJuros     Decimal?
+
+  cib String?
+
+  pagamento EcacPagamento @relation(fields: [pagamentoId], references: [id], onDelete: Cascade)
+
+  @@index([pagamentoId])
+  @@index([codigoReceita, periodoApuracao])
+}
+
+// Log de sincronizações e-CAC — rastreia quando/quanto foi buscado por cliente/período.
+// É o "relatório de sincronização" oficial. Serve tanto para idempotência
+// (skip se já rodou hoje com sucesso pro mesmo range) quanto para auditoria.
+model EcacSincronizacao {
+  id        String @id @default(cuid())
+  clienteId String
+
+  tipo           String // DIARIO | MENSAL | MANUAL — DIARIO = 22h, MENSAL = dia 1, MANUAL = botão da UI
+  periodoInicial DateTime // dataArrecadacao inicial da consulta
+  periodoFinal   DateTime
+  quantidade     Int      @default(0) // nº de documentos importados
+  sucesso        Boolean  @default(true)
+  mensagem       String? // erro (se sucesso=false) ou nota de sucesso
+
+  executadoEm DateTime @default(now())
+
+  @@index([clienteId, executadoEm])
+  @@index([clienteId, tipo, periodoInicial, periodoFinal])
+}
+
+// ---------------------------------------------------------------------------
+// RAZÃO CONTÁBIL (Coluna A da Auditoria Tributária) — lançamentos importados
+// de xlsx exportado pelo sistema contábil do escritório (Domínio, Contmatic,
+// Alterdata, etc). Parser genérico detecta colunas por heurística.
+//
+// Chave de conciliação com EcacPagamento: codigoReceita + numeroDocumento.
+// ---------------------------------------------------------------------------
+model RazaoLancamento {
+  id        String @id @default(cuid())
+  clienteId String
+
+  // Identificação do tributo/documento
+  codigoReceita    String // ex.: "2089" (IRPJ), "8109" (PIS)
+  numeroDocumento  String? // nº autenticação bancária — chave de conciliação com e-CAC
+  descricaoReceita String? // ex.: "IRPJ - Lucro Presumido"
+
+  // Contábil
+  contaContabil String? // ex.: "2.03.001 - IRPJ a Recolher"
+  historico     String? // texto do lançamento
+
+  // Valores
+  valorPrincipal Decimal
+  valorMulta     Decimal?
+  valorJuros     Decimal?
+  valorTotal     Decimal // principal + multa + juros (calculado no import)
+
+  // Datas
+  dataLancamento  DateTime // data em que foi lançado no razão
+  periodoApuracao DateTime? // mês/ano da apuração do tributo (se informado)
+
+  // Origem da importação (rastreabilidade)
+  importacaoId String
+
+  cliente    Cliente         @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+  importacao RazaoImportacao @relation(fields: [importacaoId], references: [id], onDelete: Cascade)
+
+  @@index([clienteId, codigoReceita, numeroDocumento])
+  @@index([clienteId, periodoApuracao])
+  @@index([importacaoId])
+}
+
+// Log de importações do razão xlsx (rastreio + repetibilidade).
+model RazaoImportacao {
+  id        String @id @default(cuid())
+  clienteId String
+
+  nomeArquivo       String
+  tamanhoBytes      Int     @default(0)
+  totalLinhas       Int     @default(0) // linhas lidas do xlsx
+  linhasImportadas  Int     @default(0) // linhas viáveis (com código+valor)
+  linhasIgnoradas   Int     @default(0) // linhas sem dado suficiente
+  sucesso           Boolean @default(true)
+  mensagem          String? // erro ou nota
+  colunasDetectadas String? // JSON: quais colunas do xlsx foram usadas pra cada campo
+
+  importadoEm  DateTime @default(now())
+  importadoPor String? // userId
+
+  cliente     Cliente           @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+  lancamentos RazaoLancamento[]
+
+  @@index([clienteId, importadoEm])
 }

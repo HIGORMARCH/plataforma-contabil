@@ -45,6 +45,9 @@ export default async function ClienteDetalhe({ params }: { params: Promise<{ id:
         <div className="mt-1 flex flex-wrap items-center justify-between gap-3">
           <h1 className="text-2xl font-bold text-slate-800">{cliente.razaoSocial}</h1>
           <div className="flex gap-2">
+            <Link href={`/painel/clientes/${id}/editar`} className="btn btn-ghost">
+              ✏️ Editar cadastro
+            </Link>
             <Link href={`/painel/clientes/${id}/exercicios`} className="btn btn-accent">
               📄 Adicionar documentos
             </Link>

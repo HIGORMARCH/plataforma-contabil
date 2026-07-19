@@ -13,6 +13,8 @@ export default async function PainelLayout({ children }: { children: React.React
         { href: "/painel/clientes", rotulo: "Clientes", icone: "👥" },
         { href: "/painel/relatorios", rotulo: "Relatórios", icone: "📄" },
         { href: "/painel/valuation", rotulo: "Valuation", icone: "📈" },
+        { href: "/painel/tributacao-ncm", rotulo: "Tributação NCM", icone: "🏷️" },
+        { href: "/painel/auditoria-tributaria", rotulo: "Auditoria Tributária", icone: "⚖️" },
         ...(sessao.papel === "ADMIN"
           ? [
               { href: "/painel/usuarios", rotulo: "Usuários", icone: "🔑" },
