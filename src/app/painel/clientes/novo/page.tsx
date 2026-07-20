@@ -3,6 +3,7 @@ import { requirePapel, PAPEIS_INTERNOS } from "@/lib/auth";
 import { BuscarCNPJ } from "@/components/BuscarCNPJ";
 import { criarClienteAction } from "../actions";
 import { AcessoEcacFields } from "../_components/AcessoEcacFields";
+import { AcessoSefazFields } from "../_components/AcessoSefazFields";
 
 function Campo({
   nome,
@@ -63,7 +64,6 @@ export default async function NovoClientePage({
             <Campo nome="razaoSocial" label="Razão social" obrigatorio />
             <Campo nome="nomeFantasia" label="Nome fantasia" />
             <Campo nome="naturezaJuridica" label="Natureza jurídica" />
-            <Campo nome="inscricaoEstadual" label="Inscrição estadual" />
             <Campo nome="inscricaoMunicipal" label="Inscrição municipal" />
             <Campo nome="cnaePrincipal" label="CNAE principal" />
             <div>
@@ -105,6 +105,8 @@ export default async function NovoClientePage({
         </section>
 
         <AcessoEcacFields />
+
+        <AcessoSefazFields />
 
         <section className="card p-5">
           <h2 className="mb-4 text-sm font-bold uppercase tracking-wide text-slate-500">Responsáveis e contato</h2>

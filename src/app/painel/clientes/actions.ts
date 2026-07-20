@@ -27,6 +27,11 @@ export async function criarClienteAction(fd: FormData) {
   const senhaClara = metodoAcessoEcac === "CERTIFICADO_PROPRIO" ? campo(fd, "certificadoSenha") : null;
   const certificadoSenha = senhaClara ? cifrar(senhaClara) : null;
 
+  const senhaSefazClara = campo(fd, "senhaSefaz");
+  const senhaSefaz = senhaSefazClara ? cifrar(senhaSefazClara) : null;
+  const pastaFiscal = campo(fd, "pastaFiscal");
+  const pastaGiam = campo(fd, "pastaGiam");
+
   const cliente = await prisma.cliente.create({
     data: {
       razaoSocial: razaoSocial!,
@@ -49,6 +54,9 @@ export async function criarClienteAction(fd: FormData) {
       metodoAcessoEcac,
       certificadoCaminho,
       certificadoSenha,
+      senhaSefaz,
+      pastaFiscal,
+      pastaGiam,
       escritorioId: sessao.escritorioId,
     },
   });
@@ -86,6 +94,12 @@ export async function editarClienteAction(id: string, fd: FormData) {
       ? clienteExistente.certificadoSenha
       : null;
 
+  // Senha SEFAZ: se veio nova, cifra; se veio vazia, mantém a antiga.
+  const senhaSefazClara = campo(fd, "senhaSefaz");
+  const senhaSefaz = senhaSefazClara ? cifrar(senhaSefazClara) : clienteExistente.senhaSefaz;
+  const pastaFiscal = campo(fd, "pastaFiscal");
+  const pastaGiam = campo(fd, "pastaGiam");
+
   await prisma.cliente.update({
     where: { id },
     data: {
@@ -109,6 +123,9 @@ export async function editarClienteAction(id: string, fd: FormData) {
       metodoAcessoEcac,
       certificadoCaminho,
       certificadoSenha,
+      senhaSefaz,
+      pastaFiscal,
+      pastaGiam,
     },
   });
 

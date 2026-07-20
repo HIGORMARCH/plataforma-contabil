@@ -96,6 +96,24 @@ model Cliente {
   certificadoCaminho String? // path absoluto do .pfx (só quando CERTIFICADO_PROPRIO)
   certificadoSenha   String? // cifrada AES-256-GCM com chave em ENCRYPTION_KEY (env)
 
+  // ---- Acesso ao Portal da SEFAZ-TO (GIAM) ----
+  // Login por Inscrição Estadual (campo já existe acima) + senha. NÃO é certificado digital.
+  // Usado pelo robô que raspa a ConsGIAM.Asp e busca DARE no Portal do Contribuinte.
+  // Cifrada AES-256-GCM (mesmo padrão do certificadoSenha). Nunca volta pra tela nem log.
+  senhaSefaz String? // cifrada AES-256-GCM com chave em ENCRYPTION_KEY (env)
+
+  // ---- Pasta local onde ficam os arquivos fiscais do cliente ----
+  // Path absoluto (rede ou local). A plataforma varre essa pasta pra achar SPEDs
+  // e outros arquivos fiscais — NUNCA copia nem salva o conteúdo, só lê e extrai.
+  // Ex.: Z:\MARCH - ARQUIVO DAS EMPRESAS\CLIENTE\FISCAL\DECLARAÇÕES
+  pastaFiscal String?
+
+  // Pasta COMPARTILHADA onde ficam as GIAMs (o Domínio salva todas as GIAMs de
+  // todos os clientes num diretório único, tipo Z:\HIGOR OBRIGAÇÕES MENSAIS\GIAM\).
+  // Se vazio, usa pastaFiscal. A varredura filtra por IE dentro do arquivo pra
+  // pegar só os que são deste cliente.
+  pastaGiam String?
+
   escritorio   Escritorio @relation(fields: [escritorioId], references: [id])
   escritorioId String
 
@@ -106,6 +124,10 @@ model Cliente {
   pagamentosEcac   EcacPagamento[]
   razaoLancamentos RazaoLancamento[]
   razaoImportacoes RazaoImportacao[]
+  spedApuracoes    SpedApuracao[]
+  spedImportacoes  SpedImportacao[]
+  giamApuracoes    GiamApuracao[]
+  giamImportacoes  GiamImportacao[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -449,4 +471,186 @@ model RazaoImportacao {
   lancamentos RazaoLancamento[]
 
   @@index([clienteId, importadoEm])
+}
+
+// ---------------------------------------------------------------------------
+// SPED-Fiscal EFD ICMS/IPI — apuração do ICMS por competência (registro E110).
+//
+// Uma apuração por competência (mês). Layout oficial: Guia Prático da EFD
+// ICMS/IPI da RFB. V1 do parser lê só o E110 (apuração ICMS operações próprias);
+// registros complementares (C100, C170, E116 etc.) podem entrar em v2 se
+// precisarmos detalhar por CFOP/nota fiscal.
+//
+// Uso: coluna A ("SPED-Fiscal") da matriz de Auditoria Fiscal ICMS pra
+// clientes Real/Presumido a partir de 01/2026.
+// ---------------------------------------------------------------------------
+model SpedApuracao {
+  id        String @id @default(cuid())
+  clienteId String
+
+  // Período de apuração (do registro E100)
+  periodoApuracao DateTime // primeiro dia do mês de apuração
+  dataInicial     DateTime
+  dataFinal       DateTime
+
+  // Valores do E110 (todos em BRL). Decimal preserva a precisão do arquivo.
+  totalDebitos         Decimal // VL_TOT_DEBITOS (débito das saídas)
+  totalCreditos        Decimal // VL_TOT_CREDITOS (crédito das entradas)
+  saldoDevedorApurado  Decimal // VL_SLD_APURADO (0 quando cred > deb)
+  deducoes             Decimal // VL_TOT_DED
+  icmsARecolher        Decimal // VL_ICMS_RECOLHER (o valor efetivo a pagar)
+  saldoCredorTransp    Decimal // VL_SLD_CREDOR_TRANSPORTAR (quando cred > deb)
+
+  // Ajustes e estornos — guardados para auditoria mas não usados no confronto v1
+  ajustesDebitos       Decimal @default(0) // VL_AJ_DEBITOS
+  totalAjustesDebitos  Decimal @default(0) // VL_TOT_AJ_DEBITOS
+  estornosCreditos     Decimal @default(0) // VL_ESTORNOS_CRED
+  ajustesCreditos      Decimal @default(0) // VL_AJ_CREDITOS
+  totalAjustesCreditos Decimal @default(0) // VL_TOT_AJ_CREDITOS
+  estornosDebitos      Decimal @default(0) // VL_ESTORNOS_DEB
+  saldoCredorAnterior  Decimal @default(0) // VL_SLD_CREDOR_ANT
+  debitoEspecial       Decimal @default(0) // DEB_ESP
+
+  // Totais de operações extraídos do bloco C (registros C100 regulares — COD_SIT=00).
+  // Compras = notas com IND_OPER=0 (entrada); Vendas = IND_OPER=1 (saída).
+  totalCompras     Decimal @default(0)
+  totalVendas      Decimal @default(0)
+  qtdNotasCompras  Int     @default(0)
+  qtdNotasVendas   Int     @default(0)
+
+  importacaoId String
+
+  cliente    Cliente        @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+  importacao SpedImportacao @relation(fields: [importacaoId], references: [id], onDelete: Cascade)
+
+  @@unique([clienteId, periodoApuracao]) // uma apuração por cliente/competência (reimport substitui)
+  @@index([clienteId, periodoApuracao])
+  @@index([importacaoId])
+}
+
+// Log de importações do arquivo SPED-Fiscal (rastreio + repetibilidade).
+// NÃO armazena o arquivo em si — apenas metadados + hash pra deduplicação.
+model SpedImportacao {
+  id        String @id @default(cuid())
+  clienteId String
+
+  nomeArquivo         String
+  tamanhoBytes        Int     @default(0)
+  hashArquivo         String? // SHA-256 do conteúdo — permite deduplicar em varreduras futuras
+  origem              String  @default("UPLOAD") // UPLOAD | VARREDURA_PASTA
+  caminhoOrigem       String? // path absoluto (só quando VARREDURA_PASTA — pra rastrear de onde veio)
+  totalLinhas         Int     @default(0) // linhas totais do arquivo
+  registrosE110       Int     @default(0) // quantas apurações extraídas
+  apuracoesGravadas   Int     @default(0) // quantas efetivamente gravadas
+  apuracoesSubstituidas Int   @default(0) // quantas eram reimport (mesmo cliente+competência)
+  sucesso             Boolean @default(true)
+  mensagem            String? // erro ou nota
+
+  // Metadados do arquivo (do registro 0000, se disponível)
+  cnpjArquivo   String? // CNPJ do declarante conforme está no SPED
+  ieArquivo     String? // Inscrição Estadual conforme está no SPED
+  uf            String? // UF conforme está no SPED
+  dataInicioArq DateTime? // DT_INI do 0000
+  dataFimArq    DateTime? // DT_FIN do 0000
+
+  importadoEm  DateTime @default(now())
+  importadoPor String? // userId
+
+  cliente   Cliente        @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+  apuracoes SpedApuracao[]
+
+  @@index([clienteId, importadoEm])
+  @@index([clienteId, hashArquivo])
+}
+
+// ---------------------------------------------------------------------------
+// GIAM 10.0 — Apuração ICMS declarada à SEFAZ-TO (uma por competência/revisão).
+//
+// Segmento A do arquivo GIAM traz tudo consolidado: débito das saídas, crédito
+// das entradas, saldo credor anterior, deduções, etc. Segmento E traz o ICMS a
+// recolher por tipo (Normal, ST, Diferencial, etc — pode ter várias linhas E).
+//
+// Uso: coluna A ("GIAM") da matriz de Auditoria de Obrigações Acessórias. Pra
+// Simples Nacional é a fonte principal (SPED-Fiscal desobrigado). Pra Real/
+// Presumido ≤ 12/2025, fonte histórica.
+// ---------------------------------------------------------------------------
+model GiamApuracao {
+  id        String @id @default(cuid())
+  clienteId String
+
+  periodoApuracao DateTime // primeiro dia do mês
+  retificacao     String   @default("00") // do campo A4 (00 = original)
+
+  // Segmento A — apuração consolidada (todos em BRL)
+  debitoSaidas         Decimal // A18
+  outrosDebitos        Decimal @default(0) // A19
+  estornoCreditos      Decimal @default(0) // A20
+  creditoEntradas      Decimal // A21
+  outrosCreditos       Decimal @default(0) // A22
+  estornosDebito       Decimal @default(0) // A23
+  saldoCredorAnterior  Decimal @default(0) // A24
+  deducoes             Decimal @default(0) // A25
+  difAliquotaARecolher Decimal @default(0) // A26
+
+  // Segmento E — ICMS a recolher (consolidado somando todos os tipos).
+  // Pra detalhe por tipo, ver GiamIcmsARecolher (relação).
+  icmsARecolherTotal Decimal @default(0)
+
+  // Segmento Z (rastreio)
+  totalRegistros Int @default(0)
+
+  importacaoId String
+
+  cliente        Cliente             @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+  importacao     GiamImportacao      @relation(fields: [importacaoId], references: [id], onDelete: Cascade)
+  icmsARecolher  GiamIcmsARecolher[]
+
+  @@unique([clienteId, periodoApuracao, retificacao])
+  @@index([clienteId, periodoApuracao])
+  @@index([importacaoId])
+}
+
+// Segmento E do GIAM — pode ter múltiplas linhas (uma por tipo de ICMS).
+model GiamIcmsARecolher {
+  id           String @id @default(cuid())
+  apuracaoId   String
+
+  tipo         String   // N=Normal, D=Dif.Alíq.Entradas, S=ST, C=Complementação, F=Dif.Alíq.Saídas, P=FundoPobreza
+  dataVencimento DateTime?
+  valor        Decimal
+
+  apuracao GiamApuracao @relation(fields: [apuracaoId], references: [id], onDelete: Cascade)
+
+  @@index([apuracaoId])
+}
+
+// Log de importações de arquivo GIAM (mesma filosofia do SpedImportacao).
+model GiamImportacao {
+  id        String @id @default(cuid())
+  clienteId String
+
+  nomeArquivo       String
+  tamanhoBytes      Int     @default(0)
+  hashArquivo       String? // SHA-256
+  origem            String  @default("UPLOAD") // UPLOAD | VARREDURA_PASTA
+  caminhoOrigem     String?
+  sucesso           Boolean @default(true)
+  mensagem          String?
+
+  // Metadados extraídos do Segmento A
+  ieArquivo         String? // IE dentro do arquivo (pra sanity check com Cliente.inscricaoEstadual)
+  periodoArquivo    String? // MMAAAA
+  retificacaoArquivo String? // do campo A4
+  versaoArquivo     String? // A33 (=10.00)
+  nomeContabilista  String? // A16
+  crcContabilista   String? // A14 + A15
+
+  importadoEm  DateTime @default(now())
+  importadoPor String?
+
+  cliente   Cliente        @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+  apuracoes GiamApuracao[]
+
+  @@index([clienteId, importadoEm])
+  @@index([clienteId, hashArquivo])
 }

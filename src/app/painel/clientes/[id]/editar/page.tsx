@@ -4,6 +4,7 @@ import { requirePapel, PAPEIS_INTERNOS } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { editarClienteAction } from "../../actions";
 import { AcessoEcacFields } from "../../_components/AcessoEcacFields";
+import { AcessoSefazFields } from "../../_components/AcessoSefazFields";
 
 function Campo({
   nome,
@@ -77,7 +78,6 @@ export default async function EditarClientePage({
             <Campo nome="nomeFantasia" label="Nome fantasia" defaultValue={cliente.nomeFantasia} />
             <Campo nome="cnpj" label="CNPJ" obrigatorio defaultValue={cliente.cnpj} />
             <Campo nome="naturezaJuridica" label="Natureza jurídica" defaultValue={cliente.naturezaJuridica} />
-            <Campo nome="inscricaoEstadual" label="Inscrição estadual" defaultValue={cliente.inscricaoEstadual} />
             <Campo nome="inscricaoMunicipal" label="Inscrição municipal" defaultValue={cliente.inscricaoMunicipal} />
             <Campo nome="cnaePrincipal" label="CNAE principal" defaultValue={cliente.cnaePrincipal} />
             <div>
@@ -138,6 +138,13 @@ export default async function EditarClientePage({
             se não quiser alterá-la — só preencha se for trocar por uma nova.
           </p>
         )}
+
+        <AcessoSefazFields
+          inscricaoEstadualInicial={cliente.inscricaoEstadual ?? ""}
+          pastaFiscalInicial={cliente.pastaFiscal ?? ""}
+          pastaGiamInicial={cliente.pastaGiam ?? ""}
+          jaCadastrada={!!cliente.senhaSefaz}
+        />
 
         <section className="card p-5">
           <h2 className="mb-4 text-sm font-bold uppercase tracking-wide text-slate-500">Responsáveis e contato</h2>

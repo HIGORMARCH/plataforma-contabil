@@ -14,6 +14,12 @@ export default async function PainelLayout({ children }: { children: React.React
         { grupo: "Cadastros", href: "/painel/clientes", rotulo: "Clientes", icone: "👥" },
 
         { grupo: "Fiscal", href: "/painel/tributacao-ncm", rotulo: "Tributação NCM", icone: "🏷️" },
+        {
+          grupo: "Fiscal",
+          href: "/painel/auditoria-obrigacoes-acessorias",
+          rotulo: "Auditoria de Obrigações Acessórias",
+          icone: "🧾",
+        },
 
         {
           grupo: "Contábil",
