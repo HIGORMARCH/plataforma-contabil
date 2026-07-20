@@ -77,6 +77,30 @@ Estas três respostas destravam a implementação. **Não inventar formato de ar
 
 ---
 
+## 5.1 REQUISITO — guarda das senhas de acesso à SEFAZ
+
+Definido pelo Higor em 20/07/2026. **A senha é digitada no próprio sistema, uma vez, e depois ninguém mais a vê — nem ele.**
+
+**No cadastro do cliente**, dois campos novos:
+- `Inscrição Estadual`
+- `Senha da SEFAZ`
+
+**Regras (todas obrigatórias):**
+
+1. **Digitada uma vez, no sistema.** Campo `type="password"` no cadastro do cliente.
+2. **Gravada cifrada no banco** — usar o que **já existe**: `src/lib/crypto.ts` (`cifrar()` / `decifrar()`, AES-256-GCM, mesmo padrão já usado na senha do certificado digital). **Não criar solução nova.**
+3. **Nunca é devolvida à tela.** Depois de salva, o campo mostra apenas `•••••• (cadastrada)` + botão **"Substituir senha"**. A API **nunca** retorna o valor — nem cifrado.
+4. **Nunca aparece** em log, relatório, exportação, mensagem de erro ou tela de depuração.
+5. **Só o sistema usa**, no momento de consultar a GIAM: decifra em memória, usa, descarta.
+6. **Quem cadastra/altera:** apenas perfil **ADMIN**.
+7. **`ENCRYPTION_KEY`** fica no `.env.local` (32+ caracteres). **Nunca no git.** Se for rotacionada, os valores antigos ficam ilegíveis — planejar re-cifragem antes.
+
+**Carga inicial (se ele tiver planilha com as senhas):** fazer script que lê a planilha **do caminho local onde ela já está**, cifra e grava no banco — **sem imprimir o conteúdo em tela ou log**. Depois ele guarda ou apaga a planilha. **Nunca copiar a planilha para dentro da pasta do projeto.**
+
+> ⚠️ **Nunca pedir ao Higor que digite senha no chat.** O que é digitado na conversa fica gravado em arquivo de texto no disco. Senha só entra pelo campo do sistema.
+
+---
+
 ## 6. Como o modelo se encaixa
 
 O campo `fonte` do `ApuracaoFiscal` foi projetado **agnóstico** justamente para isto — o ICMS entra como mais uma fonte, sem quebrar o layout **A × B × A−B** já validado na federal.
