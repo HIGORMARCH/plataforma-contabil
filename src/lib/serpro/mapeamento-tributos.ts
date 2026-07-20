@@ -33,3 +33,37 @@ export function tributoDeCodigo(codigo: string): string {
 }
 
 export const TRIBUTOS_CONHECIDOS = ["IRPJ", "CSLL", "PIS", "COFINS", "INSS", "IRRF", "FGTS", "DAS"] as const;
+
+/**
+ * Categoria contábil do tributo — separação usada na Auditoria Tributária pra dividir
+ * a análise em "impostos sobre vendas/lucro" e "impostos de folha de pagamento".
+ * Convenção aqui: DAS entra em VENDAS_LUCRO (regime Simples é sobre faturamento).
+ */
+export type CategoriaTributo = "VENDAS_LUCRO" | "FOLHA";
+
+// Overrides por código específico. IRRF tem códigos de folha (0561) e de serviços PJ (1708),
+// então precisamos classificar pelo código, não pela sigla.
+const CATEGORIA_POR_CODIGO: Record<string, CategoriaTributo> = {
+  // IRRF sobre folha assalariada
+  "0561": "FOLHA", "561": "FOLHA",
+  // IRRF RPA (autônomo sem vínculo — processado pelo RH junto com a folha)
+  "0588": "FOLHA",
+  // IRRF sobre serviços PJ (vira DARF isolado — não folha)
+  "1708": "VENDAS_LUCRO",
+  // Aluguéis PF — não é folha nem vendas, cai no bloco vendas/lucro como "outros"
+  "3208": "VENDAS_LUCRO",
+};
+
+export function categoriaDeCodigo(codigo: string): CategoriaTributo {
+  const c = codigo.replace(/^0+/, "") || codigo;
+  const override = CATEGORIA_POR_CODIGO[codigo] ?? CATEGORIA_POR_CODIGO[c];
+  if (override) return override;
+  const sigla = tributoDeCodigo(codigo);
+  if (sigla === "INSS" || sigla === "IRRF" || sigla === "FGTS") return "FOLHA";
+  return "VENDAS_LUCRO";
+}
+
+export const ROTULO_CATEGORIA: Record<CategoriaTributo, string> = {
+  VENDAS_LUCRO: "Impostos sobre Vendas e Lucro",
+  FOLHA: "Impostos de Folha de Pagamento",
+};

@@ -54,3 +54,7 @@ sample-balanco.pdf
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Backups de banco (nao versionar)
+*.bak-*
+prisma/*.bak-*

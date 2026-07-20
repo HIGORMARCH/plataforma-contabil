@@ -1,7 +1,7 @@
 import { requireSessao, PAPEIS_INTERNOS } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { redirect } from "next/navigation";
-import { tributoDeCodigo } from "@/lib/serpro/mapeamento-tributos";
+import { tributoDeCodigo, categoriaDeCodigo } from "@/lib/serpro/mapeamento-tributos";
 import { AuditoriaTributariaCliente, type Guia } from "./AuditoriaTributariaCliente";
 
 /**
@@ -52,6 +52,7 @@ export default async function AuditoriaTributariaPage() {
         cnpj: p.cliente.cnpj,
         competencia: formatarCompetencia(p.periodoApuracao),
         tributo: tributoDeCodigo(p.codigoReceitaPrincipal),
+        categoria: categoriaDeCodigo(p.codigoReceitaPrincipal),
         a: null,
         b: {
           principal: Number(p.valorPrincipal),
@@ -73,6 +74,7 @@ export default async function AuditoriaTributariaPage() {
         cnpj: p.cliente.cnpj,
         competencia: formatarCompetencia(sub.periodoApuracao),
         tributo: tributoDeCodigo(sub.codigoReceita),
+        categoria: categoriaDeCodigo(sub.codigoReceita),
         a: null,
         b: {
           principal: Number(sub.valorPrincipal),
