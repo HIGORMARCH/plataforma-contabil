@@ -187,6 +187,42 @@ Definido pelo Higor em 20/07/2026. **A senha é digitada no próprio sistema, um
 
 ---
 
+## 5.2 O DASHBOARD — desenho aprovado pelo Higor (20/07/2026)
+
+Ele desenhou a tela-alvo: **"Dashboard de Reconciliação Contábil — Cruzamento SPED × GIAM × DOMÍNIO"**.
+
+### As três fontes, lado a lado
+| Coluna | O que é | Situação |
+|---|---|---|
+| **SPED** | declarado ao fisco federal (EFD ICMS/IPI) | ✅ parser pronto |
+| **GIAM** | declarado ao Estado | ✅ parser pronto (Segmentos A, B, E, Z) |
+| **DOMÍNIO** | **o razão contábil** — a escrituração | ❌ **falta ler. É o que trava o painel.** |
+
+> ⚠️ Confirmar com o Higor de qual relatório do Domínio sai a coluna: razão da conta de ICMS, balancete, ou relatório de apuração.
+
+### Estrutura da tela
+- **Filtros no topo:** Período (de/até), Empresa, Competência. Carimbo de "última atualização".
+- **Cartões (KPI):** Total Compras de cada uma das 3 fontes · Diferença máxima (com o par responsável) · % diferença média · Competências com diferença (ex.: "9 / 10").
+- **Gráfico de linhas:** evolução mensal do Total Compras, uma linha por fonte.
+- **Resumo do período** (tabela 3 colunas): Total Compras · Total Vendas · ICMS Créditos · ICMS Débitos · Saldo Apurado · ICMS a Recolher · Saldo Credor.
+- **Cruzamento mensal** (tabela principal): por competência → valor das 3 fontes → **diferenças nos 3 pares** (SPED×GIAM, SPED×Domínio, Domínio×GIAM) → % diferença máxima → **status**.
+- **Menu lateral:** Visão geral · Detalhamento · Diferenças · Configurações.
+- **Botão Exportar relatório.**
+
+### Semáforo (faixas definidas por ele)
+| Status | Faixa |
+|---|---|
+| 🟢 OK | diferença < 5% |
+| 🟡 ATENÇÃO | 5% a 15% |
+| 🔴 ALERTA | > 15% |
+
+Rodapé do desenho: *"valores negativos nas diferenças indicam que o primeiro sistema possui valor menor que o segundo"* — manter essa convenção.
+
+### Onde isso se encaixa
+Ver [[visao-auditoria-do-escritorio]]: este painel é a **Etapa 1** (obrigações acessórias). Falta ainda somar a **4ª fonte** — a GIAM oficial do **portal da SEFAZ** —, porque SPED e arquivo GIAM saem ambos do Domínio (ver [[giam-dominio-x-sefaz]]).
+
+---
+
 ## 6. Como o modelo se encaixa
 
 O campo `fonte` do `ApuracaoFiscal` foi projetado **agnóstico** justamente para isto — o ICMS entra como mais uma fonte, sem quebrar o layout **A × B × A−B** já validado na federal.
