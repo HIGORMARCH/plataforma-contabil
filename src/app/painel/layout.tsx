@@ -10,15 +10,41 @@ export default async function PainelLayout({ children }: { children: React.React
   const itens: ItemMenu[] = interno
     ? [
         { href: "/painel", rotulo: "Painel", icone: "▣" },
-        { href: "/painel/clientes", rotulo: "Clientes", icone: "👥" },
-        { href: "/painel/relatorios", rotulo: "Relatórios", icone: "📄" },
-        { href: "/painel/valuation", rotulo: "Valuation", icone: "📈" },
-        { href: "/painel/tributacao-ncm", rotulo: "Tributação NCM", icone: "🏷️" },
-        { href: "/painel/auditoria-tributaria", rotulo: "Auditoria Tributária", icone: "⚖️" },
+
+        { grupo: "Cadastros", href: "/painel/clientes", rotulo: "Clientes", icone: "👥" },
+
+        { grupo: "Fiscal", href: "/painel/tributacao-ncm", rotulo: "Tributação NCM", icone: "🏷️" },
+
+        {
+          grupo: "Contábil",
+          href: "/painel/auditoria-tributaria",
+          rotulo: "Conciliação — Pagamentos de Impostos Federais e Encargos Trabalhistas",
+          icone: "🇧🇷",
+        },
+        {
+          grupo: "Contábil",
+          href: "/painel/conciliacao-estadual",
+          rotulo: "Conciliação — Pagamentos de Impostos Estaduais",
+          icone: "🏛️",
+        },
+
+        {
+          grupo: "Auditoria",
+          href: "/painel/relatorios",
+          rotulo: "Análise das Demonstrações Contábeis",
+          icone: "📄",
+        },
+        { grupo: "Auditoria", href: "/painel/valuation", rotulo: "Valuation", icone: "📈" },
+
         ...(sessao.papel === "ADMIN"
           ? [
-              { href: "/painel/usuarios", rotulo: "Usuários", icone: "🔑" },
-              { href: "/painel/configuracoes", rotulo: "Papel timbrado", icone: "⚙️" },
+              { grupo: "Administração", href: "/painel/usuarios", rotulo: "Usuários", icone: "🔑" },
+              {
+                grupo: "Administração",
+                href: "/painel/configuracoes",
+                rotulo: "Papel timbrado",
+                icone: "⚙️",
+              },
             ]
           : []),
       ]

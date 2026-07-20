@@ -7,6 +7,8 @@ export interface ItemMenu {
   href: string;
   rotulo: string;
   icone: string;
+  /** Título da seção que agrupa o item. Itens sem grupo aparecem soltos no topo. */
+  grupo?: string;
 }
 
 export function Sidebar({
@@ -33,20 +35,27 @@ export function Sidebar({
         </div>
       </div>
 
-      <nav className="flex-1 space-y-1 px-3 py-2">
-        {itens.map((it) => {
+      <nav className="flex-1 space-y-0.5 overflow-y-auto px-3 py-2">
+        {itens.map((it, i) => {
           const ativo = path === it.href || (it.href !== "/painel" && path.startsWith(it.href));
+          const abreGrupo = it.grupo && it.grupo !== itens[i - 1]?.grupo;
           return (
-            <Link
-              key={it.href}
-              href={it.href}
-              className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
-                ativo ? "bg-white/15 text-white" : "text-white/75 hover:bg-white/10"
-              }`}
-            >
-              <span className="w-5 text-center">{it.icone}</span>
-              {it.rotulo}
-            </Link>
+            <div key={it.href}>
+              {abreGrupo && (
+                <p className="px-3 pb-1 pt-4 text-[10px] font-semibold uppercase tracking-wider text-white/40">
+                  {it.grupo}
+                </p>
+              )}
+              <Link
+                href={it.href}
+                className={`flex items-start gap-3 rounded-lg px-3 py-2 text-sm font-medium leading-snug transition-colors ${
+                  ativo ? "bg-white/15 text-white" : "text-white/75 hover:bg-white/10"
+                }`}
+              >
+                <span className="w-5 shrink-0 text-center">{it.icone}</span>
+                <span>{it.rotulo}</span>
+              </Link>
+            </div>
           );
         })}
       </nav>
