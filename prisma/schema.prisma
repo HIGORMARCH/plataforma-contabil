@@ -592,6 +592,12 @@ model GiamApuracao {
   deducoes             Decimal @default(0) // A25
   difAliquotaARecolher Decimal @default(0) // A26
 
+  // Segmento B — soma do Valor Contábil (B11) por natureza (B5).
+  // Equivalem ao Total Compras / Total Vendas que o SPED traz do C100, o que
+  // permite comparar as duas declarações com as MESMAS colunas.
+  totalCompras Decimal @default(0) // B5 = 0 (entradas)
+  totalVendas  Decimal @default(0) // B5 = 1 (saídas)
+
   // Segmento E — ICMS a recolher (consolidado somando todos os tipos).
   // Pra detalhe por tipo, ver GiamIcmsARecolher (relação).
   icmsARecolherTotal Decimal @default(0)

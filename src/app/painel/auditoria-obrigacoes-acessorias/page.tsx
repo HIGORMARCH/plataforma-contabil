@@ -15,16 +15,31 @@ import { redirect } from "next/navigation";
  *   2. FOLHA    — encargos calculados × pagos.
  *   3. CONTÁBIL — última barreira; a contabilidade descobre o que passou.
  *
- * O confronto usado aqui é o ICMS a recolher: SPED (E110 VL_ICMS_RECOLHER)
- * × GIAM (Segmento E consolidado).
+ * ⚠️ REGRA DO CONFRONTO — comparar só o que é comparável.
+ *
+ * O Segmento E da GIAM traz o ICMS a recolher QUEBRADO POR TIPO:
+ *   N = normal da apuração   D = diferencial de alíquota das entradas
+ *   S = substituição tributária   C = complementação   F = difal saídas   P = fundo pobreza
+ *
+ * O registro E110 do SPED Fiscal corresponde APENAS ao tipo N — a apuração
+ * normal. O difal de entradas (D) e o ST (S) são apurados fora do E110.
+ *
+ * Comparar o E110 contra o TOTAL do Segmento E acusa divergência em todo mês
+ * que tenha difal — falso alarme. Validado com a PALMAS HALL 2022: comparando
+ * contra o total, os 10 meses "divergiam"; contra o tipo N, 8 batem exatamente.
+ *
+ * ⇒ Confronto: SPED E110 (VL_ICMS_RECOLHER) × GIAM Segmento E, LINHA TIPO "N".
+ *   Os demais tipos aparecem como informação, nunca como divergência.
  */
 
 const TOLERANCIA = 0.01; // centavo — diferença abaixo disso é arredondamento
+const TIPO_NORMAL = "N";
 
 type LinhaCompetencia = {
   competencia: string; // MM/AAAA
   sped: number | null;
-  giam: number | null;
+  giam: number | null; // só o tipo N
+  outrosTipos: number; // difal, ST etc. — informativo
   diferenca: number | null;
 };
 
@@ -46,7 +61,11 @@ export default async function AuditoriaObrigacoesAcessoriasPage() {
         orderBy: { periodoApuracao: "asc" },
       },
       giamApuracoes: {
-        select: { periodoApuracao: true, icmsARecolherTotal: true },
+        select: {
+          periodoApuracao: true,
+          // Precisa do detalhe por tipo: só o "N" é comparável com o E110 do SPED.
+          icmsARecolher: { select: { tipo: true, valor: true } },
+        },
         orderBy: { periodoApuracao: "asc" },
       },
     },
@@ -64,16 +83,33 @@ export default async function AuditoriaObrigacoesAcessoriasPage() {
         competencia: k,
         sped: Number(a.icmsARecolher),
         giam: null,
+        outrosTipos: 0,
         diferenca: null,
       });
     }
     for (const g of c.giamApuracoes) {
       const k = chave(g.periodoApuracao);
+      // Só o tipo N (apuração normal) é comparável com o E110 do SPED.
+      const normal = g.icmsARecolher
+        .filter((l) => l.tipo === TIPO_NORMAL)
+        .reduce((s, l) => s + Number(l.valor), 0);
+      const outros = g.icmsARecolher
+        .filter((l) => l.tipo !== TIPO_NORMAL)
+        .reduce((s, l) => s + Number(l.valor), 0);
+
       const atual = porCompetencia.get(k);
-      const valor = Number(g.icmsARecolherTotal);
-      if (atual) atual.giam = valor;
-      else
-        porCompetencia.set(k, { competencia: k, sped: null, giam: valor, diferenca: null });
+      if (atual) {
+        atual.giam = normal;
+        atual.outrosTipos = outros;
+      } else {
+        porCompetencia.set(k, {
+          competencia: k,
+          sped: null,
+          giam: normal,
+          outrosTipos: outros,
+          diferenca: null,
+        });
+      }
     }
     for (const l of porCompetencia.values()) {
       if (l.sped !== null && l.giam !== null) l.diferenca = l.sped - l.giam;
@@ -115,6 +151,23 @@ export default async function AuditoriaObrigacoesAcessoriasPage() {
         </p>
       </div>
 
+      <div className="rounded-xl border border-amber-200 bg-amber-50 px-5 py-4">
+        <p className="text-sm font-semibold text-amber-900">
+          Etapa 1 de 2 — conferência dentro do Domínio
+        </p>
+        <p className="mt-1.5 text-sm leading-relaxed text-amber-800">
+          Os dois arquivos comparados aqui — SPED Fiscal e GIAM — <strong>saem do Domínio</strong>.
+          Bater entre si prova que a escrituração é <strong>coerente</strong>, mas{" "}
+          <strong>não prova o que a SEFAZ recebeu</strong>: se alguém alterar o Domínio depois de
+          transmitir, os dois continuam batendo e a divergência com o Estado passa despercebida.
+        </p>
+        <p className="mt-1.5 text-sm leading-relaxed text-amber-800">
+          <strong>Etapa 2 (a construir):</strong> ler a GIAM oficial no portal{" "}
+          <span className="font-mono text-xs">giam.sefaz.to.gov.br</span> e confrontar com o arquivo
+          do Domínio — aí sim é auditoria do que foi declarado ao Estado.
+        </p>
+      </div>
+
       {comDados.length === 0 ? (
         <div className="rounded-xl border border-slate-200 bg-white px-6 py-10 text-center">
           <p className="font-semibold text-slate-700">Nenhuma declaração importada ainda</p>
@@ -151,7 +204,12 @@ export default async function AuditoriaObrigacoesAcessoriasPage() {
                   <th className="px-4 py-3 font-semibold">Cliente</th>
                   <th className="px-4 py-3 font-semibold">Insc. Estadual</th>
                   <th className="px-4 py-3 text-center font-semibold">SPED</th>
-                  <th className="px-4 py-3 text-center font-semibold">GIAM</th>
+                  <th className="px-4 py-3 text-center font-semibold">
+                    GIAM
+                    <span className="block text-[10px] font-normal normal-case text-slate-400">
+                      arquivo do Domínio
+                    </span>
+                  </th>
                   <th className="px-4 py-3 font-semibold">Período coberto</th>
                   <th className="px-4 py-3 font-semibold">Resultado</th>
                 </tr>
@@ -199,11 +257,19 @@ export default async function AuditoriaObrigacoesAcessoriasPage() {
             </table>
           </div>
 
-          <p className="text-xs text-slate-500">
-            O confronto compara o <strong>ICMS a recolher</strong> declarado no SPED Fiscal (registro
-            E110) com o da GIAM (Segmento E). Diferenças de até um centavo são tratadas como
-            arredondamento. Clique no cliente para ver competência por competência.
-          </p>
+          <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-xs leading-relaxed text-slate-600">
+            <p>
+              O confronto compara o <strong>ICMS a recolher da apuração normal</strong>: registro
+              E110 do SPED Fiscal × Segmento E da GIAM, <strong>linha do tipo &quot;N&quot;</strong>.
+              Diferenças de até um centavo contam como arredondamento.
+            </p>
+            <p className="mt-1.5">
+              O <strong>diferencial de alíquota</strong> e a <strong>substituição tributária</strong>{" "}
+              aparecem na GIAM em linhas próprias e <strong>não existem no E110</strong> — por isso
+              não entram na comparação. Somá-los acusaria divergência em todo mês que tivesse difal.
+            </p>
+            <p className="mt-1.5">Clique no cliente para ver competência por competência.</p>
+          </div>
         </>
       )}
     </div>

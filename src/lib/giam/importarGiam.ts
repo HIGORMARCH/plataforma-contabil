@@ -142,6 +142,9 @@ export async function importarGiam(params: {
     saldoCredorAnterior: parseResult.saldoCredorAnterior,
     deducoes: parseResult.deducoes,
     difAliquotaARecolher: parseResult.difAliquotaARecolher,
+    // Segmento B — permite confrontar compras/vendas com o SPED
+    totalCompras: parseResult.totalCompras,
+    totalVendas: parseResult.totalVendas,
     icmsARecolherTotal: parseResult.icmsARecolherTotal,
     totalRegistros: parseResult.totalRegistros,
     importacaoId: importacao.id,

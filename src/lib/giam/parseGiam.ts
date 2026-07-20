@@ -1,6 +1,22 @@
 /**
  * Parser do arquivo GIAM 10.0 (SEFAZ-TO).
  *
+ * ⚠️ QUAL GIAM É ESTA — não confundir (correção do Higor, 20/07/2026):
+ *
+ * Este parser lê o **arquivo gerado pelo Domínio** para transmissão. Ele NÃO é
+ * a GIAM oficial recepcionada pela SEFAZ. São coisas diferentes:
+ *
+ *   - Arquivo do Domínio  → o que o escritório gerou e (em tese) transmitiu
+ *   - GIAM do portal SEFAZ → o que o Estado efetivamente recebeu
+ *
+ * Os dois DIVERGEM se alguém alterar o Domínio depois da transmissão — e é
+ * justamente essa divergência que interessa auditar.
+ *
+ * Consequência prática: confrontar este arquivo com o SPED (que também sai do
+ * Domínio) verifica apenas a COERÊNCIA INTERNA do Domínio. Não prova o que foi
+ * declarado ao Estado. Para isso é preciso ler o PDF do portal
+ * https://giam.sefaz.to.gov.br (pendente).
+ *
  * Layout oficial: LeiauteGIAM10.0.pdf (Anexo III à Portaria SEFAZ nº 1.392/2019).
  *
  * Formato do arquivo:
@@ -9,13 +25,14 @@
  *   - Valores numéricos em CENTAVOS (dividir por 100 pra obter reais).
  *   - Datas: DDMMAAAA (segmentos individuais) ou MMAAAA (período de referência).
  *
- * V1: extrai só o essencial pra auditoria de ICMS:
+ * Extrai o necessário pra auditoria de ICMS:
  *   - Segmento A (cabeçalho + apuração consolidada)
+ *   - Segmento B (entradas e saídas por CFOP → total de compras e vendas)
  *   - Segmento E (ICMS a recolher por tipo)
  *   - Segmento Z (total de registros pra sanity check)
  *
- * Segmentos B, C, D, G, H, I, J, K, L, M, N, O, P, Q, R, S são ignorados na v1
- * (contêm detalhamento por CFOP/UF/produto que não usamos no confronto atual).
+ * Segmentos C, D, G, H, I, J, K, L, M, N, O, P, Q, R, S seguem ignorados
+ * (detalhamento por UF/produto/município que não usamos no confronto atual).
  */
 
 export type TipoIcmsGiam = "N" | "D" | "S" | "C" | "F" | "P" | string;
@@ -58,6 +75,13 @@ export interface GiamApuracaoParsed {
   difAliquotaARecolher: number; // A26
 
   versaoArquivo: string; // A33
+
+  // Movimento do Segmento B — soma do Valor Contábil (B11) por natureza (B5).
+  // Equivalem ao "Total Compras" e "Total Vendas" que o SPED traz do C100,
+  // permitindo comparar as duas declarações com as MESMAS colunas.
+  totalCompras: number; // B5 = 0 (entradas)
+  totalVendas: number; // B5 = 1 (saídas)
+  linhasSegmentoB: number; // quantos registros B foram somados
 
   // ICMS a recolher (do Segmento E)
   icmsARecolher: GiamIcmsARecolher[];
@@ -124,6 +148,7 @@ export function parseGiam(texto: string): GiamApuracaoParsed {
 
   // Estado global (Segmento A + E acumulado + Z)
   let segA: string | null = null;
+  const segB: string[] = [];
   const segE: string[] = [];
   let segZ: string | null = null;
 
@@ -131,9 +156,10 @@ export function parseGiam(texto: string): GiamApuracaoParsed {
     if (!linha) continue;
     const tipo = linha.charAt(0);
     if (tipo === "A" && !segA) segA = linha;
+    else if (tipo === "B") segB.push(linha);
     else if (tipo === "E") segE.push(linha);
     else if (tipo === "Z") segZ = linha;
-    // outros segmentos ignorados na v1
+    // demais segmentos ignorados
   }
 
   if (!segA) throw new GiamFormatError("arquivo sem Segmento A — não é um GIAM válido");
@@ -169,11 +195,25 @@ export function parseGiam(texto: string): GiamApuracaoParsed {
     deducoes: campoValor(segA, 301, 14),
     difAliquotaARecolher: campoValor(segA, 315, 14),
     versaoArquivo: campoAlfa(segA, 419, 5),
+    totalCompras: 0,
+    totalVendas: 0,
+    linhasSegmentoB: 0,
     icmsARecolher: [],
     icmsARecolherTotal: 0,
     totalRegistros: 0,
     totalLinhasArquivo: linhas.length,
   };
+
+  // --- Segmento B (uma linha por CFOP) ---
+  // B5 (pos 21): 0 = entrada, 1 = saída · B11 (pos 82, 14): Valor Contábil
+  for (const linhaB of segB) {
+    const natureza = campoAlfa(linhaB, 21, 1);
+    const valorContabil = campoValor(linhaB, 82, 14);
+    if (natureza === "0") parsed.totalCompras += valorContabil;
+    else if (natureza === "1") parsed.totalVendas += valorContabil;
+    else continue; // natureza desconhecida — não soma em lugar nenhum
+    parsed.linhasSegmentoB++;
+  }
 
   // --- Segmento E (uma ou mais linhas) ---
   for (const linhaE of segE) {
