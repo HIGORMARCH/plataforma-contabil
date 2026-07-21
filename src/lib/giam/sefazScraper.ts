@@ -250,6 +250,7 @@ async function baixarEspelhoDoMes(
     if (buf.slice(0, 4).toString("ascii").startsWith("%PDF")) {
       const parser = new PDFParse({ data: buf });
       const dados = await parser.getText();
+      // Sempre despeja em modo debug (script de teste roda headless=false)
       if (!headless) {
         const fs = await import("node:fs");
         const path = `C:/Users/higor/AppData/Local/Temp/claude/C--Users-higor/26fee02e-df13-4afd-b6c9-73ea580f4a5a/scratchpad/espelho-${alvo.ano}-${String(alvo.mes).padStart(2, "0")}.txt`;
@@ -311,29 +312,53 @@ function parseEspelhoPdf(texto: string, mes: number, ano: number): GiamSefazApur
     "";
 
   const inscricaoEstadual = matchOne(t, /(\d{2}\.\d{3}\.\d{3}-\d)/) ?? "";
-
-  // Retificação: o request pro portal passa Retif=00 (só sabemos raspar a
-  // versão original hoje). A tag do PDF diferencia SIM/NÃO em posição que o
-  // pdf-parse embaralha — parsear é frágil. Fixa "00" e ajusta no futuro se
-  // adicionarmos suporte a raspar retificadoras (Retif=01, 02, ...).
   const retificacao = "00";
 
-  // Quadro 4 — CFOP × 6 colunas. Cada linha tem o padrão:
-  //   CFOP DESCRICAO 6-valores
-  // O CFOP é 4 dígitos separados por ponto (ex: 1.102).
-  const { entradas, saidas } = parseQuadro4(t);
-  const totalEntradas = consolidar(entradas);
-  const totalSaidas = consolidar(saidas);
+  // Fontes CONFIÁVEIS de totais: os "totais consolidados por UF" (itens 11.6
+  // pra entradas e 12.6 pra saídas). Vêm rotulados no texto do PDF de forma
+  // previsível — muito mais robusto que parsear o Quadro 4 (onde o pdf-parse
+  // embaralha ordem das colunas em linhas com descrição longa).
+  //
+  //   11.6-TOTAL <VC> <BC> <Crédito> <Isentas> <Outras> <ST>
+  //   12.6-TOTAL <ContrVC> <NContrVC> <ContrBC> <NContrBC> <ContrDéb> <NContrDéb> <Isent> <Out> <ST>
+  //
+  // Total Compras = VC de 11.6; Crédito Entradas = 3º valor de 11.6.
+  // Total Vendas = ContrVC + NContrVC de 12.6; Débito Saídas = ContrDéb + NContrDéb.
+  const item11 = parseValoresDepoisDe(t, /11\.6\s*-?\s*TOTAL/i, 6);
+  const item12 = parseValoresDepoisDe(t, /12\.6\s*-?\s*TOTAL/i, 9);
 
-  // Os totais do item 5 (Débito) e 6 (Crédito) do PDF ficam separados dos
-  // rótulos no texto extraído — parsear com regex é frágil. Derivamos das
-  // linhas do Quadro 4: soma da coluna Crédito das entradas = 6.1; soma da
-  // coluna Débito das saídas = 5.1. Bate com o E110 do SPED.
-  const debitoSaidas = totalSaidas.creditoDebitoImposto;
-  const creditoEntradas = totalEntradas.creditoDebitoImposto;
-  const saldoCredorAnterior = 0; // TODO: parsear se o PDF trouxer
+  const totalComprasVC = item11[0] ?? 0;
+  const creditoEntradas = item11[2] ?? 0;
+  const totalVendasVC = (item12[0] ?? 0) + (item12[1] ?? 0);
+  const debitoSaidas = (item12[4] ?? 0) + (item12[5] ?? 0);
+
+  const saldoCredorAnterior = 0;
   const deducoes = 0;
   const icmsARecolherNormal = Math.max(0, debitoSaidas - creditoEntradas - saldoCredorAnterior - deducoes);
+
+  // Linhas por CFOP: DESLIGADAS por enquanto. O pdf-parse embaralha a ordem
+  // das colunas em linhas com descrição longa — a leitura fica errada (viu
+  // R$ 126.564,18 como Débito quando era Outras). Reativar quando trocarmos
+  // pra pdfjs-dist com coordenadas X/Y explícitas.
+  const linhasSegmentoB: LinhaEspelhoB[] = [];
+  const totalEntradas: TotaisEspelhoB = {
+    valorContabil: totalComprasVC,
+    baseCalculo: 0,
+    isentasNaoTributadas: 0,
+    outras: 0,
+    substituicaoTributaria: 0,
+    creditoDebitoImposto: creditoEntradas,
+    linhas: 0,
+  };
+  const totalSaidas: TotaisEspelhoB = {
+    valorContabil: totalVendasVC,
+    baseCalculo: 0,
+    isentasNaoTributadas: 0,
+    outras: 0,
+    substituicaoTributaria: 0,
+    creditoDebitoImposto: debitoSaidas,
+    linhas: 0,
+  };
 
   return {
     ano,
@@ -348,10 +373,28 @@ function parseEspelhoPdf(texto: string, mes: number, ano: number): GiamSefazApur
     saldoCredorAnterior,
     deducoes,
     icmsARecolherNormal,
-    linhasSegmentoB: [...entradas, ...saidas],
+    linhasSegmentoB,
     totalEntradas,
     totalSaidas,
   };
+}
+
+/**
+ * Extrai os primeiros N valores decimais BR que aparecem imediatamente depois
+ * de um marcador (regex). Usado pra ler as linhas "11.6-TOTAL" e
+ * "12.6-TOTAL" do Espelho — que têm formato tabular consistente no PDF.
+ */
+function parseValoresDepoisDe(t: string, marcador: RegExp, quantosPegar: number): number[] {
+  const m = t.match(marcador);
+  if (!m || m.index === undefined) return [];
+  const trecho = t.substring(m.index + m[0].length, m.index + m[0].length + 400);
+  const nums: number[] = [];
+  const re = /([\d]{1,3}(?:\.[\d]{3})*,[\d]{2})/g;
+  let match: RegExpExecArray | null;
+  while ((match = re.exec(trecho)) !== null && nums.length < quantosPegar) {
+    nums.push(parseValorBr(match[1]));
+  }
+  return nums;
 }
 
 function parseQuadro4(t: string): { entradas: LinhaEspelhoB[]; saidas: LinhaEspelhoB[] } {
