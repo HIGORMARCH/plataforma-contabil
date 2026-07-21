@@ -126,8 +126,10 @@ model Cliente {
   razaoImportacoes RazaoImportacao[]
   spedApuracoes    SpedApuracao[]
   spedImportacoes  SpedImportacao[]
-  giamApuracoes    GiamApuracao[]
-  giamImportacoes  GiamImportacao[]
+  giamApuracoes            GiamApuracao[]
+  giamImportacoes          GiamImportacao[]
+  giamSefazApuracoes       GiamSefazApuracao[]
+  giamSefazSincronizacoes  GiamSefazSincronizacao[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -633,6 +635,107 @@ model GiamApuracao {
   @@unique([clienteId, periodoApuracao, retificacao])
   @@index([clienteId, periodoApuracao])
   @@index([importacaoId])
+}
+
+// ---------------------------------------------------------------------------
+// GIAM SEFAZ — dados vindos do PORTAL (giam.sefaz.to.gov.br). NÃO é o arquivo
+// do Domínio. Fica em tabela separada pra permitir o confronto:
+//
+//   GiamApuracao         = o que o Domínio guarda hoje
+//   GiamSefazApuracao    = o que a SEFAZ efetivamente recepcionou (portal)
+//
+// Populada pelo robô que raspa o portal (Etapa 2). Estrutura idêntica à
+// GiamApuracao pra permitir comparação linha a linha por CFOP.
+// ---------------------------------------------------------------------------
+model GiamSefazApuracao {
+  id        String @id @default(cuid())
+  clienteId String
+
+  periodoApuracao DateTime // primeiro dia do mês
+  retificacao     String   @default("00")
+
+  // Cabeçalho do Espelho — metadados do que a SEFAZ recepcionou
+  numeroControle String  // Item 19 do Espelho da GIAM — identifica a transmissão oficial
+  dataRecepcao   DateTime? // Item 19 — quando a SEFAZ recebeu
+
+  // Totais consolidados do Quadro 4 (mesmo formato da GiamApuracao)
+  totalEntradasBaseCalculo   Decimal @default(0)
+  totalEntradasIsentas       Decimal @default(0)
+  totalEntradasOutras        Decimal @default(0)
+  totalEntradasST            Decimal @default(0)
+  totalEntradasValorContabil Decimal @default(0)
+  totalEntradasCredito       Decimal @default(0)
+  totalSaidasBaseCalculo     Decimal @default(0)
+  totalSaidasIsentas         Decimal @default(0)
+  totalSaidasOutras          Decimal @default(0)
+  totalSaidasST              Decimal @default(0)
+  totalSaidasValorContabil   Decimal @default(0)
+  totalSaidasDebito          Decimal @default(0)
+
+  // Compat com formato usado nas telas (Total Compras / Total Vendas)
+  totalCompras Decimal @default(0)
+  totalVendas  Decimal @default(0)
+
+  // Apuração ICMS (do item 7 do Espelho)
+  debitoSaidas         Decimal @default(0)
+  creditoEntradas      Decimal @default(0)
+  saldoCredorAnterior  Decimal @default(0)
+  deducoes             Decimal @default(0)
+  icmsARecolherNormal  Decimal @default(0) // tipo N — o comparável com o E110
+
+  sincronizadoEm DateTime @default(now())
+  sincronizacaoId String
+
+  cliente         Cliente                    @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+  sincronizacao   GiamSefazSincronizacao     @relation(fields: [sincronizacaoId], references: [id], onDelete: Cascade)
+  linhasSegmentoB GiamSefazLinhaSegmentoB[]
+
+  @@unique([clienteId, periodoApuracao, retificacao])
+  @@index([clienteId, periodoApuracao])
+  @@index([sincronizacaoId])
+}
+
+model GiamSefazLinhaSegmentoB {
+  id         String @id @default(cuid())
+  apuracaoId String
+
+  natureza             String
+  cfop                 String
+  baseCalculo          Decimal @default(0)
+  isentasNaoTributadas Decimal @default(0)
+  outras               Decimal @default(0)
+  substituicaoTributaria Decimal @default(0)
+  valorContabil        Decimal @default(0)
+  creditoDebitoImposto Decimal @default(0)
+
+  apuracao GiamSefazApuracao @relation(fields: [apuracaoId], references: [id], onDelete: Cascade)
+
+  @@index([apuracaoId])
+  @@index([apuracaoId, natureza, cfop])
+}
+
+// Log de sincronizações — cada execução do robô por cliente/período.
+model GiamSefazSincronizacao {
+  id        String @id @default(cuid())
+  clienteId String
+
+  ano           Int
+  mesInicial    Int // 1-12
+  mesFinal      Int // 1-12
+  competenciasSolicitadas Int @default(0)
+  competenciasImportadas  Int @default(0)
+  competenciasSubstituidas Int @default(0)
+  sucesso       Boolean @default(true)
+  mensagem      String?
+
+  executadoEm  DateTime @default(now())
+  executadoPor String?
+
+  cliente    Cliente             @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+  apuracoes  GiamSefazApuracao[]
+
+  @@index([clienteId, executadoEm])
+  @@index([clienteId, ano])
 }
 
 // Segmento B — uma linha por CFOP × natureza. Espelha o Quadro 4 do PDF da
