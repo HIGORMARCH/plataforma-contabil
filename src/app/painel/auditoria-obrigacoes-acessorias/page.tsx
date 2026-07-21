@@ -205,54 +205,47 @@ export default async function AuditoriaObrigacoesAcessoriasPage() {
                   <th className="px-4 py-3 font-semibold">Insc. Estadual</th>
                   <th className="px-4 py-3 text-center font-semibold">SPED</th>
                   <th className="px-4 py-3 text-center font-semibold">
-                    GIAM
-                    <span className="block text-[10px] font-normal normal-case text-slate-400">
-                      arquivo do Domínio
-                    </span>
+                    GIAM (arquivo do Domínio)
                   </th>
-                  <th className="px-4 py-3 font-semibold">Período coberto</th>
+                  <th className="px-4 py-3 font-semibold">Competências</th>
                   <th className="px-4 py-3 font-semibold">Resultado</th>
                 </tr>
               </thead>
               <tbody>
-                {comDados.map((l) => {
-                  const primeira = l.competencias[0]?.competencia;
-                  const ultima = l.competencias[l.competencias.length - 1]?.competencia;
-                  return (
-                    <tr key={l.cliente.id} className="border-b border-slate-100 last:border-0">
-                      <td className="px-4 py-3">
-                        <Link
-                          href={`/painel/clientes/${l.cliente.id}/sped`}
-                          className="font-medium text-slate-800 hover:underline"
-                        >
-                          {l.cliente.nomeFantasia || l.cliente.razaoSocial}
-                        </Link>
-                        <div className="text-xs text-slate-400">{l.cliente.cnpj}</div>
-                      </td>
-                      <td className="px-4 py-3 text-slate-600">
-                        {l.cliente.inscricaoEstadual || (
-                          <span className="text-slate-400">não cadastrada</span>
-                        )}
-                      </td>
-                      <td className="px-4 py-3 text-center tabular-nums text-slate-700">
-                        {l.totalSped}
-                      </td>
-                      <td className="px-4 py-3 text-center tabular-nums text-slate-700">
-                        {l.totalGiam}
-                      </td>
-                      <td className="px-4 py-3 whitespace-nowrap text-slate-600">
-                        {primeira === ultima ? primeira : `${primeira} a ${ultima}`}
-                      </td>
-                      <td className="px-4 py-3">
-                        <Resultado
-                          conferidas={l.conferidas}
-                          divergentes={l.divergentes}
-                          soUmLado={l.soUmLado}
-                        />
-                      </td>
-                    </tr>
-                  );
-                })}
+                {comDados.map((l) => (
+                  <tr key={l.cliente.id} className="border-b border-slate-100 last:border-0 align-top">
+                    <td className="px-4 py-3">
+                      <Link
+                        href={`/painel/clientes/${l.cliente.id}/sped`}
+                        className="font-medium text-slate-800 hover:underline"
+                      >
+                        {l.cliente.nomeFantasia || l.cliente.razaoSocial}
+                      </Link>
+                      <div className="text-xs text-slate-400">{l.cliente.cnpj}</div>
+                    </td>
+                    <td className="px-4 py-3 text-slate-600">
+                      {l.cliente.inscricaoEstadual || (
+                        <span className="text-slate-400">não cadastrada</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 text-center tabular-nums text-slate-700">
+                      {l.totalSped}
+                    </td>
+                    <td className="px-4 py-3 text-center tabular-nums text-slate-700">
+                      {l.totalGiam}
+                    </td>
+                    <td className="px-4 py-3">
+                      <ChipsCompetencia clienteId={l.cliente.id} competencias={l.competencias} />
+                    </td>
+                    <td className="px-4 py-3">
+                      <Resultado
+                        conferidas={l.conferidas}
+                        divergentes={l.divergentes}
+                        soUmLado={l.soUmLado}
+                      />
+                    </td>
+                  </tr>
+                ))}
               </tbody>
             </table>
           </div>
@@ -354,4 +347,57 @@ function Resultado({
 function ordenavel(competencia: string): string {
   const [mes, ano] = competencia.split("/");
   return `${ano}-${mes}`;
+}
+
+/**
+ * Chips clicáveis por competência — cada um leva pro confronto detalhado
+ * daquele mês. Cor indica o resultado (verde = bate, âmbar = divergente,
+ * cinza = só um lado). Máximo de 24 chips (2 anos) na primeira dobra.
+ */
+function ChipsCompetencia({
+  clienteId,
+  competencias,
+}: {
+  clienteId: string;
+  competencias: LinhaCompetencia[];
+}) {
+  if (competencias.length === 0) {
+    return <span className="text-xs text-slate-400">—</span>;
+  }
+  return (
+    <div className="flex max-w-md flex-wrap gap-1">
+      {competencias.map((c) => {
+        const [mes, ano] = c.competencia.split("/");
+        const href = `/painel/auditoria-obrigacoes-acessorias/${clienteId}/${ano}/${mes}`;
+        const status =
+          c.sped === null || c.giam === null
+            ? "sem-par"
+            : Math.abs(c.diferenca ?? 0) > TOLERANCIA
+              ? "divergente"
+              : "ok";
+        const cls =
+          status === "ok"
+            ? "bg-emerald-50 text-emerald-800 hover:bg-emerald-100 border-emerald-200"
+            : status === "divergente"
+              ? "bg-amber-50 text-amber-800 hover:bg-amber-100 border-amber-200"
+              : "bg-slate-50 text-slate-500 hover:bg-slate-100 border-slate-200";
+        const titulo =
+          status === "ok"
+            ? "SPED e GIAM Domínio batem — abrir detalhes"
+            : status === "divergente"
+              ? `Divergência de ${new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(c.diferenca ?? 0)} — abrir detalhes`
+              : "Só um lado importado — abrir detalhes";
+        return (
+          <Link
+            key={c.competencia}
+            href={href}
+            title={titulo}
+            className={`rounded border px-2 py-0.5 font-mono text-xs ${cls}`}
+          >
+            {c.competencia}
+          </Link>
+        );
+      })}
+    </div>
+  );
 }

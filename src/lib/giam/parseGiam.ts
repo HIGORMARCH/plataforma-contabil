@@ -27,7 +27,8 @@
  *
  * Extrai o necessário pra auditoria de ICMS:
  *   - Segmento A (cabeçalho + apuração consolidada)
- *   - Segmento B (entradas e saídas por CFOP → total de compras e vendas)
+ *   - Segmento B (entradas e saídas POR CFOP com todas as colunas do Quadro 4:
+ *     Base de Cálculo, Isentas, Outras, ST, Valor Contábil, Crédito ou Débito)
  *   - Segmento E (ICMS a recolher por tipo)
  *   - Segmento Z (total de registros pra sanity check)
  *
@@ -41,6 +42,39 @@ export interface GiamIcmsARecolher {
   tipo: TipoIcmsGiam; // N=Normal, D=Dif.Ent, S=ST, C=Compl, F=Dif.Saí, P=FundoPobreza
   dataVencimento: Date | null;
   valor: number;
+}
+
+/**
+ * Uma linha do Segmento B — uma operação (CFOP) numa natureza (entrada ou
+ * saída). Espelha o Quadro 4 do "Espelho da GIAM" que a SEFAZ imprime:
+ * uma linha por CFOP × 6 colunas de valor.
+ */
+export interface GiamLinhaSegmentoB {
+  natureza: "0" | "1"; // 0 = entrada, 1 = saída
+  cfop: string; // 4 dígitos (B6)
+  baseCalculo: number; // B7 — não preenchido no Simples Nacional
+  isentasNaoTributadas: number; // B8 — não preenchido no Simples Nacional
+  outras: number; // B9
+  substituicaoTributaria: number; // B10
+  valorContabil: number; // B11
+  creditoDebitoImposto: number; // B12 — crédito se entrada, débito se saída
+  domicilioFiscal: string; // B13 — A=Atual, B=Anterior
+}
+
+/**
+ * Totais consolidados de um lado do Segmento B (entradas ou saídas).
+ * Somam-se as colunas de todas as linhas do lado. É o que aparece nas linhas
+ * "TOTAL" do Quadro 4 do PDF da SEFAZ e é a base direta pra confrontar com o
+ * SPED (que traz apenas totais no E110 e no somatório dos C100).
+ */
+export interface GiamTotaisSegmentoB {
+  valorContabil: number;
+  baseCalculo: number;
+  isentasNaoTributadas: number;
+  outras: number;
+  substituicaoTributaria: number;
+  creditoDebitoImposto: number;
+  linhas: number;
 }
 
 export interface GiamApuracaoParsed {
@@ -76,12 +110,21 @@ export interface GiamApuracaoParsed {
 
   versaoArquivo: string; // A33
 
-  // Movimento do Segmento B — soma do Valor Contábil (B11) por natureza (B5).
-  // Equivalem ao "Total Compras" e "Total Vendas" que o SPED traz do C100,
-  // permitindo comparar as duas declarações com as MESMAS colunas.
-  totalCompras: number; // B5 = 0 (entradas)
-  totalVendas: number; // B5 = 1 (saídas)
-  linhasSegmentoB: number; // quantos registros B foram somados
+  // Segmento B — linha a linha (CFOP × 6 colunas) mais totais consolidados.
+  //
+  // linhasSegmentoB: uma entrada por registro B do arquivo.
+  // totalEntradas / totalSaidas: soma por coluna, permitem confronto direto
+  //   com o SPED (que só traz totais no E110 e na soma dos C100). Também são
+  //   o que aparece nas linhas "TOTAL" do Quadro 4 do PDF da SEFAZ.
+  linhasSegmentoB: GiamLinhaSegmentoB[];
+  totalEntradas: GiamTotaisSegmentoB;
+  totalSaidas: GiamTotaisSegmentoB;
+
+  // Compat: totais de valor contábil que já existiam antes (Total Compras =
+  // total entradas valor contábil; Total Vendas = total saídas valor contábil).
+  // Manter os campos evita quebrar quem já lê parsed.totalCompras / .totalVendas.
+  totalCompras: number;
+  totalVendas: number;
 
   // ICMS a recolher (do Segmento E)
   icmsARecolher: GiamIcmsARecolher[];
@@ -123,6 +166,18 @@ function campoDataDDMMAAAA(linha: string, inicio: number): Date | null {
   if (!dd || !mm || !aaaa) return null;
   const d = new Date(Date.UTC(aaaa, mm - 1, dd));
   return isNaN(d.getTime()) ? null : d;
+}
+
+function totaisZerados(): GiamTotaisSegmentoB {
+  return {
+    valorContabil: 0,
+    baseCalculo: 0,
+    isentasNaoTributadas: 0,
+    outras: 0,
+    substituicaoTributaria: 0,
+    creditoDebitoImposto: 0,
+    linhas: 0,
+  };
 }
 
 /** MMAAAA → Date UTC (dia 1) ou null. */
@@ -195,25 +250,58 @@ export function parseGiam(texto: string): GiamApuracaoParsed {
     deducoes: campoValor(segA, 301, 14),
     difAliquotaARecolher: campoValor(segA, 315, 14),
     versaoArquivo: campoAlfa(segA, 419, 5),
+    linhasSegmentoB: [],
+    totalEntradas: totaisZerados(),
+    totalSaidas: totaisZerados(),
     totalCompras: 0,
     totalVendas: 0,
-    linhasSegmentoB: 0,
     icmsARecolher: [],
     icmsARecolherTotal: 0,
     totalRegistros: 0,
     totalLinhasArquivo: linhas.length,
   };
 
-  // --- Segmento B (uma linha por CFOP) ---
-  // B5 (pos 21): 0 = entrada, 1 = saída · B11 (pos 82, 14): Valor Contábil
+  // --- Segmento B (uma linha por CFOP × natureza) ---
+  //
+  // Layout (Anexo III Portaria SEFAZ 1.392/2019):
+  //   B5  pos 21  (1)  0 = entrada, 1 = saída
+  //   B6  pos 22  (4)  CFOP
+  //   B7  pos 26 (14)  Base de Cálculo  — não preenchido no Simples Nacional
+  //   B8  pos 40 (14)  Isentas / Não Tributadas — idem
+  //   B9  pos 54 (14)  Outras
+  //   B10 pos 68 (14)  Substituição Tributária
+  //   B11 pos 82 (14)  Valor Contábil
+  //   B12 pos 96 (14)  Crédito (entrada) ou Débito (saída) do Imposto — idem
+  //   B13 pos 110 (1)  Domicílio Fiscal (A=Atual, B=Anterior)
   for (const linhaB of segB) {
     const natureza = campoAlfa(linhaB, 21, 1);
-    const valorContabil = campoValor(linhaB, 82, 14);
-    if (natureza === "0") parsed.totalCompras += valorContabil;
-    else if (natureza === "1") parsed.totalVendas += valorContabil;
-    else continue; // natureza desconhecida — não soma em lugar nenhum
-    parsed.linhasSegmentoB++;
+    if (natureza !== "0" && natureza !== "1") continue; // natureza desconhecida
+    const linha: GiamLinhaSegmentoB = {
+      natureza,
+      cfop: campoAlfa(linhaB, 22, 4),
+      baseCalculo: campoValor(linhaB, 26, 14),
+      isentasNaoTributadas: campoValor(linhaB, 40, 14),
+      outras: campoValor(linhaB, 54, 14),
+      substituicaoTributaria: campoValor(linhaB, 68, 14),
+      valorContabil: campoValor(linhaB, 82, 14),
+      creditoDebitoImposto: campoValor(linhaB, 96, 14),
+      domicilioFiscal: campoAlfa(linhaB, 110, 1),
+    };
+    parsed.linhasSegmentoB.push(linha);
+
+    const totais = natureza === "0" ? parsed.totalEntradas : parsed.totalSaidas;
+    totais.valorContabil += linha.valorContabil;
+    totais.baseCalculo += linha.baseCalculo;
+    totais.isentasNaoTributadas += linha.isentasNaoTributadas;
+    totais.outras += linha.outras;
+    totais.substituicaoTributaria += linha.substituicaoTributaria;
+    totais.creditoDebitoImposto += linha.creditoDebitoImposto;
+    totais.linhas++;
   }
+
+  // Compat: Total Compras / Vendas = Valor Contábil de cada lado.
+  parsed.totalCompras = parsed.totalEntradas.valorContabil;
+  parsed.totalVendas = parsed.totalSaidas.valorContabil;
 
   // --- Segmento E (uma ou mais linhas) ---
   for (const linhaE of segE) {

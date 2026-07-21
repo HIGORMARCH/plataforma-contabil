@@ -592,11 +592,29 @@ model GiamApuracao {
   deducoes             Decimal @default(0) // A25
   difAliquotaARecolher Decimal @default(0) // A26
 
-  // Segmento B — soma do Valor Contábil (B11) por natureza (B5).
-  // Equivalem ao Total Compras / Total Vendas que o SPED traz do C100, o que
-  // permite comparar as duas declarações com as MESMAS colunas.
-  totalCompras Decimal @default(0) // B5 = 0 (entradas)
-  totalVendas  Decimal @default(0) // B5 = 1 (saídas)
+  // Totais consolidados do Segmento B — o que aparece nas linhas "TOTAL" do
+  // Quadro 4 do Espelho da GIAM. Somam TODAS as linhas do lado (entrada ou
+  // saída). Ficam gravados aqui pra evitar SUM em runtime na tela de confronto.
+  // O detalhamento CFOP a CFOP fica em GiamLinhaSegmentoB.
+  //
+  // Entradas
+  totalEntradasBaseCalculo      Decimal @default(0) // Σ B7 onde B5=0
+  totalEntradasIsentas          Decimal @default(0) // Σ B8 onde B5=0
+  totalEntradasOutras           Decimal @default(0) // Σ B9 onde B5=0
+  totalEntradasST               Decimal @default(0) // Σ B10 onde B5=0
+  totalEntradasValorContabil    Decimal @default(0) // Σ B11 onde B5=0 (= totalCompras, mantido pra compat)
+  totalEntradasCredito          Decimal @default(0) // Σ B12 onde B5=0
+  // Saídas
+  totalSaidasBaseCalculo        Decimal @default(0) // Σ B7 onde B5=1
+  totalSaidasIsentas            Decimal @default(0) // Σ B8 onde B5=1
+  totalSaidasOutras             Decimal @default(0) // Σ B9 onde B5=1
+  totalSaidasST                 Decimal @default(0) // Σ B10 onde B5=1
+  totalSaidasValorContabil      Decimal @default(0) // Σ B11 onde B5=1 (= totalVendas, mantido pra compat)
+  totalSaidasDebito             Decimal @default(0) // Σ B12 onde B5=1
+
+  // Compat: preserva o campo antigo (mesmo valor de totalEntradasValorContabil / totalSaidasValorContabil).
+  totalCompras Decimal @default(0)
+  totalVendas  Decimal @default(0)
 
   // Segmento E — ICMS a recolher (consolidado somando todos os tipos).
   // Pra detalhe por tipo, ver GiamIcmsARecolher (relação).
@@ -607,13 +625,38 @@ model GiamApuracao {
 
   importacaoId String
 
-  cliente        Cliente             @relation(fields: [clienteId], references: [id], onDelete: Cascade)
-  importacao     GiamImportacao      @relation(fields: [importacaoId], references: [id], onDelete: Cascade)
-  icmsARecolher  GiamIcmsARecolher[]
+  cliente          Cliente              @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+  importacao       GiamImportacao       @relation(fields: [importacaoId], references: [id], onDelete: Cascade)
+  icmsARecolher    GiamIcmsARecolher[]
+  linhasSegmentoB  GiamLinhaSegmentoB[]
 
   @@unique([clienteId, periodoApuracao, retificacao])
   @@index([clienteId, periodoApuracao])
   @@index([importacaoId])
+}
+
+// Segmento B — uma linha por CFOP × natureza. Espelha o Quadro 4 do PDF da
+// SEFAZ ("Entradas/Aquisições" e "Saídas/Prestações" com colunas Valor
+// Contábil / Base Cálculo / Crédito ou Débito / Isentas / Outras / ST).
+// Recriado a cada re-import da apuração.
+model GiamLinhaSegmentoB {
+  id         String @id @default(cuid())
+  apuracaoId String
+
+  natureza             String  // "0" = entrada, "1" = saída
+  cfop                 String  // 4 dígitos (B6)
+  baseCalculo          Decimal @default(0)
+  isentasNaoTributadas Decimal @default(0)
+  outras               Decimal @default(0)
+  substituicaoTributaria Decimal @default(0)
+  valorContabil        Decimal @default(0)
+  creditoDebitoImposto Decimal @default(0) // crédito se entrada, débito se saída
+  domicilioFiscal      String  // "A" ou "B"
+
+  apuracao GiamApuracao @relation(fields: [apuracaoId], references: [id], onDelete: Cascade)
+
+  @@index([apuracaoId])
+  @@index([apuracaoId, natureza, cfop])
 }
 
 // Segmento E do GIAM — pode ter múltiplas linhas (uma por tipo de ICMS).

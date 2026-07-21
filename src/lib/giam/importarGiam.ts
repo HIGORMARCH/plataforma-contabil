@@ -142,7 +142,20 @@ export async function importarGiam(params: {
     saldoCredorAnterior: parseResult.saldoCredorAnterior,
     deducoes: parseResult.deducoes,
     difAliquotaARecolher: parseResult.difAliquotaARecolher,
-    // Segmento B — permite confrontar compras/vendas com o SPED
+    // Totais consolidados do Segmento B — Quadro 4 do Espelho da GIAM.
+    totalEntradasBaseCalculo: parseResult.totalEntradas.baseCalculo,
+    totalEntradasIsentas: parseResult.totalEntradas.isentasNaoTributadas,
+    totalEntradasOutras: parseResult.totalEntradas.outras,
+    totalEntradasST: parseResult.totalEntradas.substituicaoTributaria,
+    totalEntradasValorContabil: parseResult.totalEntradas.valorContabil,
+    totalEntradasCredito: parseResult.totalEntradas.creditoDebitoImposto,
+    totalSaidasBaseCalculo: parseResult.totalSaidas.baseCalculo,
+    totalSaidasIsentas: parseResult.totalSaidas.isentasNaoTributadas,
+    totalSaidasOutras: parseResult.totalSaidas.outras,
+    totalSaidasST: parseResult.totalSaidas.substituicaoTributaria,
+    totalSaidasValorContabil: parseResult.totalSaidas.valorContabil,
+    totalSaidasDebito: parseResult.totalSaidas.creditoDebitoImposto,
+    // Compat com quem já lia os totais anteriores.
     totalCompras: parseResult.totalCompras,
     totalVendas: parseResult.totalVendas,
     icmsARecolherTotal: parseResult.icmsARecolherTotal,
@@ -150,9 +163,14 @@ export async function importarGiam(params: {
     importacaoId: importacao.id,
   };
 
-  // Se já existe, apaga os filhos GiamIcmsARecolher pra recriar (mudança de tipo/valor).
+  // Se já existe, apaga os filhos (GiamIcmsARecolher + GiamLinhaSegmentoB) pra
+  // recriar. Reimport = substitui: qualquer alteração na GIAM (CFOP mudou,
+  // linha removida etc.) reflete no banco sem sobrar registro velho.
   if (existente) {
-    await prisma.giamIcmsARecolher.deleteMany({ where: { apuracaoId: existente.id } });
+    await prisma.$transaction([
+      prisma.giamIcmsARecolher.deleteMany({ where: { apuracaoId: existente.id } }),
+      prisma.giamLinhaSegmentoB.deleteMany({ where: { apuracaoId: existente.id } }),
+    ]);
   }
 
   const apuracao = await prisma.giamApuracao.upsert({
@@ -180,6 +198,24 @@ export async function importarGiam(params: {
         tipo: e.tipo,
         dataVencimento: e.dataVencimento,
         valor: e.valor,
+      })),
+    });
+  }
+
+  // Cria as linhas do Segmento B (uma por CFOP × natureza)
+  if (parseResult.linhasSegmentoB.length > 0) {
+    await prisma.giamLinhaSegmentoB.createMany({
+      data: parseResult.linhasSegmentoB.map((l) => ({
+        apuracaoId: apuracao.id,
+        natureza: l.natureza,
+        cfop: l.cfop,
+        baseCalculo: l.baseCalculo,
+        isentasNaoTributadas: l.isentasNaoTributadas,
+        outras: l.outras,
+        substituicaoTributaria: l.substituicaoTributaria,
+        valorContabil: l.valorContabil,
+        creditoDebitoImposto: l.creditoDebitoImposto,
+        domicilioFiscal: l.domicilioFiscal,
       })),
     });
   }
