@@ -70,8 +70,13 @@ function formatarTelefone(t?: string): string | undefined {
   if (!t) return undefined;
   const d = soDigitos(t);
   if (d.length < 10) return t;
-  const ddd = d.slice(0, 2);
-  const resto = d.slice(2);
+  // Aceita só 10 (DDD + fixo 8 dígitos) ou 11 (DDD + celular 9 dígitos).
+  // Algumas APIs (BrasilAPI, alguns registros) devolvem zeros de padding na cauda —
+  // trunca pra o comprimento válido pra não gerar telefone falso.
+  const total = d.length >= 11 ? 11 : 10;
+  const norm = d.slice(0, total);
+  const ddd = norm.slice(0, 2);
+  const resto = norm.slice(2);
   return resto.length === 9
     ? `(${ddd}) ${resto.slice(0, 5)}-${resto.slice(5)}`
     : `(${ddd}) ${resto.slice(0, 4)}-${resto.slice(4)}`;
