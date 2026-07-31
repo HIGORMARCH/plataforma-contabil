@@ -20,6 +20,32 @@ export interface DadosCNPJ {
   telefone?: string;
   email?: string;
   situacaoCadastral?: string;
+  /** Nome do responsável legal (Administrador / Sócio-Administrador / Titular),
+   *  escolhido do QSA. Se não achar essa qualificação, cai no 1º sócio. */
+  responsavelLegal?: string;
+}
+
+/** Escolhe o "responsável legal" mais provável no QSA da BrasilAPI. */
+function escolherResponsavelBrasilAPI(qsa: unknown): string | undefined {
+  if (!Array.isArray(qsa) || qsa.length === 0) return undefined;
+  const rows = qsa as Array<Record<string, unknown>>;
+  const nome = (r: Record<string, unknown>) =>
+    (r["nome_socio"] as string | undefined) || (r["nome"] as string | undefined);
+  // Qualificações que costumam ser o "responsável legal":
+  // 05=Administrador, 10=Diretor, 16=Presidente, 49=Sócio-Administrador,
+  // 65=Titular Empresário Individual, 66=Titular pessoa física
+  const codigosResp = new Set(["5", "05", "10", "16", "49", "65", "66"]);
+  const preferido = rows.find((r) => codigosResp.has(String(r["codigo_qualificacao_socio"] ?? "").trim()));
+  return nome(preferido ?? rows[0])?.toString().trim() || undefined;
+}
+
+/** Idem para o QSA da ReceitaWS (formato diferente). */
+function escolherResponsavelReceitaWS(qsa: unknown): string | undefined {
+  if (!Array.isArray(qsa) || qsa.length === 0) return undefined;
+  const rows = qsa as Array<{ nome?: string; qual?: string }>;
+  const marcadores = /Administrador|Diretor|Presidente|Titular/i;
+  const preferido = rows.find((r) => r.qual && marcadores.test(r.qual));
+  return (preferido ?? rows[0])?.nome?.trim() || undefined;
 }
 
 export function soDigitos(cnpj: string): string {
@@ -74,6 +100,7 @@ async function viaBrasilAPI(cnpj: string): Promise<DadosCNPJ | null> {
     telefone: formatarTelefone(str("ddd_telefone_1")),
     email: str("email"),
     situacaoCadastral: str("descricao_situacao_cadastral"),
+    responsavelLegal: escolherResponsavelBrasilAPI(d["qsa"]),
   };
 }
 
@@ -100,6 +127,7 @@ async function viaReceitaWS(cnpj: string): Promise<DadosCNPJ | null> {
     telefone: formatarTelefone(str("telefone")),
     email: str("email"),
     situacaoCadastral: str("situacao"),
+    responsavelLegal: escolherResponsavelReceitaWS(d["qsa"]),
   };
 }
 

@@ -13,6 +13,7 @@ const MAPA: Record<string, string> = {
   email: "email",
   porte: "porte",
   regimeTributario: "regimeTributario",
+  responsavelLegal: "responsavelLegal",
 };
 
 function setCampo(id: string, valor?: string) {
