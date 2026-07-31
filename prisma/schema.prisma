@@ -1,12 +1,12 @@
 // Modelo de dados da plataforma contábil.
-// SQLite nesta fase; o mesmo schema migra para PostgreSQL trocando o provider.
+// PostgreSQL desde 31/07/2026 (migrado de SQLite antes de ter uso real).
 
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
