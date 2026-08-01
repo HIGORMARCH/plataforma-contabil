@@ -5,6 +5,7 @@ import { prisma } from "@/lib/db";
 import { editarClienteAction } from "../../actions";
 import { AcessoEcacFields } from "../../_components/AcessoEcacFields";
 import { AcessoSefazFields } from "../../_components/AcessoSefazFields";
+import { ExcluirClienteButton } from "../../_components/ExcluirClienteButton";
 
 function Campo({
   nome,
@@ -157,9 +158,16 @@ export default async function EditarClientePage({
           </div>
         </section>
 
-        <div className="flex justify-end gap-3">
-          <Link href={`/painel/clientes/${id}`} className="btn btn-ghost">Cancelar</Link>
-          <button type="submit" className="btn btn-primary">Salvar alterações</button>
+        <div className="flex items-center justify-between gap-3">
+          {sessao.papel === "ADMIN" ? (
+            <ExcluirClienteButton clienteId={id} razaoSocial={cliente.razaoSocial} />
+          ) : (
+            <span />
+          )}
+          <div className="flex gap-3">
+            <Link href={`/painel/clientes/${id}`} className="btn btn-ghost">Cancelar</Link>
+            <button type="submit" className="btn btn-primary">Salvar alterações</button>
+          </div>
         </div>
       </form>
     </div>

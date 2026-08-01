@@ -132,6 +132,7 @@ model Cliente {
   escritorio   Escritorio @relation(fields: [escritorioId], references: [id])
   escritorioId String
 
+  socios           Socio[]
   exercicios       Exercicio[]
   relatorios       Relatorio[]
   usuarios         Usuario[]
@@ -153,6 +154,44 @@ model Cliente {
 // ---------------------------------------------------------------------------
 // Exercício (ano-base) — demonstrativos estruturados em JSON.
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// Sócio / Quadro Societário do Cliente (QSA).
+// Vem do QSA da BrasilAPI (ou ReceitaWS como fallback). Atualizado on-demand
+// pela busca de CNPJ; histórico não é versionado — sempre reflete o snapshot
+// mais recente. Se a Receita "sair" um sócio (data_exclusao), removemos.
+// ---------------------------------------------------------------------------
+model Socio {
+  id String @id @default(cuid())
+
+  // Nome como devolvido pela Receita — pessoa física ou jurídica.
+  nome String
+
+  // Codigo (05, 22, 49, 65…) e descricao ("Administrador", "Socio",
+  // "Sócio-Administrador", "Titular Empresário Individual" etc.).
+  codigoQualificacao   Int?
+  qualificacao         String?
+
+  // A Receita devolve CPF mascarado ("***412821**") ou CNPJ completo pra socio
+  // pessoa juridica. Guardamos como veio — nao dá pra reidentificar.
+  cpfCnpjMascarado String?
+
+  faixaEtaria           String?  // "de 41 a 50 anos" (só p/ pessoa física)
+  dataEntradaSociedade  DateTime?
+
+  // Representante legal do sócio (quando o sócio é pessoa jurídica).
+  nomeRepresentanteLegal String?
+  cpfRepresentanteMascarado String?
+  codigoQualificacaoRepresentante Int?
+
+  cliente   Cliente @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+  clienteId String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([clienteId])
+}
+
 model Exercicio {
   id         String  @id @default(cuid())
   ano        Int
