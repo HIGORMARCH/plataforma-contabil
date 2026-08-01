@@ -61,6 +61,44 @@ export async function criarClienteAction(fd: FormData) {
     },
   });
 
+  // Sócios (QSA) — vem do BuscarCNPJ via hidden input. Formato: SocioReceita[].
+  const qsaJson = campo(fd, "qsaJson");
+  if (qsaJson) {
+    try {
+      const socios = JSON.parse(qsaJson) as Array<{
+        nome: string;
+        codigoQualificacao?: number;
+        qualificacao?: string;
+        cpfCnpjMascarado?: string;
+        faixaEtaria?: string;
+        dataEntradaSociedade?: string;
+        nomeRepresentanteLegal?: string;
+        cpfRepresentanteMascarado?: string;
+        codigoQualificacaoRepresentante?: number;
+      }>;
+      if (Array.isArray(socios) && socios.length > 0) {
+        await prisma.socio.createMany({
+          data: socios
+            .filter((s) => s.nome?.trim())
+            .map((s) => ({
+              clienteId: cliente.id,
+              nome: s.nome.trim(),
+              codigoQualificacao: s.codigoQualificacao ?? null,
+              qualificacao: s.qualificacao ?? null,
+              cpfCnpjMascarado: s.cpfCnpjMascarado ?? null,
+              faixaEtaria: s.faixaEtaria ?? null,
+              dataEntradaSociedade: s.dataEntradaSociedade ? new Date(s.dataEntradaSociedade) : null,
+              nomeRepresentanteLegal: s.nomeRepresentanteLegal ?? null,
+              cpfRepresentanteMascarado: s.cpfRepresentanteMascarado ?? null,
+              codigoQualificacaoRepresentante: s.codigoQualificacaoRepresentante ?? null,
+            })),
+        });
+      }
+    } catch {
+      // JSON mal-formado: ignora (nao trava a criacao do cliente)
+    }
+  }
+
   await prisma.logAcesso.create({
     data: { acao: "CLIENTE_CRIADO", detalhe: `${razaoSocial}`, usuarioId: sessao.userId },
   });

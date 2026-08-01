@@ -7,6 +7,18 @@
  * (inscrição estadual, regime tributário detalhado, etc.) antes de salvar.
  */
 
+export interface SocioReceita {
+  nome: string;
+  codigoQualificacao?: number;
+  qualificacao?: string;
+  cpfCnpjMascarado?: string;
+  faixaEtaria?: string;
+  dataEntradaSociedade?: string; // ISO yyyy-mm-dd
+  nomeRepresentanteLegal?: string;
+  cpfRepresentanteMascarado?: string;
+  codigoQualificacaoRepresentante?: number;
+}
+
 export interface DadosCNPJ {
   razaoSocial?: string;
   nomeFantasia?: string;
@@ -23,29 +35,57 @@ export interface DadosCNPJ {
   /** Nome do responsável legal (Administrador / Sócio-Administrador / Titular),
    *  escolhido do QSA. Se não achar essa qualificação, cai no 1º sócio. */
   responsavelLegal?: string;
+  /** Quadro Societário completo. Persistir na tabela Socio ao salvar. */
+  socios?: SocioReceita[];
 }
 
-/** Escolhe o "responsável legal" mais provável no QSA da BrasilAPI. */
-function escolherResponsavelBrasilAPI(qsa: unknown): string | undefined {
-  if (!Array.isArray(qsa) || qsa.length === 0) return undefined;
-  const rows = qsa as Array<Record<string, unknown>>;
-  const nome = (r: Record<string, unknown>) =>
-    (r["nome_socio"] as string | undefined) || (r["nome"] as string | undefined);
-  // Qualificações que costumam ser o "responsável legal":
-  // 05=Administrador, 10=Diretor, 16=Presidente, 49=Sócio-Administrador,
-  // 65=Titular Empresário Individual, 66=Titular pessoa física
-  const codigosResp = new Set(["5", "05", "10", "16", "49", "65", "66"]);
-  const preferido = rows.find((r) => codigosResp.has(String(r["codigo_qualificacao_socio"] ?? "").trim()));
-  return nome(preferido ?? rows[0])?.toString().trim() || undefined;
+/** Normaliza QSA da BrasilAPI pra SocioReceita[]. */
+function normalizarQsaBrasilAPI(qsa: unknown): SocioReceita[] {
+  if (!Array.isArray(qsa)) return [];
+  return (qsa as Array<Record<string, unknown>>)
+    .map((r) => {
+      const nome = String(r["nome_socio"] ?? "").trim();
+      if (!nome) return null;
+      const codigo = r["codigo_qualificacao_socio"];
+      const codigoRep = r["codigo_qualificacao_representante_legal"];
+      return {
+        nome,
+        codigoQualificacao: codigo != null ? Number(codigo) : undefined,
+        qualificacao: (r["qualificacao_socio"] as string | undefined)?.trim(),
+        cpfCnpjMascarado: (r["cnpj_cpf_do_socio"] as string | undefined)?.trim() || undefined,
+        faixaEtaria: (r["faixa_etaria"] as string | undefined)?.trim() || undefined,
+        dataEntradaSociedade: (r["data_entrada_sociedade"] as string | undefined) || undefined,
+        nomeRepresentanteLegal: (r["nome_representante_legal"] as string | undefined)?.trim() || undefined,
+        cpfRepresentanteMascarado: (r["cpf_representante_legal"] as string | undefined)?.trim() || undefined,
+        codigoQualificacaoRepresentante: codigoRep != null ? Number(codigoRep) : undefined,
+      } satisfies SocioReceita;
+    })
+    .filter(Boolean) as SocioReceita[];
 }
 
-/** Idem para o QSA da ReceitaWS (formato diferente). */
-function escolherResponsavelReceitaWS(qsa: unknown): string | undefined {
-  if (!Array.isArray(qsa) || qsa.length === 0) return undefined;
-  const rows = qsa as Array<{ nome?: string; qual?: string }>;
+/** Idem pra ReceitaWS (formato mais pobre). */
+function normalizarQsaReceitaWS(qsa: unknown): SocioReceita[] {
+  if (!Array.isArray(qsa)) return [];
+  return (qsa as Array<{ nome?: string; qual?: string }>)
+    .map((r) => {
+      const nome = (r.nome ?? "").trim();
+      if (!nome) return null;
+      return { nome, qualificacao: r.qual?.trim() || undefined } satisfies SocioReceita;
+    })
+    .filter(Boolean) as SocioReceita[];
+}
+
+/** Escolhe o "responsável legal" mais provável a partir de SocioReceita[]. */
+function escolherResponsavelDosSocios(socios: SocioReceita[]): string | undefined {
+  if (socios.length === 0) return undefined;
+  const codigosResp = new Set([5, 10, 16, 49, 65, 66]);
   const marcadores = /Administrador|Diretor|Presidente|Titular/i;
-  const preferido = rows.find((r) => r.qual && marcadores.test(r.qual));
-  return (preferido ?? rows[0])?.nome?.trim() || undefined;
+  const preferido = socios.find(
+    (s) =>
+      (s.codigoQualificacao !== undefined && codigosResp.has(s.codigoQualificacao)) ||
+      (s.qualificacao && marcadores.test(s.qualificacao)),
+  );
+  return (preferido ?? socios[0]).nome;
 }
 
 export function soDigitos(cnpj: string): string {
@@ -105,7 +145,10 @@ async function viaBrasilAPI(cnpj: string): Promise<DadosCNPJ | null> {
     telefone: formatarTelefone(str("ddd_telefone_1")),
     email: str("email"),
     situacaoCadastral: str("descricao_situacao_cadastral"),
-    responsavelLegal: escolherResponsavelBrasilAPI(d["qsa"]),
+    ...(() => {
+      const socios = normalizarQsaBrasilAPI(d["qsa"]);
+      return { responsavelLegal: escolherResponsavelDosSocios(socios), socios };
+    })(),
   };
 }
 
@@ -132,7 +175,10 @@ async function viaReceitaWS(cnpj: string): Promise<DadosCNPJ | null> {
     telefone: formatarTelefone(str("telefone")),
     email: str("email"),
     situacaoCadastral: str("situacao"),
-    responsavelLegal: escolherResponsavelReceitaWS(d["qsa"]),
+    ...(() => {
+      const socios = normalizarQsaReceitaWS(d["qsa"]);
+      return { responsavelLegal: escolherResponsavelDosSocios(socios), socios };
+    })(),
   };
 }
 

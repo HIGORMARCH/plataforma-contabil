@@ -47,15 +47,23 @@ export function BuscarCNPJ() {
         setMsg(data.erro || "Não foi possível consultar este CNPJ.");
         return;
       }
-      const d = data.dados as Record<string, string | undefined>;
+      const d = data.dados as Record<string, unknown>;
       let n = 0;
       for (const [chave, id] of Object.entries(MAPA)) {
-        if (setCampo(id, d[chave])) n++;
+        const v = d[chave];
+        if (typeof v === "string" && setCampo(id, v)) n++;
       }
-      if (d.cnpj && input) input.value = d.cnpj; // formata o CNPJ
+      if (typeof d.cnpj === "string" && input) input.value = d.cnpj; // formata o CNPJ
+      // Sócios (QSA) → hidden input que o server action lê ao salvar.
+      const socios = Array.isArray(d.socios) ? (d.socios as unknown[]) : [];
+      const hiddenQsa = document.getElementById("qsaJson") as HTMLInputElement | null;
+      if (hiddenQsa) hiddenQsa.value = socios.length ? JSON.stringify(socios) : "";
+      const infoSocios = socios.length
+        ? ` · ${socios.length} sócio(s) do QSA prontos pra serem gravados.`
+        : "";
       setEstado("ok");
       setMsg(
-        `${d.razaoSocial ?? "Empresa"} — ${d.situacaoCadastral ?? ""}. ${n} campo(s) preenchidos. Confira e complete antes de salvar.`,
+        `${d.razaoSocial ?? "Empresa"} — ${d.situacaoCadastral ?? ""}. ${n} campo(s) preenchidos.${infoSocios} Confira e complete antes de salvar.`,
       );
     } catch (e) {
       setEstado("erro");

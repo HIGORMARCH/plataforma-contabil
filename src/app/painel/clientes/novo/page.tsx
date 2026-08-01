@@ -51,6 +51,10 @@ export default async function NovoClientePage({
       )}
 
       <form action={criarClienteAction} className="space-y-6">
+        {/* Hidden — populado pelo BuscarCNPJ com o QSA (array de socios) em JSON.
+            Server action lê e cria registros na tabela Socio depois de criar o cliente. */}
+        <input type="hidden" id="qsaJson" name="qsaJson" defaultValue="" />
+
         <section className="card p-5">
           <h2 className="mb-4 text-sm font-bold uppercase tracking-wide text-slate-500">Identificação</h2>
           <div className="mb-4 rounded-lg border border-[var(--brand-2)] bg-[var(--brand-2-soft)] p-3 text-xs text-slate-600">
