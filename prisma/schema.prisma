@@ -102,6 +102,21 @@ model Cliente {
   // Cifrada AES-256-GCM (mesmo padrão do certificadoSenha). Nunca volta pra tela nem log.
   senhaSefaz String? // cifrada AES-256-GCM com chave em ENCRYPTION_KEY (env)
 
+  // ---- Acesso ao Portal de NFSe da prefeitura (WebISS ou similar) ----
+  // Login por Inscrição Municipal (campo já existe acima) + usuário + senha.
+  // Muitas prefeituras usam WebISS; algumas têm portais próprios (mesma ideia).
+  // Cifrada AES-256-GCM (mesmo padrão da senhaSefaz).
+  usuarioWebiss String? // usuário do portal (pode ser CNPJ, CPF, IM, email — varia por prefeitura)
+  senhaWebiss   String? // cifrada AES-256-GCM com chave em ENCRYPTION_KEY (env)
+  ccpMunicipal  String? // Cadastro do Contribuinte na Prefeitura (código municipal, quando aplicável)
+
+  // ---- Ponte pro sistema Domínio (contábil já usado pela March) ----
+  // Código do cliente na base do Domínio (usado pra cruzar dados com relatórios internos).
+  codigoDominio String?
+
+  // Apelido curto usado internamente pela equipe (nome de trabalho, não a razão social).
+  apelidoSistema String?
+
   // ---- Pasta local onde ficam os arquivos fiscais do cliente ----
   // Path absoluto (rede ou local). A plataforma varre essa pasta pra achar SPEDs
   // e outros arquivos fiscais — NUNCA copia nem salva o conteúdo, só lê e extrai.
