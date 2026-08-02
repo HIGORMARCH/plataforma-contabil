@@ -148,6 +148,10 @@ model Cliente {
   razaoImportacoes RazaoImportacao[]
   spedApuracoes    SpedApuracao[]
   spedImportacoes  SpedImportacao[]
+  spedContribApuracoes   SpedContribApuracao[]
+  spedContribImportacoes SpedContribImportacao[]
+  dctfWebDeclaracoes     DctfWebDeclaracao[]
+  dctfWebSincronizacoes  DctfWebSincronizacao[]
   giamApuracoes            GiamApuracao[]
   giamImportacoes          GiamImportacao[]
   giamSefazApuracoes       GiamSefazApuracao[]
@@ -620,6 +624,141 @@ model SpedImportacao {
 
   cliente   Cliente        @relation(fields: [clienteId], references: [id], onDelete: Cascade)
   apuracoes SpedApuracao[]
+
+  @@index([clienteId, importadoEm])
+  @@index([clienteId, hashArquivo])
+}
+
+// ---------------------------------------------------------------------------
+// DCTFWeb — declaração consultada via API SERPRO Integra Contador.
+// A declaração "completa" da SERPRO traz débitos por código de receita
+// (PIS 8109/6912, COFINS 2172/5856, IRRF, CSLL, etc.). Guardamos o resumo
+// consolidado por competência e o payload bruto (JSON) pra reprocessar depois.
+// ---------------------------------------------------------------------------
+model DctfWebDeclaracao {
+  id        String @id @default(cuid())
+  clienteId String
+
+  periodoApuracao DateTime // primeiro dia do mês
+  categoria       String? // "Geral", "13Salario", "Aferimento", etc. (a SERPRO usa códigos)
+
+  // Consolidado de PIS/COFINS (o resto — IRRF, CSLL — não é foco desta auditoria)
+  pisConfessado    Decimal @default(0) // soma de débitos PIS declarados
+  cofinsConfessado Decimal @default(0)
+
+  // Metadados
+  numeroRecibo  String?
+  situacao      String? // "TRANSMITIDA" | "ATIVA" | "RETIFICADA" | etc.
+  dataRecepcao  DateTime?
+  transmitida   Boolean @default(false)
+
+  // Payload bruto da SERPRO (JSON) — pra auditoria e reprocessamento
+  payloadBruto Json?
+
+  sincronizacaoId String
+
+  cliente        Cliente                 @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+  sincronizacao  DctfWebSincronizacao    @relation(fields: [sincronizacaoId], references: [id], onDelete: Cascade)
+
+  @@unique([clienteId, periodoApuracao, categoria])
+  @@index([clienteId, periodoApuracao])
+}
+
+// Log de sincronização com o SERPRO — 1 por chamada.
+model DctfWebSincronizacao {
+  id        String @id @default(cuid())
+  clienteId String
+
+  periodoInicial DateTime // range consultado
+  periodoFinal   DateTime
+  declaracoesRetornadas Int @default(0)
+  sucesso    Boolean @default(true)
+  mensagem   String?
+
+  requisitadoEm DateTime @default(now())
+  requisitadoPor String?
+
+  cliente     Cliente             @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+  declaracoes DctfWebDeclaracao[]
+
+  @@index([clienteId, requisitadoEm])
+}
+
+// ---------------------------------------------------------------------------
+// SPED-Contribuições (EFD-Contribuições) — apuração PIS/COFINS por competência.
+// Bloco M do arquivo: M200 (PIS consolidado) e M600 (COFINS consolidado).
+// ---------------------------------------------------------------------------
+model SpedContribApuracao {
+  id        String @id @default(cuid())
+  clienteId String
+
+  periodoApuracao DateTime // primeiro dia do mês de apuração
+  dataInicial     DateTime
+  dataFinal       DateTime
+
+  // 0110 — regime: "1"=cumulativo, "2"=não-cumulativo, "3"=misto
+  regimeApuracao String?
+  // 0000::IND_ATIV — 0=industrial, 1=serviço, 2=comércio, 3=financeira, ...
+  indAtividade   String?
+
+  // PIS (M200) — todos os valores em BRL, Decimal preserva precisão
+  pisNaoCumulativaPeriodo   Decimal @default(0) // VL_TOT_CONT_NC_PER
+  pisCreditosDescontados    Decimal @default(0) // VL_TOT_CRED_DESC
+  pisNaoCumulativaDevida    Decimal @default(0) // VL_TOT_CONT_NC_DEV
+  pisCumulativaPeriodo      Decimal @default(0) // VL_TOT_CONT_CUM_PER
+  pisApuradaPeriodo         Decimal @default(0) // VL_TOT_CONT_APU_PER
+  pisCreditoAnterior        Decimal @default(0) // VL_CRED_DESC_ANT_NC
+  pisAjustesAcrescimo       Decimal @default(0) // VL_AJUS_ACRES_NC
+  pisAjustesReducao         Decimal @default(0) // VL_AJUS_REDUC_NC
+  pisContribuicaoDevida     Decimal @default(0) // VL_CONT_DEV — o que efetivamente vai pra guia
+
+  // COFINS (M600) — mesma estrutura
+  cofinsNaoCumulativaPeriodo Decimal @default(0)
+  cofinsCreditosDescontados  Decimal @default(0)
+  cofinsNaoCumulativaDevida  Decimal @default(0)
+  cofinsCumulativaPeriodo    Decimal @default(0)
+  cofinsApuradaPeriodo       Decimal @default(0)
+  cofinsCreditoAnterior      Decimal @default(0)
+  cofinsAjustesAcrescimo     Decimal @default(0)
+  cofinsAjustesReducao       Decimal @default(0)
+  cofinsContribuicaoDevida   Decimal @default(0)
+
+  importacaoId String
+
+  cliente    Cliente                @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+  importacao SpedContribImportacao  @relation(fields: [importacaoId], references: [id], onDelete: Cascade)
+
+  @@unique([clienteId, periodoApuracao]) // uma apuração por cliente/competência
+  @@index([clienteId, periodoApuracao])
+  @@index([importacaoId])
+}
+
+// Log de importação de SPED-Contribuições — rastreio.
+model SpedContribImportacao {
+  id        String @id @default(cuid())
+  clienteId String
+
+  nomeArquivo         String
+  tamanhoBytes        Int     @default(0)
+  hashArquivo         String? // SHA-256 pra deduplicar
+  origem              String  @default("UPLOAD") // UPLOAD | VARREDURA_PASTA
+  caminhoOrigem       String?
+  totalLinhas         Int     @default(0)
+  apuracoesGravadas   Int     @default(0)
+  sucesso             Boolean @default(true)
+  mensagem            String?
+
+  // Metadados do arquivo (do 0000)
+  cnpjArquivo   String?
+  dataInicioArq DateTime?
+  dataFimArq    DateTime?
+  regimeArq     String? // 0110::COD_INC_TRIB
+
+  importadoEm  DateTime @default(now())
+  importadoPor String?
+
+  cliente   Cliente                @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+  apuracoes SpedContribApuracao[]
 
   @@index([clienteId, importadoEm])
   @@index([clienteId, hashArquivo])
