@@ -112,16 +112,21 @@ export function parseDecDctfAntiga(conteudo: string, nomeArquivo?: string): Dctf
 
     if (reg === "DCT") {
       // "DCTFM       202219300444639380001132360PALMAS HALL..."
-      // pos 1-12: "DCTFM       " (5 + 7 espaços = 12)
-      // pos 13-18: período declaração AAAAMM
-      // ...
-      const periodoStr = linha.slice(12, 18);
-      const p = parseAAAAMM(periodoStr);
-      if (p && !res.periodoDeclaracao) res.periodoDeclaracao = p;
-      const cnpjStr = linha.slice(24, 38); // 14 dígitos após período+versão
-      if (/^\d{14}$/.test(cnpjStr)) res.cnpj = cnpjStr;
-      const razao = linha.slice(41, 91).trim();
-      if (razao) res.razaoSocial = razao;
+      //  0    5      12    18  21              35
+      // pos 0-4  : "DCTFM"
+      // pos 5-11 : 7 espaços
+      // pos 12-15: ano (AAAA)
+      // pos 16-17: versão PGD (ex.: "19")
+      // pos 18-20: código (ex.: "300")
+      // pos 21-34: CNPJ (14 dígitos)
+      // pos 35-...: sequencial + razão social
+      // Melhor: fazer regex extrair 14 dígitos consecutivos apos "DCTFM".
+      const m = linha.match(/DCTFM\s+\d{4,10}(\d{14})/);
+      if (m) res.cnpj = m[1];
+      // Razão social vem logo após o CNPJ + 3 dígitos de identificador
+      const razaoMatch = linha.match(/DCTFM\s+\d{4,10}\d{14}\d{3}([A-Z][A-Z\s\d.-]+?)\s{2,}/);
+      if (razaoMatch) res.razaoSocial = razaoMatch[1].trim();
+      // Período NÃO vem do header confiavelmente aqui — usamos o do nome do arquivo.
     } else if (reg === "R10") {
       // Extrai código de receita (pos 35-38) e valor
       const codigo = linha.slice(34, 38);
