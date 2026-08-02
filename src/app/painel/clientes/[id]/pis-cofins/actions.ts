@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { requireSessao, PAPEIS_INTERNOS } from "@/lib/auth";
 import { importarSpedContribuicoes } from "@/lib/sped-contribuicoes/importar";
 import { varrerPastaSpedContribuicoes } from "@/lib/sped-contribuicoes/varrerPasta";
+import { varrerPastaDctfAntiga } from "@/lib/dctf-antiga/importarEVarrer";
 import { sincronizarDctfWeb } from "@/lib/serpro/dctfweb";
 import { prisma } from "@/lib/db";
 
@@ -101,6 +102,43 @@ export async function varrerPastaSpedAction(
   } catch (e) {
     return { ok: false, erro: (e as Error).message };
   }
+}
+
+export async function varrerPastaDctfAntigaAction(
+  fd: FormData,
+): Promise<
+  | { ok: true; resumo: string; detalhes: ResultadoDctfDetalhes[] }
+  | { ok: false; erro: string }
+> {
+  try {
+    const sessao = await requireSessao();
+    if (!PAPEIS_INTERNOS.includes(sessao.papel)) return { ok: false, erro: "Não autorizado" };
+    const clienteId = String(fd.get("clienteId") ?? "");
+    const pasta = String(fd.get("pasta") ?? "").trim();
+    if (!clienteId || !pasta) return { ok: false, erro: "Faltam clienteId ou pasta." };
+
+    const res = await varrerPastaDctfAntiga({ clienteId, pasta, usuarioId: sessao.userId });
+    revalidatePath(`/painel/clientes/${clienteId}/pis-cofins`);
+
+    const resumo =
+      `${res.arquivosVistos} arquivo(s) .dec verificado(s) · ` +
+      `${res.importadosNovos} novo(s) · ${res.substituidos} substituído(s) · ` +
+      `${res.ignoradosJaImportados} já importado(s) · ` +
+      `${res.ignoradosCnpjDiferente} de outro CNPJ · ` +
+      `${res.ignoradosNaoDctf} não-DCTF · ${res.falhas.length} falha(s)`;
+
+    return { ok: true, resumo, detalhes: res.detalhes };
+  } catch (e) {
+    return { ok: false, erro: (e as Error).message };
+  }
+}
+
+export interface ResultadoDctfDetalhes {
+  arquivo: string;
+  periodo?: string;
+  pis?: string;
+  cofins?: string;
+  acao: string;
 }
 
 export async function sincronizarDctfWebAction(

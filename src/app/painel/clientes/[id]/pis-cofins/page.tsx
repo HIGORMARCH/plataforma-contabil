@@ -161,8 +161,9 @@ export default async function PisCofinsPage({
       </div>
 
       {/* Ações */}
-      <div className="grid gap-3 md:grid-cols-3">
+      <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
         <VarrerPastaButton clienteId={id} pastaSugerida={cliente.pastaFiscal} />
+        <VarrerPastaDctfAntigaButton clienteId={id} />
         <UploadSpedContrib clienteId={id} />
         <SincronizarDctfWebButton clienteId={id} ano={ano} />
       </div>

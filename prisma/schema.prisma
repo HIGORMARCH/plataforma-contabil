@@ -639,6 +639,11 @@ model DctfWebDeclaracao {
   id        String @id @default(cuid())
   clienteId String
 
+  // Origem da declaração:
+  //   "DCTFWEB" — via API SERPRO Integra Contador (2023+)
+  //   "DCTF_ANTIGA" — via arquivo .dec do PGD DCTF Mensal (2022 e anteriores)
+  origem String @default("DCTFWEB")
+
   periodoApuracao DateTime // primeiro dia do mês
   categoria       String? // "Geral", "13Salario", "Aferimento", etc. (a SERPRO usa códigos)
 
