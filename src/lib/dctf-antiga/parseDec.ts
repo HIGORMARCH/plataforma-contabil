@@ -121,7 +121,9 @@ export function parseDecDctfAntiga(conteudo: string, nomeArquivo?: string): Dctf
       // pos 21-34: CNPJ (14 dígitos)
       // pos 35-...: sequencial + razão social
       // Melhor: fazer regex extrair 14 dígitos consecutivos apos "DCTFM".
-      const m = linha.match(/DCTFM\s+\d{4,10}(\d{14})/);
+      // 9 dígitos: 4 (ano) + 2 (versão PGD) + 3 (código) + 14 (CNPJ). Regex
+      // com \d{4,10} era greedy e comia 1 dígito do CNPJ — fix: 9 exatos.
+      const m = linha.match(/DCTFM\s+\d{9}(\d{14})/);
       if (m) res.cnpj = m[1];
       // Razão social vem logo após o CNPJ + 3 dígitos de identificador
       const razaoMatch = linha.match(/DCTFM\s+\d{4,10}\d{14}\d{3}([A-Z][A-Z\s\d.-]+?)\s{2,}/);

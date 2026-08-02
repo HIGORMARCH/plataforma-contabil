@@ -176,10 +176,10 @@ export default async function PisCofinsPage({
             <tr>
               <th className="px-3 py-2 text-left font-semibold text-slate-600">Competência</th>
               <th className="px-3 py-2 text-right font-semibold text-blue-700">PIS SPED</th>
-              <th className="px-3 py-2 text-right font-semibold text-blue-700">PIS DCTFWeb</th>
+              <th className="px-3 py-2 text-right font-semibold text-blue-700">PIS DCTFWeb/DCTF</th>
               <th className="px-3 py-2 text-center font-semibold text-slate-600">Divergência PIS</th>
               <th className="px-3 py-2 text-right font-semibold text-purple-700">COFINS SPED</th>
-              <th className="px-3 py-2 text-right font-semibold text-purple-700">COFINS DCTFWeb</th>
+              <th className="px-3 py-2 text-right font-semibold text-purple-700">COFINS DCTFWeb/DCTF</th>
               <th className="px-3 py-2 text-center font-semibold text-slate-600">Divergência COFINS</th>
             </tr>
           </thead>
