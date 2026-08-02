@@ -89,11 +89,24 @@ export async function varrerPastaSpedContribuicoes(params: {
     detalhes: [],
   };
 
-  const entradas = await readdir(pasta, { withFileTypes: true });
-  const arquivos = entradas
-    .filter((e) => e.isFile())
-    .map((e) => path.join(pasta, e.name))
-    .filter((p) => /\.(txt|rec|sped)$/i.test(p));
+  // Varredura RECURSIVA — o ReceitanetBX/organização manual costuma criar
+  // subpastas por competência (01-2026, 02-2026, ...) e sub-subpastas
+  // (01 - Arquivo Transmitido, etc.). Andamos até 4 níveis pra achar tudo.
+  async function coletarArquivosRecursivo(dir: string, profundidade = 0): Promise<string[]> {
+    if (profundidade > 4) return [];
+    const entradas = await readdir(dir, { withFileTypes: true }).catch(() => []);
+    const arqs: string[] = [];
+    for (const e of entradas) {
+      const p = path.join(dir, e.name);
+      if (e.isFile()) {
+        if (/\.(txt|rec|sped)$/i.test(e.name)) arqs.push(p);
+      } else if (e.isDirectory()) {
+        arqs.push(...(await coletarArquivosRecursivo(p, profundidade + 1)));
+      }
+    }
+    return arqs;
+  }
+  const arquivos = await coletarArquivosRecursivo(pasta);
   // TODO fase 2: suportar .zip descompactando. Requer 'unzipper' ou 'yauzl'.
 
   for (const caminho of arquivos) {
