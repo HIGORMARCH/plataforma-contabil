@@ -69,20 +69,20 @@ function parseAAAAMM(s: string): Date | undefined {
 /**
  * Extrai o valor do débito da linha R10.
  *
- * Estratégia heurística: pega os ~15 dígitos ANTES do checksum de 10 dígitos
- * final, trata como centavos (divide por 100).
+ * Layout confirmado em 02/08/2026 comparando com PDF do e-CAC (PALMAS HALL Jun/22):
+ *   Linha R10 tem 98 chars total.
+ *   Pos -14 até fim: 14 chars de checksum + zeros à direita
+ *   Pos -24 até -15: 10 chars com VALOR PRINCIPAL DEVIDO em centavos (padding-left)
  *
- * Testado com um R10 real da PALMAS HALL:
- *   "...202206000000000000000000000000000000017317600003751306278"
- *   Últimos 25 chars: "00017317600003751306278"
- *   Checksum ~10 finais + valor ~15 antes
+ * Ex.: PIS 8109 Jun/22 = "0000045110" → 45110 centavos → R$ 451,10 ✓
+ *      COFINS 2172 Jun/22 = "0000208234" → 208234 centavos → R$ 2.082,34 ✓
  *
- * Precisa validação — se der divergência, refina.
+ * (A tentativa anterior de pegar slice(-25, -10) dava valores 10.000× maiores —
+ * pegava o "45110000" como se fosse 45.110.000 centavos = R$ 451.100,00.)
  */
 function extrairValorR10(linha: string): number {
-  // Remove os últimos 10 chars (checksum) e pega os 15 anteriores como valor
-  if (linha.length < 25) return 0;
-  const valorStr = linha.slice(-25, -10);
+  if (linha.length < 24) return 0;
+  const valorStr = linha.slice(-24, -14);
   const valor = Number(valorStr) / 100;
   return Number.isFinite(valor) ? valor : 0;
 }
