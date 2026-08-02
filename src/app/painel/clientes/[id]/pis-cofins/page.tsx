@@ -4,6 +4,7 @@ import { requirePapel, PAPEIS_INTERNOS } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { UploadSpedContrib } from "./_components/UploadSpedContrib";
 import { VarrerPastaButton } from "./_components/VarrerPastaButton";
+import { VarrerPastaDctfAntigaButton } from "./_components/VarrerPastaDctfAntigaButton";
 import { SincronizarDctfWebButton } from "./_components/SincronizarDctfWebButton";
 
 const MESES_PT = [
