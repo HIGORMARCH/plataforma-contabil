@@ -3,7 +3,9 @@
 import { revalidatePath } from "next/cache";
 import { requireSessao, PAPEIS_INTERNOS } from "@/lib/auth";
 import { importarSpedContribuicoes } from "@/lib/sped-contribuicoes/importar";
+import { varrerPastaSpedContribuicoes } from "@/lib/sped-contribuicoes/varrerPasta";
 import { sincronizarDctfWeb } from "@/lib/serpro/dctfweb";
+import { prisma } from "@/lib/db";
 
 export async function uploadSpedContribAction(
   fd: FormData,
@@ -44,6 +46,58 @@ export async function uploadSpedContribAction(
       mensagem: r.mensagem,
       periodo: r.periodoApuracao?.toLocaleDateString("pt-BR"),
     };
+  } catch (e) {
+    return { ok: false, erro: (e as Error).message };
+  }
+}
+
+export async function varrerPastaSpedAction(
+  fd: FormData,
+): Promise<
+  | { ok: true; resumo: string; detalhes: Array<{ arquivo: string; periodo?: string; acao: string }> }
+  | { ok: false; erro: string }
+> {
+  try {
+    const sessao = await requireSessao();
+    if (!PAPEIS_INTERNOS.includes(sessao.papel)) return { ok: false, erro: "Não autorizado" };
+
+    const clienteId = String(fd.get("clienteId") ?? "");
+    const pastaOverride = String(fd.get("pasta") ?? "").trim();
+    if (!clienteId) return { ok: false, erro: "Falta clienteId." };
+
+    // Usa a pasta do form (se preenchida) ou a pastaFiscal cadastrada no cliente.
+    let pasta = pastaOverride;
+    if (!pasta) {
+      const c = await prisma.cliente.findUnique({
+        where: { id: clienteId },
+        select: { pastaFiscal: true },
+      });
+      pasta = c?.pastaFiscal ?? "";
+    }
+    if (!pasta) {
+      return {
+        ok: false,
+        erro:
+          "Nenhuma pasta informada e o cliente não tem pastaFiscal cadastrada. Preencha o campo ou cadastre no editar cliente.",
+      };
+    }
+
+    const res = await varrerPastaSpedContribuicoes({
+      clienteId,
+      pasta,
+      usuarioId: sessao.userId,
+    });
+
+    revalidatePath(`/painel/clientes/${clienteId}/pis-cofins`);
+
+    const resumo =
+      `${res.arquivosVistos} arquivo(s) verificado(s) · ` +
+      `${res.importadosNovos} novo(s) · ${res.substituidos} substituído(s) · ` +
+      `${res.ignoradosJaImportados} já importado(s) · ` +
+      `${res.ignoradosCnpjDiferente} de outro CNPJ · ` +
+      `${res.ignoradosNaoSped} não-SPED · ${res.falhas.length} falha(s)`;
+
+    return { ok: true, resumo, detalhes: res.detalhes };
   } catch (e) {
     return { ok: false, erro: (e as Error).message };
   }
