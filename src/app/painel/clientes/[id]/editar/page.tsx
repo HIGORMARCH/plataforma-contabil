@@ -131,14 +131,12 @@ export default async function EditarClientePage({
 
         <AcessoEcacFields
           metodoInicial={cliente.metodoAcessoEcac}
-          caminhoInicial={cliente.certificadoCaminho ?? ""}
+          clienteId={id}
+          razaoSocial={cliente.razaoSocial}
+          temCertificado={!!cliente.certificadoArquivo}
+          nomeArquivoAtual={cliente.certificadoNomeArquivo}
+          validadeAtual={cliente.certificadoValidade}
         />
-        {cliente.metodoAcessoEcac === "CERTIFICADO_PROPRIO" && cliente.certificadoSenha && (
-          <p className="-mt-4 text-xs text-slate-500">
-            💡 Senha do certificado já está guardada (cifrada). Deixe o campo <b>Senha do certificado</b> em branco
-            se não quiser alterá-la — só preencha se for trocar por uma nova.
-          </p>
-        )}
 
         <AcessoSefazFields
           inscricaoEstadualInicial={cliente.inscricaoEstadual ?? ""}
@@ -146,6 +144,8 @@ export default async function EditarClientePage({
           pastaGiamInicial={cliente.pastaGiam ?? ""}
           jaCadastrada={!!cliente.senhaSefaz}
         />
+
+        {/* AcessoEcacFields aqui em cima ja usa o cliente existente pra upload */}
 
         <section className="card p-5">
           <h2 className="mb-4 text-sm font-bold uppercase tracking-wide text-slate-500">Responsáveis e contato</h2>

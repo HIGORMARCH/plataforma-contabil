@@ -89,12 +89,18 @@ model Cliente {
   telefone            String?
 
   // ---- Acesso ao e-CAC via SERPRO (Auditoria Tributária) ----
-  // A plataforma NÃO armazena o .pfx do certificado — só aponta e usa em runtime.
-  // PROCURACAO_MARCH: usa cert do escritório + procuração eletrônica ativa em nome desse cliente.
-  // CERTIFICADO_PROPRIO: o cliente tem cert dele; a plataforma lê do path informado com a senha cifrada.
-  metodoAcessoEcac   String  @default("PROCURACAO_MARCH") // PROCURACAO_MARCH | CERTIFICADO_PROPRIO
-  certificadoCaminho String? // path absoluto do .pfx (só quando CERTIFICADO_PROPRIO)
-  certificadoSenha   String? // cifrada AES-256-GCM com chave em ENCRYPTION_KEY (env)
+  // A plataforma ARMAZENA o .pfx cifrado no proprio banco (Bytes AES-256-GCM),
+  // pra ficar portavel (nao depende de path Z:\ ou pen drive) e funcionar no
+  // servidor VoeCloud sem mapeamento de rede. Ver src/lib/crypto.ts::cifrarBytes.
+  // PROCURACAO_MARCH: usa cert do escritório + procuração eletrônica.
+  // CERTIFICADO_PROPRIO: sobe o .pfx aqui (campos certificadoArquivo/Nome/Validade).
+  metodoAcessoEcac        String  @default("PROCURACAO_MARCH") // PROCURACAO_MARCH | CERTIFICADO_PROPRIO
+  certificadoArquivo      Bytes?  // conteudo do .pfx cifrado (bytea)
+  certificadoNomeArquivo  String? // nome original — util pra UI ("PALMAS HALL... VENC 04.12.2026.pfx")
+  certificadoValidade     DateTime? // vencimento — pra alerta e ordenacao
+  certificadoSenha        String? // senha do .pfx, cifrada AES-256-GCM (formato v1:salt:iv:tag:cipher)
+  // Legacy: path do .pfx (antes do upload). Mantido pra migracao/reprocessamento.
+  certificadoCaminho      String?
 
   // ---- Acesso ao Portal da SEFAZ-TO (GIAM) ----
   // Login por Inscrição Estadual (campo já existe acima) + senha. NÃO é certificado digital.

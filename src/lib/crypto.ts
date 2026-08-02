@@ -54,3 +54,32 @@ export function decifrar(encoded: string): string {
   decipher.setAuthTag(tag);
   return Buffer.concat([decipher.update(cipherBuf), decipher.final()]).toString("utf8");
 }
+
+/**
+ * Cifra bytes brutos (ex.: conteudo de um .pfx) — mesmo AES-256-GCM,
+ * mas devolve Buffer binario (nao hex-encoded como cifrar/decifrar de string).
+ * Formato binario: [salt(16)][iv(12)][tag(16)][cipherBytes...]
+ * Total overhead: 44 bytes.
+ */
+export function cifrarBytes(plain: Buffer): Buffer {
+  if (!plain || plain.length === 0) return Buffer.alloc(0);
+  const salt = randomBytes(16);
+  const iv = randomBytes(12);
+  const key = deriveKey(getMasterKey(), salt);
+  const cipher = createCipheriv("aes-256-gcm", key, iv);
+  const cipherBuf = Buffer.concat([cipher.update(plain), cipher.final()]);
+  const tag = cipher.getAuthTag();
+  return Buffer.concat([salt, iv, tag, cipherBuf]);
+}
+
+export function decifrarBytes(enc: Buffer): Buffer {
+  if (!enc || enc.length < 44) return Buffer.alloc(0);
+  const salt = enc.subarray(0, 16);
+  const iv = enc.subarray(16, 28);
+  const tag = enc.subarray(28, 44);
+  const cipherBuf = enc.subarray(44);
+  const key = deriveKey(getMasterKey(), salt);
+  const decipher = createDecipheriv("aes-256-gcm", key, iv);
+  decipher.setAuthTag(tag);
+  return Buffer.concat([decipher.update(cipherBuf), decipher.final()]);
+}
