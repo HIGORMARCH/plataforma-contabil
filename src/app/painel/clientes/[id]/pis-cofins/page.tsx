@@ -70,6 +70,25 @@ export default async function PisCofinsPage({
   });
   if (!cliente) notFound();
 
+  // Anos que TÊM dados (SPED ou DCTFWeb) — pra não mostrar botão de ano vazio
+  const [spedPeriodos, dctfPeriodos] = await Promise.all([
+    prisma.spedContribApuracao.findMany({
+      where: { clienteId: id },
+      select: { periodoApuracao: true },
+      distinct: ["periodoApuracao"],
+    }),
+    prisma.dctfWebDeclaracao.findMany({
+      where: { clienteId: id },
+      select: { periodoApuracao: true },
+      distinct: ["periodoApuracao"],
+    }),
+  ]);
+  const anosComDados = new Set<number>([anoAtual]); // atual sempre aparece
+  for (const s of spedPeriodos) anosComDados.add(s.periodoApuracao.getFullYear());
+  for (const d of dctfPeriodos) anosComDados.add(d.periodoApuracao.getFullYear());
+  if (!anosComDados.has(ano)) anosComDados.add(ano); // o ano selecionado tambem
+  const anosDisponiveis = [...anosComDados].sort((a, b) => b - a);
+
   // Busca apurações do ano
   const inicio = new Date(ano, 0, 1);
   const fim = new Date(ano, 11, 31);
@@ -130,7 +149,7 @@ export default async function PisCofinsPage({
       {/* Seletor de ano */}
       <div className="flex flex-wrap items-center gap-2">
         <span className="text-sm text-slate-600">Ano:</span>
-        {[anoAtual, anoAtual - 1, anoAtual - 2, anoAtual - 3].map((a) => (
+        {anosDisponiveis.map((a) => (
           <Link
             key={a}
             href={`/painel/clientes/${id}/pis-cofins?ano=${a}`}
