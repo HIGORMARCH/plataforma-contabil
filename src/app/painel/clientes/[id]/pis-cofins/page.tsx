@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { requirePapel, PAPEIS_INTERNOS } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { UploadSpedContrib } from "./_components/UploadSpedContrib";
+import { VarrerPastaButton } from "./_components/VarrerPastaButton";
 import { SincronizarDctfWebButton } from "./_components/SincronizarDctfWebButton";
 
 const MESES_PT = [
