@@ -156,6 +156,8 @@ model Cliente {
   giamImportacoes          GiamImportacao[]
   giamSefazApuracoes       GiamSefazApuracao[]
   giamSefazSincronizacoes  GiamSefazSincronizacao[]
+  ecfApuracoes             EcfApuracao[]
+  ecfImportacoes           EcfImportacao[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -234,6 +236,12 @@ model Relatorio {
   origemTexto        String? // ia | deterministico
   observacaoIA       String?
   comentarioContador String?
+
+  // Nota Técnica Contextual (anexa ao relatório) — gerada por IA a partir do
+  // "contexto do exercício" informado pelo contador; texto em Markdown.
+  notaTecnicaContexto  String?
+  notaTecnicaTexto     String?
+  notaTecnicaOrigemIA  String? // ia | deterministico
 
   cliente   Cliente @relation(fields: [clienteId], references: [id], onDelete: Cascade)
   clienteId String
@@ -1006,6 +1014,81 @@ model GiamImportacao {
 
   cliente   Cliente        @relation(fields: [clienteId], references: [id], onDelete: Cascade)
   apuracoes GiamApuracao[]
+
+  @@index([clienteId, importadoEm])
+  @@index([clienteId, hashArquivo])
+}
+
+// ---------------------------------------------------------------------------
+// SPED-ECF (Escrituração Contábil Fiscal) — apuração ANUAL do IRPJ e CSLL.
+// Um arquivo ECF cobre 1 exercício e traz 4 trimestres de apuração (bloco P
+// pra Lucro Presumido, bloco M/N pra Lucro Real).
+//
+// Uso: coluna "ECF (apurado)" da tela IRPJ/CSLL do cliente. Confronta com o
+// somatório dos débitos da DCTF/DCTFWeb por trimestre (códigos 2089 IRPJ e
+// 2372 CSLL pra Presumido; 2362/2456/2484/2469 pra Real).
+// ---------------------------------------------------------------------------
+model EcfApuracao {
+  id        String @id @default(cuid())
+  clienteId String
+
+  ano       Int
+  trimestre Int // 1..4
+
+  // Período que o trimestre cobre (redundante com ano+trimestre mas prático)
+  dataInicial DateTime
+  dataFinal   DateTime
+
+  // Regime de apuração do trimestre — extraído do 0010::IND_APUR_LP:
+  //   "PRESUMIDO" (P)
+  //   "REAL_TRIMESTRAL" (R)
+  //   "REAL_ANUAL" (A)
+  regime String
+
+  // Apuração PRESUMIDO (bloco P):
+  //   irpjApurado = P300 item 15 (IMPOSTO DE RENDA A PAGAR)
+  //   csllApurada = P500 item 13 (CSLL A PAGAR)
+  // Apuração REAL (bloco M/N) — fase 2, hoje só Presumido.
+  irpjApurado Decimal @default(0)
+  csllApurada Decimal @default(0)
+
+  importacaoId String
+
+  cliente    Cliente        @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+  importacao EcfImportacao  @relation(fields: [importacaoId], references: [id], onDelete: Cascade)
+
+  @@unique([clienteId, ano, trimestre]) // uma apuração por trimestre por cliente
+  @@index([clienteId, ano])
+  @@index([importacaoId])
+}
+
+// Log de importação de SPED-ECF — 1 por arquivo processado.
+model EcfImportacao {
+  id        String @id @default(cuid())
+  clienteId String
+
+  nomeArquivo       String
+  tamanhoBytes      Int     @default(0)
+  hashArquivo       String? // SHA-256 pra dedup
+  origem            String  @default("UPLOAD") // UPLOAD | VARREDURA_PASTA
+  caminhoOrigem     String?
+  totalLinhas       Int     @default(0)
+  apuracoesGravadas Int     @default(0)
+  sucesso           Boolean @default(true)
+  mensagem          String?
+
+  // Metadados do arquivo (do 0000/0010)
+  cnpjArquivo    String?
+  dataInicioArq  DateTime?
+  dataFimArq     DateTime?
+  ano            Int?
+  regimeAno      String? // ex.: "PPPP" (4 chars, 1 por trimestre)
+
+  importadoEm  DateTime @default(now())
+  importadoPor String?
+
+  cliente   Cliente       @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+  apuracoes EcfApuracao[]
 
   @@index([clienteId, importadoEm])
   @@index([clienteId, hashArquivo])

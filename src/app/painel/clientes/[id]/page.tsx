@@ -7,6 +7,7 @@ import { analisar } from "@/lib/accounting/analyze";
 import { ResumoSituacao } from "@/components/Analise";
 import { StatusBadge } from "@/components/ui";
 import { gerarRelatorioAction } from "./actions";
+import { excluirRelatorioAction } from "../../relatorios/actions";
 
 export default async function ClienteDetalhe({ params }: { params: Promise<{ id: string }> }) {
   const sessao = await requirePapel(PAPEIS_INTERNOS);
@@ -53,6 +54,9 @@ export default async function ClienteDetalhe({ params }: { params: Promise<{ id:
             </Link>
             <Link href={`/painel/clientes/${id}/pis-cofins`} className="btn btn-ghost">
               💰 PIS/COFINS
+            </Link>
+            <Link href={`/painel/clientes/${id}/irpj-csll`} className="btn btn-ghost">
+              🧮 IRPJ/CSLL
             </Link>
             <Link href={`/painel/clientes/${id}/exercicios`} className="btn btn-accent">
               📄 Adicionar documentos
@@ -142,9 +146,23 @@ export default async function ClienteDetalhe({ params }: { params: Promise<{ id:
                   <Link href={`/painel/relatorios/${r.id}`} className="font-medium text-[var(--brand)] hover:underline">
                     {r.titulo}
                   </Link>
-                  <p className="text-xs text-slate-400">Período {r.periodo}</p>
+                  <p className="text-xs text-slate-400">
+                    Período {r.periodo} · Criado em {new Date(r.createdAt).toLocaleString("pt-BR")}
+                  </p>
                 </div>
-                <StatusBadge status={r.status} />
+                <div className="flex items-center gap-2">
+                  <StatusBadge status={r.status} />
+                  <form action={excluirRelatorioAction.bind(null, r.id, cliente.id)}>
+                    <button
+                      className="rounded border border-red-200 bg-white px-2 py-1 text-xs text-red-600 hover:bg-red-50"
+                      title="Excluir este relatório"
+                      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                      formNoValidate
+                    >
+                      Excluir
+                    </button>
+                  </form>
+                </div>
               </div>
             ))}
           </div>

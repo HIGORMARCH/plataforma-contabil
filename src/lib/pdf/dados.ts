@@ -58,5 +58,6 @@ export async function montarDadosPdf(relatorioId: string): Promise<DadosPdf | nu
     texto: conteudo.texto,
     analise: conteudo.analise,
     documentos: Array.from(new Set(docs)),
+    notaTecnica: r.notaTecnicaTexto,
   };
 }

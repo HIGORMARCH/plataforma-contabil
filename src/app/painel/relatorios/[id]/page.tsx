@@ -9,6 +9,7 @@ import { StatusBadge } from "@/components/ui";
 import { IndicadoresGrid } from "@/components/Analise";
 import { CopiarLink } from "@/components/CopiarLink";
 import { RevisaoCritica } from "@/components/RevisaoCritica";
+import { NotaTecnica } from "@/components/NotaTecnica";
 import {
   aprovarRelatorioAction,
   reprovarRelatorioAction,
@@ -245,6 +246,21 @@ export default async function RelatorioPage({
         </section>
       )}
 
+      {/* Nota técnica contextual — apenas equipe interna edita.
+          A nota já persistida aparece anexa ao final do corpo (para todos que veem o relatório). */}
+      {interno && (
+        <NotaTecnica
+          relatorioId={id}
+          empresa={r.cliente.razaoSocial}
+          cnpj={r.cliente.cnpj}
+          exercicio={r.periodo}
+          contador={sessao.nome}
+          textoInicial={r.notaTecnicaTexto}
+          contextoInicial={r.notaTecnicaContexto}
+          origemInicial={r.notaTecnicaOrigemIA}
+        />
+      )}
+
       {/* Corpo do relatório */}
       <article className="card p-8">
         <Secao titulo="Resumo executivo" paragrafos={texto.resumoExecutivo} />
@@ -274,6 +290,37 @@ export default async function RelatorioPage({
           <p className="mt-1">{texto.limitacaoEscopo}</p>
         </section>
       </article>
+
+      {/* ANEXO — Nota Técnica Contextual. Aparece pra QUALQUER pessoa que veja o relatório. */}
+      {r.notaTecnicaTexto && (
+        <article className="card mt-6 p-8">
+          <div className="mb-4 border-b border-slate-300 pb-3">
+            <h2 className="text-lg font-bold text-[var(--brand)]">ANEXO — Nota Técnica Contextual</h2>
+            <p className="mt-1 text-xs text-slate-500">
+              Documento complementar ao relatório principal, com contextualização técnica dos indicadores.
+            </p>
+          </div>
+          <div
+            className="prose prose-sm max-w-none text-slate-700"
+            dangerouslySetInnerHTML={{
+              __html: r.notaTecnicaTexto
+                .split(/\n\n+/)
+                .map((bloco) => {
+                  if (/^-\s+/m.test(bloco)) {
+                    const itens = bloco
+                      .split(/\n/)
+                      .filter((l) => /^-\s+/.test(l))
+                      .map((l) => `<li>${l.replace(/^-\s+/, "").replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")}</li>`)
+                      .join("");
+                    return `<ul>${itens}</ul>`;
+                  }
+                  return `<p>${bloco.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>").replace(/\n/g, "<br/>")}</p>`;
+                })
+                .join(""),
+            }}
+          />
+        </article>
+      )}
     </div>
   );
 }

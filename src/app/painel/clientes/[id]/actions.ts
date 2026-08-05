@@ -106,6 +106,16 @@ export async function gerarRelatorioAction(clienteId: string) {
     ano: anos[anos.length - 1],
   });
 
+  // Gera a Nota Técnica Contextual em conjunto com o relatório principal,
+  // pra que ela já saia anexa. Como não temos "contexto" digitado neste momento,
+  // a IA usa apenas os dados calculados; o contador pode reeditar/regerar depois.
+  const { gerarNotaTecnica } = await import("@/lib/ai/notaTecnica");
+  const nota = await gerarNotaTecnica(analise, "", {
+    cliente: cliente?.razaoSocial ?? "",
+    ano: anos[anos.length - 1],
+    cidade: "Palmas",
+  });
+
   const periodo = anos.length > 1 ? `${anos[0]} a ${anos[anos.length - 1]}` : `${anos[0]}`;
   const conteudo = {
     geradoEm: new Date().toISOString(),
@@ -124,6 +134,9 @@ export async function gerarRelatorioAction(clienteId: string) {
       origemTexto: refino.origem,
       observacaoIA: refino.observacao,
       criadoPor: sessao.nome,
+      notaTecnicaContexto: null,
+      notaTecnicaTexto: nota.texto,
+      notaTecnicaOrigemIA: nota.origem,
     },
   });
 

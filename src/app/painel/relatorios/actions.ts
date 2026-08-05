@@ -14,6 +14,30 @@ async function carregar(id: string, escritorioId: string) {
   return r;
 }
 
+/**
+ * Persiste a Nota Técnica Contextual + o contexto informado pelo contador.
+ * Chamada pelo componente NotaTecnica após "Gerar" (que já traz texto pronto)
+ * OU manualmente pelo contador quando editar o texto e salvar.
+ */
+export async function salvarNotaTecnicaAction(
+  id: string,
+  data: { contexto: string; texto: string; origem: "ia" | "deterministico" },
+) {
+  const s = await requireSessao();
+  if (!PAPEIS_INTERNOS.includes(s.papel)) return { ok: false, erro: "não autorizado" };
+  const r = await carregar(id, s.escritorioId);
+  await prisma.relatorio.update({
+    where: { id: r.id },
+    data: {
+      notaTecnicaContexto: data.contexto || null,
+      notaTecnicaTexto: data.texto || null,
+      notaTecnicaOrigemIA: data.origem,
+    },
+  });
+  revalidatePath(`/painel/relatorios/${id}`);
+  return { ok: true };
+}
+
 /** Contador edita a conclusão e o comentário antes de aprovar. */
 export async function salvarRevisaoAction(id: string, fd: FormData) {
   const s = await requireSessao();
@@ -99,11 +123,23 @@ export async function gerarLinkRastreavelAction(id: string) {
   redirect(`/painel/relatorios/${id}`);
 }
 
-export async function excluirRelatorioAction(id: string) {
+/** Exclui um relatório definitivamente. Registra no log e volta pra ficha do cliente. */
+export async function excluirRelatorioAction(id: string, clienteId?: string) {
   const s = await requireSessao();
   if (!PAPEIS_INTERNOS.includes(s.papel)) redirect("/painel");
-  await carregar(id, s.escritorioId);
+  const r = await carregar(id, s.escritorioId);
+  await prisma.logAcesso.create({
+    data: {
+      acao: "RELATORIO_EXCLUIDO",
+      detalhe: `${r.id} (${r.titulo} — ${r.periodo})`,
+      usuarioId: s.userId,
+    },
+  });
   await prisma.relatorio.delete({ where: { id } });
+  if (clienteId) {
+    revalidatePath(`/painel/clientes/${clienteId}`);
+    redirect(`/painel/clientes/${clienteId}`);
+  }
   revalidatePath("/painel");
   redirect("/painel/relatorios");
 }

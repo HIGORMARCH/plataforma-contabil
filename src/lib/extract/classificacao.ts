@@ -75,7 +75,15 @@ export function detectarAnoReferencia(linhas: string[]): number | null {
 function parseContas(linhas: string[]): Conta[] {
   const contas: Conta[] = [];
   for (const bruta of linhas) {
-    const m = bruta.trim().match(RE_CONTA);
+    let candidata = bruta.trim();
+    // Alguns balancetes têm uma coluna textual à esquerda que repete o nome do grupo
+    // (ex.: "CLIENTES 12 1.1.2 CLIENTES 0,00 ..."). Se a linha começa com letra mas
+    // logo depois vem "num<sp>num.num..." (padrão de código de conta), corta o prefixo.
+    if (!/^\d/.test(candidata)) {
+      const idx = candidata.search(/\s\d+\s+\d[\d.]*\d?\s+/);
+      if (idx > 0) candidata = candidata.slice(idx + 1);
+    }
+    const m = candidata.match(RE_CONTA);
     if (!m) continue;
     const codigo = m[2];
     const descNorm = normalizar(m[3]);

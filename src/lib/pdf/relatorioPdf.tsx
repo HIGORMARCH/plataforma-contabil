@@ -53,6 +53,7 @@ export interface DadosPdf {
   texto: RelatorioTexto;
   analise: ResultadoAnalise;
   documentos: string[];
+  notaTecnica?: string | null; // texto da nota (Markdown) — se presente, sai como ANEXO no PDF
 }
 
 function estilos(cor: string, corSec: string) {
@@ -266,6 +267,32 @@ export async function gerarRelatorioPdf(d: DadosPdf): Promise<Buffer> {
         {d.texto.conclusao.map((p, i) => (
           <Text key={i} style={s.paragrafo}>{p}</Text>
         ))}
+
+        {/* ANEXO — Nota Técnica Contextual (se existir) */}
+        {d.notaTecnica && d.notaTecnica.trim() ? (
+          <>
+            <View break />
+            <Text style={s.secaoTitulo}>ANEXO — Nota Técnica Contextual</Text>
+            {d.notaTecnica.split(/\n\n+/).map((bloco, i) => {
+              const linhas = bloco.split(/\n/).filter((l) => l.trim());
+              const isLista = linhas.every((l) => /^-\s+/.test(l));
+              if (isLista) {
+                return linhas.map((l, j) => (
+                  <Text key={`${i}-${j}`} style={[s.paragrafo, { marginLeft: 12 }]}>
+                    • {l.replace(/^-\s+/, "").replace(/\*\*(.+?)\*\*/g, "$1")}
+                  </Text>
+                ));
+              }
+              const limpo = bloco.replace(/\*\*(.+?)\*\*/g, "$1");
+              const isTitulo = /^[0-9]+\.\s+[A-Z ÇÃÕÁÍÓÚÊÔ]+$/.test(limpo.trim());
+              return (
+                <Text key={i} style={isTitulo ? [s.paragrafo, { fontFamily: "Helvetica-Bold", marginTop: 8 }] : s.paragrafo}>
+                  {limpo}
+                </Text>
+              );
+            })}
+          </>
+        ) : null}
 
         {/* Responsabilidade técnica */}
         <View style={s.assinaturaArea} wrap={false}>
