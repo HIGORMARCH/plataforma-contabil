@@ -1,58 +1,44 @@
 /**
- * Cliente DCTFWeb via API SERPRO Integra Contador.
+ * Sincronização DCTFWeb — orquestra a chamada ao Integra Contador e grava as
+ * declarações no banco (DctfWebDeclaracao com origem="DCTFWEB").
  *
- * Endpoint: POST /Apoiar (do gateway integra-contador/v1)
- * Sistema: DCTFWEB
- * Serviço principal usado aqui: CONSULTARDECLARACAOCOMPLETA (nome exato a
- * confirmar na doc: pode ser CONSULTARDECLARACAOCOMPLETA12 ou similar, o
- * SERPRO versionaliza).
- *
- * Documentação: https://apicenter.estaleiro.serpro.gov.br/documentacao/api-integra-contador/pt/sistemas/dctfweb/
- *
- * IMPORTANTE: esta função ainda não fez a chamada real ao SERPRO. O esqueleto
- * está pronto e usa o certificado do próprio cliente (via runtime helper) para
- * autenticar com procurador. Ativar em produção só depois de testar com CNPJ
- * ativo — o SERPRO cobra por request.
+ * Modo controlado por env `SERPRO_DCTFWEB_MODE` (mock|real) — ver dctfwebClient.ts.
+ * A tela PIS/COFINS consome DctfWebDeclaracao independente da origem, então o
+ * mock alimenta a tela normalmente pra dev/validação.
  */
 
 import { comCertificadoDoCliente } from "@/lib/certificados/runtime";
 import { prisma } from "@/lib/db";
+import { consultarDeclaracaoCompleta, modoAtual, type DctfWebResposta } from "./dctfwebClient";
 
-export interface DctfWebResumo {
-  periodo: Date; // primeiro dia do mês
-  categoria: string; // "Geral" | "13Salario" etc.
-  pisConfessado: number; // BRL
-  cofinsConfessado: number; // BRL
-  numeroRecibo?: string;
-  situacao?: string;
-  dataRecepcao?: Date;
-  transmitida: boolean;
-  payloadBruto: unknown; // JSON do SERPRO
+function soDigitos(s: string | null | undefined): string {
+  return (s ?? "").replace(/\D/g, "");
 }
 
 /**
- * Consulta a DCTFWeb do cliente no SERPRO pra um range de competências e
- * grava as declarações no banco.
- *
- * Estratégia:
- * 1. Obtém o certificado do cliente (via runtime helper que descifra e
- *    materializa o .pfx em arquivo temp).
- * 2. Autentica no SERPRO com Autentica-Procurador usando o cert do cliente
- *    (ou do escritório+procuração conforme metodoAcessoEcac).
- * 3. Para cada mês do range, chama serviço CONSULTARDECLARACAOCOMPLETA.
- * 4. Extrai PIS/COFINS confessado e grava.
- *
- * ⚠️ ATUALMENTE MOCK: retorna dados de exemplo (0 valores) até o serviço
- * real ser plugado. A tela de confronto exibe "DCTFWeb ainda não sincronizada"
- * quando não há registros — nenhum dado falso.
+ * Sincroniza a DCTFWeb do cliente pro range de competências informado.
+ * - Cria 1 DctfWebSincronizacao (log da chamada).
+ * - Pra cada mês do range, chama SERPRO (mock ou real).
+ * - Grava cada declaração retornada como DctfWebDeclaracao (upsert por
+ *   clienteId+periodoApuracao+categoria).
+ * - Consolida PIS + COFINS por competência somando débitos dos códigos
+ *   8109/6912 (PIS) e 2172/5856 (COFINS). Outros códigos (IRPJ/CSLL/IRRF)
+ *   ficam preservados no payloadBruto pro cross-reference com IRPJ/CSLL.
  */
 export async function sincronizarDctfWeb(params: {
   clienteId: string;
-  periodoInicial: Date;
-  periodoFinal: Date;
+  periodoInicial: Date; // primeiro dia do primeiro mês
+  periodoFinal: Date; // último dia do último mês (inclusive)
   usuarioId?: string;
-}): Promise<{ ok: boolean; declaracoes: number; erro?: string; sincronizacaoId?: string }> {
+}): Promise<{
+  ok: boolean;
+  declaracoes: number;
+  erro?: string;
+  sincronizacaoId?: string;
+  modo: "mock" | "real";
+}> {
   const { clienteId, periodoInicial, periodoFinal } = params;
+  const modo = modoAtual();
 
   const sinc = await prisma.dctfWebSincronizacao.create({
     data: {
@@ -70,45 +56,134 @@ export async function sincronizarDctfWeb(params: {
       select: { metodoAcessoEcac: true, cnpj: true },
     });
     if (!cliente) throw new Error("Cliente não encontrado.");
+    const cnpjDigits = soDigitos(cliente.cnpj);
 
-    // TODO: chamada real ao SERPRO — esqueleto abaixo, ainda não ativado.
-    // Quando ativar:
-    //   if (cliente.metodoAcessoEcac === "CERTIFICADO_PROPRIO") {
-    //     await comCertificadoDoCliente(clienteId, async ({ caminhoTemp, senha }) => {
-    //       // usa caminhoTemp+senha pra autenticar mTLS + assinar termoDeAutorizacao
-    //       // chama /Apoiar com {sistema:DCTFWEB, servico:CONSULTARDECLARACAOCOMPLETA*, dados:{...cnpj, ...periodo}}
-    //       // parseia resposta, extrai debitos PIS (cod 8109/6912) e COFINS (2172/5856)
-    //     });
-    //   } else {
-    //     // método PROCURACAO_MARCH: usa cert do escritorio + procuração no e-CAC
-    //   }
+    // Enumera cada mês do range
+    const meses: Array<{ ano: number; mes: number; primeiroDia: Date }> = [];
+    const cursor = new Date(periodoInicial.getFullYear(), periodoInicial.getMonth(), 1);
+    const limite = new Date(periodoFinal.getFullYear(), periodoFinal.getMonth(), 1);
+    while (cursor <= limite) {
+      meses.push({
+        ano: cursor.getFullYear(),
+        mes: cursor.getMonth() + 1, // 1..12
+        primeiroDia: new Date(cursor),
+      });
+      cursor.setMonth(cursor.getMonth() + 1);
+    }
 
-    // Por enquanto: grava sincronização vazia com nota clara.
+    let totalDeclaracoes = 0;
+
+    // Processa mês a mês. No modo real, cada iteração é uma chamada SERPRO
+    // (custa). No modo mock, tudo local.
+    async function processarMes(item: { ano: number; mes: number; primeiroDia: Date }, resposta: DctfWebResposta) {
+      if (resposta.status !== 200 || resposta.declaracoes.length === 0) return;
+      for (const dec of resposta.declaracoes) {
+        // Consolida PIS/COFINS pra facilitar a query da tela.
+        let pisConfessado = 0;
+        let cofinsConfessado = 0;
+        for (const d of dec.debitos) {
+          if (d.codigoReceita === "8109" || d.codigoReceita === "6912") pisConfessado += d.valor;
+          if (d.codigoReceita === "2172" || d.codigoReceita === "5856") cofinsConfessado += d.valor;
+        }
+
+        await prisma.dctfWebDeclaracao.upsert({
+          where: {
+            clienteId_periodoApuracao_categoria: {
+              clienteId,
+              periodoApuracao: item.primeiroDia,
+              categoria: dec.categoria,
+            },
+          },
+          create: {
+            clienteId,
+            origem: "DCTFWEB",
+            periodoApuracao: item.primeiroDia,
+            categoria: dec.categoria,
+            pisConfessado,
+            cofinsConfessado,
+            numeroRecibo: dec.numeroRecibo,
+            situacao: dec.situacao,
+            dataRecepcao: dec.dataRecepcao ? new Date(dec.dataRecepcao) : undefined,
+            transmitida: dec.transmitida,
+            payloadBruto: {
+              debitos: dec.debitos.map((d) => ({
+                codigo: d.codigoReceita,
+                denominacao: d.denominacaoReceita,
+                periodicidade: d.periodicidade,
+                valor: d.valor,
+                situacao: d.situacao,
+              })),
+              respostaBruta: resposta.bruto,
+            },
+            sincronizacaoId: sinc.id,
+          },
+          update: {
+            origem: "DCTFWEB",
+            pisConfessado,
+            cofinsConfessado,
+            numeroRecibo: dec.numeroRecibo,
+            situacao: dec.situacao,
+            dataRecepcao: dec.dataRecepcao ? new Date(dec.dataRecepcao) : undefined,
+            transmitida: dec.transmitida,
+            payloadBruto: {
+              debitos: dec.debitos.map((d) => ({
+                codigo: d.codigoReceita,
+                denominacao: d.denominacaoReceita,
+                periodicidade: d.periodicidade,
+                valor: d.valor,
+                situacao: d.situacao,
+              })),
+              respostaBruta: resposta.bruto,
+            },
+            sincronizacaoId: sinc.id,
+          },
+        });
+        totalDeclaracoes++;
+      }
+    }
+
+    if (modo === "mock") {
+      // Sem cert. Chama direto pra cada mês.
+      for (const item of meses) {
+        const resp = await consultarDeclaracaoCompleta({ cnpj: cnpjDigits, ano: item.ano, mes: item.mes });
+        await processarMes(item, resp);
+      }
+    } else {
+      // Modo real — abre cert 1x, faz N chamadas dentro do handler.
+      // TODO: no modo real, se cliente.metodoAcessoEcac === "PROCURACAO_MARCH",
+      // usar cert do escritório em vez do do cliente.
+      await comCertificadoDoCliente(clienteId, async (cert) => {
+        for (const item of meses) {
+          const resp = await consultarDeclaracaoCompleta({
+            cert,
+            cnpj: cnpjDigits,
+            ano: item.ano,
+            mes: item.mes,
+          });
+          await processarMes(item, resp);
+        }
+      });
+    }
+
     await prisma.dctfWebSincronizacao.update({
       where: { id: sinc.id },
       data: {
-        declaracoesRetornadas: 0,
+        declaracoesRetornadas: totalDeclaracoes,
         sucesso: true,
         mensagem:
-          "MOCK: chamada real ao SERPRO ainda não ativada. Estrutura pronta em src/lib/serpro/dctfweb.ts.",
+          modo === "mock"
+            ? `MOCK: ${totalDeclaracoes} declaração(ões) sintética(s) gravada(s). Alterne SERPRO_DCTFWEB_MODE=real quando cert/procuração estiverem prontos.`
+            : `${totalDeclaracoes} declaração(ões) sincronizada(s) via Integra Contador.`,
       },
     });
 
-    return {
-      ok: true,
-      declaracoes: 0,
-      sincronizacaoId: sinc.id,
-      erro: "MOCK — plugar chamada real ao SERPRO quando pronto pra testar em CNPJ ativo.",
-    };
+    return { ok: true, declaracoes: totalDeclaracoes, sincronizacaoId: sinc.id, modo };
   } catch (e) {
     const erro = (e as Error).message;
     await prisma.dctfWebSincronizacao.update({
       where: { id: sinc.id },
       data: { sucesso: false, mensagem: erro },
     });
-    return { ok: false, declaracoes: 0, erro, sincronizacaoId: sinc.id };
+    return { ok: false, declaracoes: 0, erro, sincronizacaoId: sinc.id, modo };
   }
 }
-
-// (Import kept to signal intended usage — evita "unused import" no lint)
-void comCertificadoDoCliente;

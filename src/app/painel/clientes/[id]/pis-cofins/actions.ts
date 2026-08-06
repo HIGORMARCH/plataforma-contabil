@@ -143,7 +143,7 @@ export interface ResultadoDctfDetalhes {
 
 export async function sincronizarDctfWebAction(
   fd: FormData,
-): Promise<{ ok: boolean; mensagem: string; declaracoes?: number }> {
+): Promise<{ ok: boolean; mensagem: string; declaracoes?: number; modo?: "mock" | "real" }> {
   try {
     const sessao = await requireSessao();
     if (!PAPEIS_INTERNOS.includes(sessao.papel))
@@ -165,10 +165,14 @@ export async function sincronizarDctfWebAction(
     });
 
     revalidatePath(`/painel/clientes/${clienteId}/pis-cofins`);
+    revalidatePath(`/painel/clientes/${clienteId}/irpj-csll`);
     return {
       ok: r.ok,
-      mensagem: r.erro ?? `${r.declaracoes} declaração(ões) sincronizada(s).`,
+      mensagem:
+        r.erro ??
+        `${r.declaracoes} declaração(ões) sincronizada(s)${r.modo === "mock" ? " (MOCK)" : ""}.`,
       declaracoes: r.declaracoes,
+      modo: r.modo,
     };
   } catch (e) {
     return { ok: false, mensagem: (e as Error).message };

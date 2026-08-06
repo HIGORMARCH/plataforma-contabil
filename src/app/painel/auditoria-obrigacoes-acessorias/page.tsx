@@ -153,18 +153,17 @@ export default async function AuditoriaObrigacoesAcessoriasPage() {
 
       <div className="rounded-xl border border-amber-200 bg-amber-50 px-5 py-4">
         <p className="text-sm font-semibold text-amber-900">
-          Etapa 1 de 2 — conferência dentro do Domínio
+          Duas etapas de auditoria ICMS
         </p>
         <p className="mt-1.5 text-sm leading-relaxed text-amber-800">
-          Os dois arquivos comparados aqui — SPED Fiscal e GIAM — <strong>saem do Domínio</strong>.
-          Bater entre si prova que a escrituração é <strong>coerente</strong>, mas{" "}
-          <strong>não prova o que a SEFAZ recebeu</strong>: se alguém alterar o Domínio depois de
-          transmitir, os dois continuam batendo e a divergência com o Estado passa despercebida.
+          <b>Etapa 1</b> — SPED Fiscal × GIAM (arquivo do Domínio): prova que a escrituração é
+          <strong> coerente</strong>. Ambos saem do Domínio.
         </p>
         <p className="mt-1.5 text-sm leading-relaxed text-amber-800">
-          <strong>Etapa 2 (a construir):</strong> ler a GIAM oficial no portal{" "}
-          <span className="font-mono text-xs">giam.sefaz.to.gov.br</span> e confrontar com o arquivo
-          do Domínio — aí sim é auditoria do que foi declarado ao Estado.
+          <b>Etapa 2</b> — GIAM (Domínio) × GIAM SEFAZ: prova <strong>integridade</strong> — se
+          alguém alterar o arquivo do Domínio depois de transmitir, a divergência com o portal
+          aparece linha a linha por CFOP. Robô Playwright pronto — sincronize por competência no
+          botão &quot;Buscar no portal SEFAZ&quot; da tela SPED-Fiscal do cliente.
         </p>
       </div>
 

@@ -18,11 +18,62 @@ import {
   gerarLinkRastreavelAction,
 } from "../actions";
 
+interface ObrigacaoCelulaSerializada {
+  tipo: string;
+  ano: number;
+  mes: number | null;
+  prazoLegal: string; // ISO (Date serializada no JSON)
+  dataEntrega: string | null;
+  fonte: string | null;
+  status: "NO_PRAZO" | "EM_ATRASO" | "NAO_LOCALIZADA";
+  diasAtraso: number;
+  referenciaExterna?: string | null;
+}
+
+interface ObrigacoesAcessoriasSerializada {
+  cliente: {
+    id: string;
+    razaoSocial: string;
+    nomeFantasia: string | null;
+    cnpj: string | null;
+    regimeTributario: string | null;
+    incluirNoRelatorio: boolean;
+  };
+  anoInicial: number;
+  anoFinal: number;
+  celulas: ObrigacaoCelulaSerializada[];
+  resumoPorTipo: Array<{
+    tipo: string;
+    esperadas: number;
+    noPrazo: number;
+    emAtraso: number;
+    naoLocalizadas: number;
+  }>;
+  totais: {
+    esperadas: number;
+    noPrazo: number;
+    emAtraso: number;
+    naoLocalizadas: number;
+  };
+}
+
 interface Conteudo {
   geradoEm: string;
   analise: ResultadoAnalise;
   texto: RelatorioTexto;
+  obrigacoesAcessorias?: ObrigacoesAcessoriasSerializada | null;
 }
+
+const ROTULOS_OBRIGACAO: Record<string, string> = {
+  ECD: "ECD",
+  ECF: "ECF",
+  EFD_CONTRIBUICOES: "EFD-Contribuições",
+  DCTF_ANTIGA: "DCTF (antiga)",
+  DCTFWEB: "DCTFWeb",
+  MIT: "MIT",
+  PGDAS_D: "PGDAS-D",
+  DEFIS: "DEFIS",
+};
 
 function Secao({ titulo, paragrafos }: { titulo: string; paragrafos: string[] }) {
   return (
@@ -33,6 +84,125 @@ function Secao({ titulo, paragrafos }: { titulo: string; paragrafos: string[] })
           <p key={i}>{p}</p>
         ))}
       </div>
+    </section>
+  );
+}
+
+/**
+ * Seção "Situação das Obrigações Acessórias" — anexada ao relatório quando o
+ * contador marcou a flag `incluirObrigacoesNoRelatorio` na tela do cliente.
+ * Mostra resumo por tipo + lista das entregas em atraso.
+ */
+function SecaoObrigacoesAcessorias({ grade }: { grade: ObrigacoesAcessoriasSerializada }) {
+  const fmtData = new Intl.DateTimeFormat("pt-BR", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    timeZone: "UTC",
+  });
+  const emAtraso = grade.celulas.filter((c) => c.status === "EM_ATRASO");
+  return (
+    <section className="mb-6">
+      <h2 className="mb-2 border-b border-slate-200 pb-1 text-lg font-bold text-[var(--brand)]">
+        Situação das Obrigações Acessórias
+      </h2>
+      <p className="mb-3 text-sm text-slate-700">
+        Período analisado: <strong>{grade.anoInicial}</strong> a{" "}
+        <strong>{grade.anoFinal}</strong>. Do total de{" "}
+        <strong>{grade.totais.esperadas}</strong> obrigações esperadas,{" "}
+        <span className="font-semibold text-emerald-700">{grade.totais.noPrazo} entregues no prazo</span>
+        {grade.totais.emAtraso > 0 && (
+          <>
+            ,{" "}
+            <span className="font-semibold text-amber-700">
+              {grade.totais.emAtraso} em atraso
+            </span>
+          </>
+        )}
+        {grade.totais.naoLocalizadas > 0 && (
+          <>
+            ,{" "}
+            <span className="font-semibold text-slate-600">
+              {grade.totais.naoLocalizadas} sem entrega localizada
+            </span>
+          </>
+        )}
+        .
+      </p>
+
+      <div className="mb-4 overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-slate-200 text-left text-xs uppercase text-slate-500">
+              <th className="pb-2 pr-3 font-semibold">Obrigação</th>
+              <th className="pb-2 pr-3 text-right font-semibold">Esperadas</th>
+              <th className="pb-2 pr-3 text-right font-semibold">No prazo</th>
+              <th className="pb-2 pr-3 text-right font-semibold">Em atraso</th>
+              <th className="pb-2 pr-3 text-right font-semibold">Não localizadas</th>
+            </tr>
+          </thead>
+          <tbody>
+            {grade.resumoPorTipo
+              .filter((r) => r.esperadas > 0)
+              .map((r) => (
+                <tr key={r.tipo} className="border-b border-slate-100">
+                  <td className="py-1.5 pr-3 font-medium text-slate-700">
+                    {ROTULOS_OBRIGACAO[r.tipo] ?? r.tipo}
+                  </td>
+                  <td className="py-1.5 pr-3 text-right tabular-nums">{r.esperadas}</td>
+                  <td className="py-1.5 pr-3 text-right tabular-nums text-emerald-700">
+                    {r.noPrazo}
+                  </td>
+                  <td
+                    className={
+                      "py-1.5 pr-3 text-right tabular-nums " +
+                      (r.emAtraso > 0 ? "text-amber-700 font-semibold" : "text-slate-400")
+                    }
+                  >
+                    {r.emAtraso}
+                  </td>
+                  <td
+                    className={
+                      "py-1.5 pr-3 text-right tabular-nums " +
+                      (r.naoLocalizadas > 0 ? "text-slate-700" : "text-slate-400")
+                    }
+                  >
+                    {r.naoLocalizadas}
+                  </td>
+                </tr>
+              ))}
+          </tbody>
+        </table>
+      </div>
+
+      {emAtraso.length > 0 && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
+          <p className="mb-2 text-sm font-semibold text-amber-900">
+            Entregas em atraso — {emAtraso.length}
+          </p>
+          <ul className="space-y-1 text-xs text-amber-900">
+            {emAtraso.slice(0, 30).map((c) => {
+              const comp =
+                c.mes === null
+                  ? String(c.ano)
+                  : `${String(c.mes).padStart(2, "0")}/${c.ano}`;
+              return (
+                <li key={`${c.tipo}-${c.ano}-${c.mes ?? 0}`}>
+                  <strong>{ROTULOS_OBRIGACAO[c.tipo] ?? c.tipo}</strong> {comp} — prazo{" "}
+                  {fmtData.format(new Date(c.prazoLegal))}, entrega{" "}
+                  {c.dataEntrega ? fmtData.format(new Date(c.dataEntrega)) : "—"}{" "}
+                  <span className="font-semibold">({c.diasAtraso} dia(s) de atraso)</span>
+                </li>
+              );
+            })}
+            {emAtraso.length > 30 && (
+              <li className="text-amber-700">
+                … e mais {emAtraso.length - 30} entregas em atraso (ver tela do cliente).
+              </li>
+            )}
+          </ul>
+        </div>
+      )}
     </section>
   );
 }
@@ -277,6 +447,10 @@ export default async function RelatorioPage({
         <Secao titulo="Pontos de atenção" paragrafos={texto.pontosAtencao} />
         <Secao titulo="Recomendações técnicas" paragrafos={texto.recomendacoes} />
         <Secao titulo="Conclusão" paragrafos={texto.conclusao} />
+
+        {conteudo.obrigacoesAcessorias && (
+          <SecaoObrigacoesAcessorias grade={conteudo.obrigacoesAcessorias} />
+        )}
 
         {r.comentarioContador && (
           <section className="mb-6 rounded-lg bg-slate-50 p-4">

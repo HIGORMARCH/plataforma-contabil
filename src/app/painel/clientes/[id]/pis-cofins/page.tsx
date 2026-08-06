@@ -26,31 +26,49 @@ function brl(v: number): string {
   return v.toLocaleString("pt-BR", { style: "currency", currency: "BRL", minimumFractionDigits: 2 });
 }
 
-function calcularDivergencia(sped: number, dctf: number): {
-  valor: number;
-  pct: number;
-  classe: string;
-  rotulo: string;
-} {
+// Uma célula de divergência considera 4 estados: SPED e DCTF podem estar presentes
+// (registro no banco) ou ausentes (não entregue / não importado). "0,00 entregue"
+// e "não entregue" são semanticamente opostos pra auditoria — o rótulo tem que
+// refletir isso.
+function calcularDivergencia(
+  sped: number,
+  dctf: number,
+  spedPresente: boolean,
+  dctfPresente: boolean,
+): { classe: string; rotulo: string } {
+  if (!spedPresente && !dctfPresente) {
+    return { classe: "text-slate-400", rotulo: "—" };
+  }
+  if (!spedPresente && dctfPresente) {
+    // Confessou sem apurar (ou SPED faltando na pasta).
+    return dctf > 0
+      ? { classe: "text-red-600 font-semibold", rotulo: "⚠ Falta SPED" }
+      : { classe: "text-amber-600", rotulo: "Falta SPED (DCTF 0)" };
+  }
+  if (spedPresente && !dctfPresente) {
+    return sped > 0
+      ? { classe: "text-red-600 font-semibold", rotulo: "⚠ Falta DCTF" }
+      : { classe: "text-amber-600", rotulo: "Falta DCTF (SPED 0)" };
+  }
+  // Ambos presentes.
   const valor = sped - dctf;
   const pct = sped > 0 ? (valor / sped) * 100 : dctf > 0 ? -100 : 0;
   const abs = Math.abs(pct);
-  let classe = "text-slate-500";
-  let rotulo = "OK";
-  if (sped === 0 && dctf === 0) {
-    rotulo = "—";
-  } else if (abs < 0.5) {
-    classe = "text-green-700";
-    rotulo = "OK";
-  } else if (abs < 5) {
-    classe = "text-amber-600";
-    rotulo = `± ${pct.toFixed(1)}%`;
-  } else {
-    classe = "text-red-600 font-semibold";
-    rotulo = pct > 0 ? `↑ ${pct.toFixed(1)}% (SPED > DCTF)` : `↓ ${pct.toFixed(1)}% (DCTF > SPED)`;
-  }
-  return { valor, pct, classe, rotulo };
+  if (sped === 0 && dctf === 0) return { classe: "text-green-700", rotulo: "OK (0)" };
+  if (abs < 0.5) return { classe: "text-green-700", rotulo: "OK" };
+  if (abs < 5)
+    return { classe: "text-amber-600", rotulo: `± ${pct.toFixed(1)}%` };
+  return {
+    classe: "text-red-600 font-semibold",
+    rotulo: pct > 0 ? `↑ ${pct.toFixed(1)}% (SPED > DCTF)` : `↓ ${pct.toFixed(1)}% (DCTF > SPED)`,
+  };
 }
+
+const AUSENTE = (
+  <span className="text-slate-300" title="Não entregue / não importado">
+    —
+  </span>
+);
 
 export default async function PisCofinsPage({
   params,
@@ -105,9 +123,12 @@ export default async function PisCofinsPage({
     }),
   ]);
 
-  // Consolida por mês
+  // Consolida por mês. Trackear presença (registro existe) separado do valor —
+  // "SPED entregue zerado" e "SPED não entregue" são casos opostos pra auditoria.
   type Linha = {
     mes: number;
+    spedPresente: boolean;
+    dctfPresente: boolean;
     pisSped: number;
     pisDctf: number;
     cofinsSped: number;
@@ -115,15 +136,25 @@ export default async function PisCofinsPage({
   };
   const linhasPorMes: Record<number, Linha> = {};
   for (let m = 0; m < 12; m++) {
-    linhasPorMes[m] = { mes: m, pisSped: 0, pisDctf: 0, cofinsSped: 0, cofinsDctf: 0 };
+    linhasPorMes[m] = {
+      mes: m,
+      spedPresente: false,
+      dctfPresente: false,
+      pisSped: 0,
+      pisDctf: 0,
+      cofinsSped: 0,
+      cofinsDctf: 0,
+    };
   }
   for (const s of sped) {
     const m = s.periodoApuracao.getMonth();
+    linhasPorMes[m].spedPresente = true;
     linhasPorMes[m].pisSped += Number(s.pisContribuicaoDevida);
     linhasPorMes[m].cofinsSped += Number(s.cofinsContribuicaoDevida);
   }
   for (const d of dctf) {
     const m = d.periodoApuracao.getMonth();
+    linhasPorMes[m].dctfPresente = true;
     linhasPorMes[m].pisDctf += Number(d.pisConfessado);
     linhasPorMes[m].cofinsDctf += Number(d.cofinsConfessado);
   }
@@ -185,20 +216,28 @@ export default async function PisCofinsPage({
           </thead>
           <tbody>
             {Object.values(linhasPorMes).map((l) => {
-              const divPis = calcularDivergencia(l.pisSped, l.pisDctf);
-              const divCof = calcularDivergencia(l.cofinsSped, l.cofinsDctf);
-              const vazio = l.pisSped === 0 && l.pisDctf === 0 && l.cofinsSped === 0 && l.cofinsDctf === 0;
+              const divPis = calcularDivergencia(l.pisSped, l.pisDctf, l.spedPresente, l.dctfPresente);
+              const divCof = calcularDivergencia(l.cofinsSped, l.cofinsDctf, l.spedPresente, l.dctfPresente);
+              const nadaEntregue = !l.spedPresente && !l.dctfPresente;
               return (
-                <tr key={l.mes} className={`border-t border-slate-100 ${vazio ? "text-slate-400" : ""}`}>
+                <tr key={l.mes} className={`border-t border-slate-100 ${nadaEntregue ? "text-slate-400" : ""}`}>
                   <td className="px-3 py-2 font-medium">
                     {MESES_PT[l.mes]}/{String(ano).slice(2)}
                   </td>
-                  <td className="px-3 py-2 text-right font-mono">{vazio ? "—" : brl(l.pisSped)}</td>
-                  <td className="px-3 py-2 text-right font-mono">{vazio ? "—" : brl(l.pisDctf)}</td>
-                  <td className={`px-3 py-2 text-center text-xs ${divPis.classe}`}>{vazio ? "—" : divPis.rotulo}</td>
-                  <td className="px-3 py-2 text-right font-mono">{vazio ? "—" : brl(l.cofinsSped)}</td>
-                  <td className="px-3 py-2 text-right font-mono">{vazio ? "—" : brl(l.cofinsDctf)}</td>
-                  <td className={`px-3 py-2 text-center text-xs ${divCof.classe}`}>{vazio ? "—" : divCof.rotulo}</td>
+                  <td className="px-3 py-2 text-right font-mono">
+                    {l.spedPresente ? brl(l.pisSped) : AUSENTE}
+                  </td>
+                  <td className="px-3 py-2 text-right font-mono">
+                    {l.dctfPresente ? brl(l.pisDctf) : AUSENTE}
+                  </td>
+                  <td className={`px-3 py-2 text-center text-xs ${divPis.classe}`}>{divPis.rotulo}</td>
+                  <td className="px-3 py-2 text-right font-mono">
+                    {l.spedPresente ? brl(l.cofinsSped) : AUSENTE}
+                  </td>
+                  <td className="px-3 py-2 text-right font-mono">
+                    {l.dctfPresente ? brl(l.cofinsDctf) : AUSENTE}
+                  </td>
+                  <td className={`px-3 py-2 text-center text-xs ${divCof.classe}`}>{divCof.rotulo}</td>
                 </tr>
               );
             })}
@@ -208,13 +247,13 @@ export default async function PisCofinsPage({
               <td className="px-3 py-2">Total {ano}</td>
               <td className="px-3 py-2 text-right font-mono">{brl(totalPisSped)}</td>
               <td className="px-3 py-2 text-right font-mono">{brl(totalPisDctf)}</td>
-              <td className={`px-3 py-2 text-center text-xs ${calcularDivergencia(totalPisSped, totalPisDctf).classe}`}>
-                {calcularDivergencia(totalPisSped, totalPisDctf).rotulo}
+              <td className={`px-3 py-2 text-center text-xs ${calcularDivergencia(totalPisSped, totalPisDctf, true, true).classe}`}>
+                {calcularDivergencia(totalPisSped, totalPisDctf, true, true).rotulo}
               </td>
               <td className="px-3 py-2 text-right font-mono">{brl(totalCofinsSped)}</td>
               <td className="px-3 py-2 text-right font-mono">{brl(totalCofinsDctf)}</td>
-              <td className={`px-3 py-2 text-center text-xs ${calcularDivergencia(totalCofinsSped, totalCofinsDctf).classe}`}>
-                {calcularDivergencia(totalCofinsSped, totalCofinsDctf).rotulo}
+              <td className={`px-3 py-2 text-center text-xs ${calcularDivergencia(totalCofinsSped, totalCofinsDctf, true, true).classe}`}>
+                {calcularDivergencia(totalCofinsSped, totalCofinsDctf, true, true).rotulo}
               </td>
             </tr>
           </tfoot>

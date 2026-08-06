@@ -141,7 +141,8 @@ export default async function SpedCliente({ params }: { params: Promise<{ id: st
         </h2>
         <p className="mb-4 text-xs text-slate-400">
           Declarado à SEFAZ-TO conforme o <strong>arquivo atualmente salvo no Domínio</strong>. Não
-          é a GIAM que a SEFAZ recepcionou — pra isso é preciso raspar o portal (Etapa 2, pendente).
+          é a GIAM que a SEFAZ recepcionou — pra isso, use o botão <b>&quot;Buscar no portal
+          SEFAZ&quot;</b> (Etapa 2 — raspagem via robô Playwright).
         </p>
         {cliente.giamApuracoes.length === 0 ? (
           <p className="text-sm text-slate-500">

@@ -25,6 +25,7 @@
  */
 import { chromium, type Browser, type BrowserContext } from "playwright";
 import { PDFParse } from "pdf-parse";
+import { extrairLinhasEspelhoPdfjs } from "./parseEspelhoPdfjs";
 
 export interface GiamSefazApuracaoRaspada {
   ano: number;
@@ -100,8 +101,11 @@ export async function raspaGiamSefaz(opts: {
   ano: number;
   meses?: number[];
   headless?: boolean;
+  /** Se informado, salva cada PDF baixado nesta pasta (debug/investigação
+   *  de layout). Não usar em produção — plataforma não armazena arquivos originais. */
+  salvarPdfEm?: string;
 }): Promise<GiamSefazApuracaoRaspada[]> {
-  const { ie, senha, ano, meses, headless = true } = opts;
+  const { ie, senha, ano, meses, headless = true, salvarPdfEm } = opts;
 
   const browser: Browser = await chromium.launch({ headless });
   const context: BrowserContext = await browser.newContext({
@@ -165,7 +169,7 @@ export async function raspaGiamSefaz(opts: {
 
     for (const alvo of alvos) {
       try {
-        const parsed = await baixarEspelhoDoMes(page, ie, senha, alvo, headless);
+        const parsed = await baixarEspelhoDoMes(page, ie, senha, alvo, headless, salvarPdfEm);
         resultados.push(parsed);
       } catch (e) {
         const motivo = e instanceof Error ? e.message : String(e);
@@ -198,6 +202,7 @@ async function baixarEspelhoDoMes(
   senha: string,
   alvo: { mes: number; ano: number },
   headless: boolean,
+  salvarPdfEm?: string,
 ): Promise<GiamSefazApuracaoRaspada> {
   const url = URL_APPS_LOGIN_PARAMS(ie, alvo.mes, alvo.ano);
 
@@ -248,9 +253,18 @@ async function baixarEspelhoDoMes(
     }
 
     if (buf.slice(0, 4).toString("ascii").startsWith("%PDF")) {
+      // Salvamento opcional em disco pra debug (nunca em produção).
+      if (salvarPdfEm) {
+        const fs = await import("node:fs");
+        const pathMod = await import("node:path");
+        const fname = `espelho-${alvo.ano}-${String(alvo.mes).padStart(2, "0")}.pdf`;
+        try {
+          fs.mkdirSync(salvarPdfEm, { recursive: true });
+          fs.writeFileSync(pathMod.join(salvarPdfEm, fname), buf);
+        } catch {}
+      }
       const parser = new PDFParse({ data: buf });
       const dados = await parser.getText();
-      // Sempre despeja em modo debug (script de teste roda headless=false)
       if (!headless) {
         const fs = await import("node:fs");
         const path = `C:/Users/higor/AppData/Local/Temp/claude/C--Users-higor/26fee02e-df13-4afd-b6c9-73ea580f4a5a/scratchpad/espelho-${alvo.ano}-${String(alvo.mes).padStart(2, "0")}.txt`;
@@ -258,7 +272,38 @@ async function baixarEspelhoDoMes(
           fs.writeFileSync(path, dados.text, "utf8");
         } catch {}
       }
-      return parseEspelhoPdf(dados.text, alvo.mes, alvo.ano);
+      const totais = parseEspelhoPdf(dados.text, alvo.mes, alvo.ano);
+      // Complementa as linhas Segmento B via pdfjs (coordenadas X/Y — muito
+      // mais robusto que o texto do pdf-parse). Se falhar, cai silente pra
+      // não regressar: os totais do parser texto continuam corretos.
+      try {
+        const linhasCfop = await extrairLinhasEspelhoPdfjs(buf);
+        if (linhasCfop.length > 0) {
+          totais.linhasSegmentoB = linhasCfop;
+          // Recalcula totalEntradas/totalSaidas somando as linhas — mantém
+          // consistência entre linhas por CFOP e totais consolidados.
+          const zerar = () => ({
+            valorContabil: 0, baseCalculo: 0, isentasNaoTributadas: 0,
+            outras: 0, substituicaoTributaria: 0, creditoDebitoImposto: 0, linhas: 0,
+          });
+          const totE = zerar(), totS = zerar();
+          for (const l of linhasCfop) {
+            const t = l.natureza === "0" ? totE : totS;
+            t.valorContabil += l.valorContabil;
+            t.baseCalculo += l.baseCalculo;
+            t.isentasNaoTributadas += l.isentasNaoTributadas;
+            t.outras += l.outras;
+            t.substituicaoTributaria += l.substituicaoTributaria;
+            t.creditoDebitoImposto += l.creditoDebitoImposto;
+            t.linhas++;
+          }
+          totais.totalEntradas = totE;
+          totais.totalSaidas = totS;
+        }
+      } catch (err) {
+        console.warn(`[warn] extração CFOP-a-CFOP falhou (${alvo.ano}-${alvo.mes}):`, (err as Error).message);
+      }
+      return totais;
     }
 
     // Não é PDF — pode ser página de login (session apps.sefaz expirou).

@@ -58,6 +58,9 @@ export default async function ClienteDetalhe({ params }: { params: Promise<{ id:
             <Link href={`/painel/clientes/${id}/irpj-csll`} className="btn btn-ghost">
               🧮 IRPJ/CSLL
             </Link>
+            <Link href={`/painel/clientes/${id}/obrigacoes-acessorias`} className="btn btn-ghost">
+              📋 Obrigações Acessórias
+            </Link>
             <Link href={`/painel/clientes/${id}/exercicios`} className="btn btn-accent">
               📄 Adicionar documentos
             </Link>

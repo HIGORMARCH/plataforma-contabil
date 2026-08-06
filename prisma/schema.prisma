@@ -159,6 +159,18 @@ model Cliente {
   ecfApuracoes             EcfApuracao[]
   ecfImportacoes           EcfImportacao[]
 
+  // Demonstrativo de Obrigações Acessórias — catálogo dos arquivos SPED/DCTF
+  // detectados na pasta do cliente (independente de importação) e entregas
+  // registradas manualmente pra PGDAS-D / DEFIS / MIT (enquanto não temos robô
+  // ou integração SERPRO). Ver [[obrigacoes-acessorias-v1]].
+  arquivosObrigacoesDetectados ArquivoObrigacaoDetectado[]
+  entregasObrigacoesManuais    EntregaObrigacaoManual[]
+  simplesNacionalSincronizacoes SimplesNacionalSincronizacao[]
+
+  // Flag que o gerador de relatório final lê pra decidir se anexa a seção
+  // "Situação das Obrigações Acessórias" no relatório entregue ao cliente.
+  incluirObrigacoesNoRelatorio Boolean @default(false)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
@@ -1092,4 +1104,116 @@ model EcfImportacao {
 
   @@index([clienteId, importadoEm])
   @@index([clienteId, hashArquivo])
+}
+
+// ---------------------------------------------------------------------------
+// Demonstrativo de Obrigações Acessórias — v1.
+//
+// Dois pilares independentes:
+//   1. ArquivoObrigacaoDetectado — resultado da varredura da pasta. Cataloga
+//      QUE arquivos existem (por tipo/competência) sem depender de importar
+//      apuração. O mtime é o proxy da data de transmissão à Receita — o
+//      Domínio grava o arquivo no momento da transmissão. Se alguém mover
+//      o arquivo depois, o mtime muda; a validação secundária virá quando
+//      integrarmos a consulta ao e-CAC.
+//
+//   2. EntregaObrigacaoManual — pra obrigações que NÃO geram arquivo em pasta
+//      (PGDAS-D, DEFIS, MIT). Enquanto não temos o robô do Portal Simples
+//      Nacional nem o SERPRO PGDASD ativado, o contador marca à mão a data
+//      de entrega e o nº de recibo.
+//
+// A grade da tela cruza: os dois modelos acima + as tabelas existentes
+// (SpedImportacao, SpedContribImportacao, EcfImportacao, DctfWebDeclaracao)
+// contra os prazos legais (src/lib/obrigacoes-acessorias/prazos.ts) pra
+// classificar cada célula como: no_prazo | em_atraso | nao_localizada.
+// ---------------------------------------------------------------------------
+
+model ArquivoObrigacaoDetectado {
+  id        String @id @default(cuid())
+  clienteId String
+
+  // Tipo detectado pelo header do arquivo (registro 0000 do SPED ou header
+  // do .dec da DCTF antiga). Enum lógico — mantido como String pra evolução:
+  //   "ECD" | "ECF" | "EFD_CONTRIBUICOES" | "DCTF_ANTIGA"
+  //   (EFD_ICMS ficou fora da v1 — muitos estados migrando pra usar só o SPED)
+  tipoObrigacao String
+
+  // Período coberto. Pra obrigações anuais (ECD/ECF), mes = null. Pra
+  // mensais (EFD-Contribuições, DCTF antiga), mes = 1..12.
+  ano Int
+  mes Int? // null = obrigação anual
+
+  caminho      String  // path absoluto onde o arquivo foi encontrado
+  nomeArquivo  String
+  tamanhoBytes Int     @default(0)
+  hashArquivo  String? // SHA-256 — permite detectar quando o arquivo mudou
+
+  // mtime do arquivo em disco no momento da varredura. Este é o valor que a
+  // grade compara contra o prazo legal. Sistema Domínio grava o arquivo no
+  // instante da transmissão, então é bom proxy — mas ver caveat no topo.
+  mtime DateTime
+
+  detectadoEm DateTime @default(now())
+
+  cliente Cliente @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+
+  // Um arquivo por cliente+tipo+competência. Nova varredura substitui (upsert).
+  @@unique([clienteId, tipoObrigacao, ano, mes])
+  @@index([clienteId])
+}
+
+model EntregaObrigacaoManual {
+  id        String @id @default(cuid())
+  clienteId String
+
+  // "PGDAS_D" | "DEFIS" | "MIT" — obrigações que na v1 dependem de entrada
+  // manual pq ainda não temos SERPRO PGDASD/MIT ativados. O robô do Portal
+  // Simples Nacional (task #8) também grava aqui, marcando origem=PORTAL_SIMPLES.
+  tipoObrigacao String
+
+  // "MANUAL" (default) — contador registrou à mão.
+  // "PORTAL_SIMPLES" — raspado do portal via Playwright (v1.1).
+  // Consolidador prefere PORTAL_SIMPLES sobre MANUAL quando os dois existem.
+  origem String @default("MANUAL")
+
+  ano Int
+  mes Int? // null pras anuais (DEFIS)
+
+  dataEntrega  DateTime // data que o contador declarou como transmissão
+  numeroRecibo String?
+  observacao   String?
+
+  registradoPor String? // userId — null quando origem=PORTAL_SIMPLES
+  registradoEm  DateTime @default(now())
+
+  cliente Cliente @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+
+  @@unique([clienteId, tipoObrigacao, ano, mes])
+  @@index([clienteId])
+}
+
+/**
+ * Log de sincronização com o Portal Simples Nacional — 1 por chamada do robô.
+ * Padrão espelhado de GiamSefazSincronizacao (rastreio + repetibilidade).
+ */
+model SimplesNacionalSincronizacao {
+  id        String @id @default(cuid())
+  clienteId String
+
+  anoInicial Int
+  anoFinal   Int
+  tiposConsultados String // CSV: "PGDAS_D,DEFIS"
+
+  entregasEncontradas Int @default(0)
+  entregasSubstituidas Int @default(0) // já existia (MANUAL) e foi atualizada
+
+  sucesso  Boolean @default(true)
+  mensagem String? // erro ou nota
+
+  executadoEm  DateTime @default(now())
+  executadoPor String? // userId
+
+  cliente Cliente @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+
+  @@index([clienteId, executadoEm])
 }

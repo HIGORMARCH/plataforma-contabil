@@ -14,6 +14,7 @@ import { carregarExercicios } from "@/lib/service";
 import { analisar } from "@/lib/accounting/analyze";
 import { gerarRelatorioSimples } from "@/lib/accounting/narrative";
 import { refinarRelatorio } from "@/lib/ai/provider";
+import { consolidarObrigacoes } from "@/lib/obrigacoes-acessorias/consolidar";
 import type { Maybe } from "@/lib/accounting/types";
 
 async function exigirInterno() {
@@ -117,10 +118,23 @@ export async function gerarRelatorioAction(clienteId: string) {
   });
 
   const periodo = anos.length > 1 ? `${anos[0]} a ${anos[anos.length - 1]}` : `${anos[0]}`;
+
+  // Se o contador marcou "Incluir no relatório" na tela de Obrigações Acessórias,
+  // anexa a grade consolidada. Range acompanha os exercícios cobertos pelo relatório.
+  // Fica null quando a flag está desligada — o renderer só mostra a seção se veio dado.
+  const obrigacoesAcessorias = cliente?.incluirObrigacoesNoRelatorio
+    ? await consolidarObrigacoes({
+        clienteId,
+        anoInicial: anos[0],
+        anoFinal: anos[anos.length - 1],
+      })
+    : null;
+
   const conteudo = {
     geradoEm: new Date().toISOString(),
     analise,
     texto: refino.texto,
+    obrigacoesAcessorias,
   };
 
   const relatorio = await prisma.relatorio.create({

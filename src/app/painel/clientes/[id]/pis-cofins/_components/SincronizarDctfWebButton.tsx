@@ -29,8 +29,11 @@ export function SincronizarDctfWebButton({
 
   return (
     <div className="rounded-lg border border-slate-200 bg-white p-3">
-      <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
-        Sincronizar DCTFWeb (via SERPRO)
+      <div className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+        <span>Sincronizar DCTFWeb (via SERPRO)</span>
+        <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-normal normal-case text-amber-800">
+          modo mock — troque SERPRO_DCTFWEB_MODE=real no .env pra chamada real
+        </span>
       </div>
       <button
         type="button"
