@@ -42,7 +42,7 @@ export async function uploadCertificadoAction(
     await prisma.cliente.update({
       where: { id: clienteId },
       data: {
-        certificadoArquivo: cifrarBytes(bytes),
+        certificadoArquivo: new Uint8Array(cifrarBytes(bytes)),
         certificadoNomeArquivo: file.name,
         certificadoSenha: cifrar(senha),
         certificadoValidade: validade,
@@ -106,7 +106,7 @@ export async function detectarECapturarCertificadoAction(
     await prisma.cliente.update({
       where: { id: clienteId },
       data: {
-        certificadoArquivo: cifrarBytes(bytes),
+        certificadoArquivo: new Uint8Array(cifrarBytes(bytes)),
         certificadoNomeArquivo: melhor.arquivo,
         certificadoSenha: cifrar(melhor.senha),
         certificadoValidade: melhor.validadeDate ?? null,

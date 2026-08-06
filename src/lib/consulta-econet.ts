@@ -180,7 +180,7 @@ export async function consultarNcmEconet(
     (a, b) => (PRECEDENCIA.indexOf(a) === -1 ? 99 : PRECEDENCIA.indexOf(a)) - (PRECEDENCIA.indexOf(b) === -1 ? 99 : PRECEDENCIA.indexOf(b)),
   );
 
-  const tipoEscolhido = tiposDetectados[0] ?? "normal";
+  const tipoEscolhido = (tiposDetectados[0] ?? "normal") as keyof typeof TIPO_CFG;
   const cfg = TIPO_CFG[tipoEscolhido];
 
   // Natureza: escolhe a aba apropriada
@@ -205,7 +205,7 @@ export async function consultarNcmEconet(
 
   return {
     ncm,
-    tipo: tipoEscolhido,
+    tipo: tipoEscolhido as "aliquota_zero" | "monofasico" | "isenta" | "substituicao" | "normal" | "revisar",
     cstEntrada: cfg.cstE,
     cstSaida: cfg.cstS,
     descricaoBase: cfg.desc,

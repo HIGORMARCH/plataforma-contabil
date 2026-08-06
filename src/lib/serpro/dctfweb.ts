@@ -105,7 +105,7 @@ export async function sincronizarDctfWeb(params: {
             situacao: dec.situacao,
             dataRecepcao: dec.dataRecepcao ? new Date(dec.dataRecepcao) : undefined,
             transmitida: dec.transmitida,
-            payloadBruto: {
+            payloadBruto: JSON.parse(JSON.stringify({
               debitos: dec.debitos.map((d) => ({
                 codigo: d.codigoReceita,
                 denominacao: d.denominacaoReceita,
@@ -114,7 +114,7 @@ export async function sincronizarDctfWeb(params: {
                 situacao: d.situacao,
               })),
               respostaBruta: resposta.bruto,
-            },
+            })),
             sincronizacaoId: sinc.id,
           },
           update: {
@@ -125,7 +125,7 @@ export async function sincronizarDctfWeb(params: {
             situacao: dec.situacao,
             dataRecepcao: dec.dataRecepcao ? new Date(dec.dataRecepcao) : undefined,
             transmitida: dec.transmitida,
-            payloadBruto: {
+            payloadBruto: JSON.parse(JSON.stringify({
               debitos: dec.debitos.map((d) => ({
                 codigo: d.codigoReceita,
                 denominacao: d.denominacaoReceita,
@@ -134,7 +134,7 @@ export async function sincronizarDctfWeb(params: {
                 situacao: d.situacao,
               })),
               respostaBruta: resposta.bruto,
-            },
+            })),
             sincronizacaoId: sinc.id,
           },
         });
