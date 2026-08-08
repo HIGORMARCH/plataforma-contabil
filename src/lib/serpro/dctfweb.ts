@@ -72,11 +72,24 @@ export async function sincronizarDctfWeb(params: {
     }
 
     let totalDeclaracoes = 0;
+    // Log por competência — array de {ano, mes, status, mensagem}. Preserva
+    // no `mensagem` da sincronização pra o contador entender por que uma
+    // competência não veio (não transmitida, em andamento, erro do SERPRO, etc.).
+    const logMeses: Array<{ mesLabel: string; status: "ok" | "vazio" | "erro"; detalhe: string }> = [];
 
     // Processa mês a mês. No modo real, cada iteração é uma chamada SERPRO
     // (custa). No modo mock, tudo local.
     async function processarMes(item: { ano: number; mes: number; primeiroDia: Date }, resposta: DctfWebResposta) {
-      if (resposta.status !== 200 || resposta.declaracoes.length === 0) return;
+      const mesLabel = `${String(item.mes).padStart(2, "0")}/${item.ano}`;
+      if (resposta.status !== 200) {
+        logMeses.push({ mesLabel, status: "vazio", detalhe: `SERPRO status ${resposta.status}: ${resposta.mensagem ?? "sem detalhe"}` });
+        return;
+      }
+      if (resposta.declaracoes.length === 0) {
+        logMeses.push({ mesLabel, status: "vazio", detalhe: "SERPRO ok mas sem declarações no período" });
+        return;
+      }
+      logMeses.push({ mesLabel, status: "ok", detalhe: `${resposta.declaracoes.length} declaração(ões) recebidas` });
       for (const dec of resposta.declaracoes) {
         // Consolida PIS/COFINS pra facilitar a query da tela.
         let pisConfessado = 0;
@@ -112,6 +125,8 @@ export async function sincronizarDctfWeb(params: {
                 periodicidade: d.periodicidade,
                 valor: d.valor,
                 situacao: d.situacao,
+                creditosVinculados: d.creditosVinculados,
+                saldoAPagar: d.saldoAPagar,
               })),
               respostaBruta: resposta.bruto,
             })),
@@ -132,6 +147,8 @@ export async function sincronizarDctfWeb(params: {
                 periodicidade: d.periodicidade,
                 valor: d.valor,
                 situacao: d.situacao,
+                creditosVinculados: d.creditosVinculados,
+                saldoAPagar: d.saldoAPagar,
               })),
               respostaBruta: resposta.bruto,
             })),
@@ -142,38 +159,50 @@ export async function sincronizarDctfWeb(params: {
       }
     }
 
-    if (modo === "mock") {
-      // Sem cert. Chama direto pra cada mês.
-      for (const item of meses) {
-        const resp = await consultarDeclaracaoCompleta({ cnpj: cnpjDigits, ano: item.ano, mes: item.mes });
+    const consultarMes = async (item: { ano: number; mes: number; primeiroDia: Date }, cert?: { caminhoTemp: string; senha: string }) => {
+      const mesLabel = `${String(item.mes).padStart(2, "0")}/${item.ano}`;
+      try {
+        const resp = await consultarDeclaracaoCompleta({ cert, cnpj: cnpjDigits, ano: item.ano, mes: item.mes });
         await processarMes(item, resp);
+      } catch (e) {
+        // Uma competência com erro NÃO aborta as outras. Loga e segue.
+        logMeses.push({ mesLabel, status: "erro", detalhe: e instanceof Error ? e.message.slice(0, 400) : String(e).slice(0, 400) });
       }
+    };
+
+    if (modo === "mock") {
+      for (const item of meses) await consultarMes(item);
+    } else if (cliente.metodoAcessoEcac === "PROCURACAO_MARCH") {
+      // Procuração eletrônica: SerproClient usa cert do escritório (via env
+      // SERPRO_CERT_PATH) e o procurador_token cacheado — não precisa cert do cliente.
+      for (const item of meses) await consultarMes(item);
     } else {
-      // Modo real — abre cert 1x, faz N chamadas dentro do handler.
-      // TODO: no modo real, se cliente.metodoAcessoEcac === "PROCURACAO_MARCH",
-      // usar cert do escritório em vez do do cliente.
+      // Certificado próprio do cliente: assina o termo com o .pfx do cliente
+      // e vira autor do pedido. Abre cert 1x, faz N chamadas dentro do handler.
       await comCertificadoDoCliente(clienteId, async (cert) => {
-        for (const item of meses) {
-          const resp = await consultarDeclaracaoCompleta({
-            cert,
-            cnpj: cnpjDigits,
-            ano: item.ano,
-            mes: item.mes,
-          });
-          await processarMes(item, resp);
-        }
+        for (const item of meses) await consultarMes(item, cert);
       });
     }
+
+    // Resumo por competência — útil pra explicar por que alguns meses vieram
+    // vazios (empresa não transmitiu, categoria diferente, em andamento, etc.).
+    const resumoOk = logMeses.filter((l) => l.status === "ok").length;
+    const resumoVazio = logMeses.filter((l) => l.status === "vazio").length;
+    const resumoErro = logMeses.filter((l) => l.status === "erro").length;
+    const detalheMeses = logMeses.map((l) => `${l.mesLabel} [${l.status}] ${l.detalhe}`).join(" | ");
 
     await prisma.dctfWebSincronizacao.update({
       where: { id: sinc.id },
       data: {
         declaracoesRetornadas: totalDeclaracoes,
-        sucesso: true,
+        // sucesso = true se pelo menos uma competência retornou dados, ou
+        // se todas retornaram vazio (o cliente pode não ter DCTFWeb no
+        // período — legítimo). Falha só se TODAS deram erro técnico.
+        sucesso: resumoErro === 0 || resumoOk > 0,
         mensagem:
           modo === "mock"
             ? `MOCK: ${totalDeclaracoes} declaração(ões) sintética(s) gravada(s). Alterne SERPRO_DCTFWEB_MODE=real quando cert/procuração estiverem prontos.`
-            : `${totalDeclaracoes} declaração(ões) sincronizada(s) via Integra Contador.`,
+            : `${totalDeclaracoes} declaração(ões) sincronizada(s) via Integra Contador. Resumo: ${resumoOk} ok, ${resumoVazio} vazio(s), ${resumoErro} erro(s). Detalhe por competência: ${detalheMeses}`.slice(0, 2000),
       },
     });
 

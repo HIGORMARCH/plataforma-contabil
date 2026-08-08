@@ -208,7 +208,11 @@ export function extrairPorClassificacao(linhas: string[]): ResultadoExtracao {
       const c = melhorDetalhe(contas, grupo?.codigo ?? "", TERMOS_DETALHE[campo]);
       if (c) {
         detalhe[campo] = c;
-        set(campo, c.mag, c.bruta);
+        // Usa c.valor (com sinal contábil) — não c.mag. Assim, contas com
+        // saldo invertido no plano de contas da origem (ex.: ativo com saldo
+        // credor) chegam ao banco como negativas e a validação SALDO_INVERTIDO
+        // aponta pro contador — mantém o princípio "importar fiel + apontar".
+        set(campo, c.valor, c.bruta);
       }
     }
   };
@@ -221,12 +225,14 @@ export function extrairPorClassificacao(linhas: string[]): ResultadoExtracao {
   const ehEmp = (c: Conta) => /emprestimos|financiamentos|instituicoes financeiras/.test(c.descNorm);
   const empPC = gPC ? melhorConta(contas, gPC.codigo, ehEmp) : undefined;
   const empPNC = gPNC ? melhorConta(contas, gPNC.codigo, ehEmp) : undefined;
-  if (empPC) set("pc.emprestimosFinanciamentos", empPC.mag, empPC.bruta);
-  if (empPNC) set("pnc.emprestimosFinanciamentos", empPNC.mag, empPNC.bruta);
+  if (empPC) set("pc.emprestimosFinanciamentos", empPC.valor, empPC.bruta);
+  if (empPNC) set("pnc.emprestimosFinanciamentos", empPNC.valor, empPNC.bruta);
 
   // ---- Resíduo em "outros" para FECHAR cada grupo ----
+  // Soma pelo VALOR (com sinal), não magnitude — assim contas invertidas não
+  // inflam o total detalhado e jogam um resíduo artificial em "outros".
   const soma = (...cs: (Conta | undefined)[]) =>
-    cs.reduce((acc, c) => acc + (c ? c.mag : 0), 0);
+    cs.reduce((acc, c) => acc + (c ? c.valor : 0), 0);
 
   if (gAC) {
     const detAC = soma(detalhe["ac.caixaEquivalentes"], detalhe["ac.contasReceber"], detalhe["ac.tributosRecuperar"], detalhe["ac.estoques"]);
@@ -239,18 +245,18 @@ export function extrairPorClassificacao(linhas: string[]): ResultadoExtracao {
     if (Math.abs(resid) > 0.005) set("anc.outros", resid, `Resíduo p/ fechar ${gANC.bruta}`, "media");
   }
   if (gPC) {
-    const detPC = soma(detalhe["pc.fornecedores"], detalhe["pc.obrigacoesTributarias"], detalhe["pc.obrigacoesTrabalhistas"]) + (empPC ? empPC.mag : 0);
+    const detPC = soma(detalhe["pc.fornecedores"], detalhe["pc.obrigacoesTributarias"], detalhe["pc.obrigacoesTrabalhistas"]) + (empPC ? empPC.valor : 0);
     const resid = gPC.valor - detPC;
     if (Math.abs(resid) > 0.005) set("pc.outros", resid, `Resíduo p/ fechar ${gPC.bruta}`, "media");
   }
   if (gPNC) {
-    const resid = gPNC.valor - (empPNC ? empPNC.mag : 0);
+    const resid = gPNC.valor - (empPNC ? empPNC.valor : 0);
     if (Math.abs(resid) > 0.005) set("pnc.outros", resid, `Resíduo p/ fechar ${gPNC.bruta}`, "media");
   }
 
   // ---- Patrimônio Líquido (respeita sinal: D = negativo) ----
   if (gPL) {
-    const capital = detalhe["pl.capitalSocial"]?.mag ?? 0;
+    const capital = detalhe["pl.capitalSocial"]?.valor ?? 0;
     // plug de lucros/prejuízos para o PL fechar com o total do grupo (com sinal).
     const plug = gPL.valor - capital;
     if (plug >= 0) {

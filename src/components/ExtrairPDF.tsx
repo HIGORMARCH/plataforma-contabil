@@ -25,7 +25,7 @@ function formatarBR(v: number): string {
   return v.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
-export function ExtrairPDF() {
+export function ExtrairPDF({ clienteId }: { clienteId?: string } = {}) {
   const [estado, setEstado] = useState<"idle" | "processando" | "ok" | "erro">("idle");
   const [msg, setMsg] = useState<string>("");
   const [resumo, setResumo] = useState<{ chave: string; campo: Campo }[]>([]);
@@ -40,6 +40,7 @@ export function ExtrairPDF() {
     try {
       const fd = new FormData();
       fd.append("arquivo", file);
+      if (clienteId) fd.append("clienteId", clienteId);
       const r = await fetch("/api/extrair-pdf", { method: "POST", body: fd });
       const data = (await r.json()) as Resposta;
       if (!r.ok || data.erro) {

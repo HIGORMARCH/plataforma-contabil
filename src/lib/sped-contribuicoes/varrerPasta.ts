@@ -17,6 +17,7 @@ import path from "node:path";
 import { prisma } from "@/lib/db";
 import { importarSpedContribuicoes } from "./importar";
 import { parseEfdContribuicoes } from "./parseEfdContribuicoes";
+import { caminhoArquivo, copiarDeOrigem, type ClienteRef } from "@/lib/storage/filesystem";
 
 export interface ResultadoVarredura {
   arquivosVistos: number;
@@ -68,10 +69,11 @@ export async function varrerPastaSpedContribuicoes(params: {
 
   const cliente = await prisma.cliente.findUnique({
     where: { id: clienteId },
-    select: { cnpj: true },
+    select: { razaoSocial: true, cnpj: true },
   });
   if (!cliente) throw new Error("Cliente não encontrado.");
   const cnpjCliente = soDigitos(cliente.cnpj);
+  const clienteRef: ClienteRef = { razaoSocial: cliente.razaoSocial, cnpj: cliente.cnpj };
 
   const st = await stat(pasta).catch(() => null);
   if (!st || !st.isDirectory()) {
@@ -143,12 +145,28 @@ export async function varrerPastaSpedContribuicoes(params: {
         continue;
       }
 
+      // Fonte única: copia o arquivo válido pra C:\PlataformaContabil\...\
+      // SPED-CONTRIBUICOES\<ano>\<mm>.txt (nomeado pelo período do próprio SPED,
+      // não pelo nome esdrúxulo do ReceitanetBX). Guarda a origem VERDADEIRA
+      // (pasta única) no caminhoOrigem — futuras leituras acham lá.
+      // Ver project_fonte_unica_arquivos.
+      const parsed = parseEfdContribuicoes(conteudo);
+      const dtIni = parsed.cabecalho.dataInicial;
+      let caminhoOrigemFinal = caminho;
+      if (dtIni) {
+        const ano = dtIni.getFullYear();
+        const mes = dtIni.getMonth() + 1;
+        const alvo = caminhoArquivo(clienteRef, "SPED-CONTRIBUICOES", ano, mes, ".txt");
+        await copiarDeOrigem(caminho, alvo);
+        caminhoOrigemFinal = alvo;
+      }
+
       const r = await importarSpedContribuicoes({
         clienteId,
         nomeArquivo,
         conteudo,
         origem: "VARREDURA_PASTA",
-        caminhoOrigem: caminho,
+        caminhoOrigem: caminhoOrigemFinal,
         importadoPor: params.usuarioId,
       });
 

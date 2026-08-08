@@ -11,6 +11,7 @@ import {
 } from "@/lib/import";
 import type { Maybe } from "@/lib/accounting/types";
 import { ExtrairPDF } from "@/components/ExtrairPDF";
+import { TotalizadoresBalanco } from "@/components/TotalizadoresBalanco";
 import { salvarExercicioManualAction, importarExercicioAction } from "../actions";
 
 function agrupar(campos: DefCampo[]) {
@@ -92,7 +93,7 @@ export default async function ExerciciosPage({
       )}
 
       {/* Extração automática de PDF */}
-      <ExtrairPDF />
+      <ExtrairPDF clienteId={id} />
 
       {/* Importação por planilha */}
       <section className="card mb-6 p-5">
@@ -117,7 +118,7 @@ export default async function ExerciciosPage({
       </section>
 
       {/* Lançamento manual */}
-      <form action={salvarExercicioManualAction.bind(null, id)} className="space-y-6">
+      <form id="exercicio-form" action={salvarExercicioManualAction.bind(null, id)} className="space-y-6">
         <section className="card p-5">
           <div className="mb-4 flex flex-wrap items-end gap-4">
             <div>
@@ -173,6 +174,8 @@ export default async function ExerciciosPage({
             </div>
           </section>
         </div>
+
+        <TotalizadoresBalanco formId="exercicio-form" />
 
         <div className="flex justify-end gap-3">
           <Link href={`/painel/clientes/${id}`} className="btn btn-ghost">Cancelar</Link>

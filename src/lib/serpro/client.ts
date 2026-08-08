@@ -309,4 +309,92 @@ export class SerproClient {
     }
     return acumulado;
   }
+
+  /**
+   * Consulta a declaração completa DCTFWeb no Integra Contador (idSistema
+   * DCTFWEB, idServico CONSULTARDECLARACAOCOMPLETA12) pra uma competência.
+   * Devolve o objeto `dados` já parseado — a estrutura interna é opaca aqui;
+   * quem chama (dctfwebClient) mapeia pros campos padronizados.
+   *
+   * Regra de autor/procurador (idêntica à consultarPagamentos):
+   *  - cnpj === cnpjMarch → autoconsulta, sem procurador_token
+   *  - signingCert informado → autor = próprio contribuinte, assinatura do
+   *    termo pelo cert do cliente (fluxo CERTIFICADO_PROPRIO)
+   *  - senão → autor = MARCH, procurador_token via procuração eletrônica
+   *    ativa no e-CAC do contribuinte (fluxo PROCURACAO_MARCH)
+   */
+  async consultarDctfWeb(params: {
+    cnpjContribuinte: string;
+    ano: number;
+    mes: number; // 1..12
+    categoria?: string; // "geral" | "13SALARIO" | etc.
+    signingCert?: CertificadoCarregado;
+  }): Promise<{ status: number; mensagens: Array<{ codigo: string; texto: string }>; dados: unknown; bruto: unknown }> {
+    const cnpj = params.cnpjContribuinte.replace(/\D/g, "");
+    const isAutoconsulta = cnpj === this.config.cnpjMarch;
+    const tokens = await this.getTokens();
+
+    let procuradorToken: string | null = null;
+    let autorCnpj = this.config.cnpjMarch;
+    if (params.signingCert) {
+      const tok = await this.getProcuradorToken({
+        signingCert: params.signingCert,
+        signerCnpj: cnpj,
+      });
+      procuradorToken = tok.token;
+      autorCnpj = cnpj;
+    } else if (!isAutoconsulta) {
+      procuradorToken = (await this.getProcuradorToken()).token;
+    }
+
+    const body = {
+      contratante: { numero: this.config.cnpjMarch, tipo: 2 },
+      autorPedidoDados: { numero: autorCnpj, tipo: 2 },
+      contribuinte: { numero: cnpj, tipo: 2 },
+      pedidoDados: {
+        idSistema: "DCTFWEB",
+        // CONSXMLDECLARACAO38 devolve o XML estruturado da declaração (com
+        // débitos, créditos vinculados, valores por código de receita).
+        // Existe também CONSDECCOMPLETA33 mas devolve PDF base64 — inútil pra
+        // popular Débito/Crédito nas colunas do banco. Ver
+        // reference_integra_contador_catalogo pro catálogo aprovado.
+        idServico: "CONSXMLDECLARACAO38",
+        versaoSistema: "1.0",
+        // Formato validado (SERPRO exige STRINGS em anoPA/mesPA e categoria com nome canônico):
+        //   { "categoria": "GERAL_MENSAL", "anoPA": "2021", "mesPA": "1" }
+        // Outras categorias válidas: PF_MENSAL, ESPETACULO_DESPORTIVO, AFERICAO.
+        dados: JSON.stringify({
+          categoria: params.categoria ?? "GERAL_MENSAL",
+          anoPA: String(params.ano),
+          mesPA: String(params.mes),
+        }),
+      },
+    };
+
+    const headers: OutgoingHttpHeaders = {
+      Authorization: `Bearer ${tokens.accessToken}`,
+      jwt_token: tokens.jwtToken,
+      "Content-Type": "application/json",
+    };
+    if (procuradorToken) headers.autenticar_procurador_token = procuradorToken;
+
+    const res = await fetchWithMtls(`${this.config.gatewayUrl}/Consultar`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(body),
+      timeoutMs: 45_000,
+    });
+    if (res.status !== 200) {
+      throw new Error(`CONSXMLDECLARACAO38 falhou ${res.status}: ${res.body.slice(0, 2000)}`);
+    }
+    const j = JSON.parse(res.body);
+    // Alguns períodos podem não ter declaração — mensagem "sem dados" chega como
+    // status ≠ 200 no body, mas não é erro fatal. Devolve envelope pra quem chama decidir.
+    return {
+      status: Number(j.status) || 0,
+      mensagens: (j.mensagens ?? []) as Array<{ codigo: string; texto: string }>,
+      dados: j.dados ? JSON.parse(j.dados) : null,
+      bruto: j,
+    };
+  }
 }

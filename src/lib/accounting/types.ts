@@ -84,7 +84,18 @@ export interface DRE {
   tributosSobreLucro: Maybe;
   /** Depreciação e amortização contidas nas despesas/custos (para EBITDA). */
   depreciacaoAmortizacao: Maybe;
-  /** Resultado líquido informado no documento original (para conferência). */
+  /**
+   * Resultado ANTES DOS TRIBUTOS SOBRE O LUCRO (LAIR — "Lucro Antes do IR").
+   * Preserva sinal (positivo = lucro, negativo = prejuízo). Quando informado
+   * junto com `resultadoLiquidoInformado`, deve-se ter LAIR - tributosSobreLucro
+   * = Resultado Líquido; divergência entre os dois é apontamento.
+   */
+  resultadoAntesTributos?: Maybe;
+  /**
+   * Resultado LÍQUIDO informado no documento original (para conferência) —
+   * após dedução de IRPJ/CSLL. É o valor que vai pra lucros acumulados ou
+   * dividendos. NÃO confundir com `resultadoAntesTributos` (LAIR).
+   */
   resultadoLiquidoInformado?: Maybe;
 }
 

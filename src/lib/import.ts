@@ -55,6 +55,8 @@ export const CAMPOS_DRE: DefCampo[] = [
   { chave: "dre.outrasReceitasDespesas", rotulo: "Outras receitas/despesas (saldo)", grupo: "DRE" },
   { chave: "dre.tributosSobreLucro", rotulo: "Tributos sobre o lucro (IRPJ/CSLL)", grupo: "DRE" },
   { chave: "dre.depreciacaoAmortizacao", rotulo: "Depreciação e amortização", grupo: "DRE" },
+  { chave: "dre.resultadoAntesTributos", rotulo: "Resultado antes dos tributos (LAIR)", grupo: "DRE" },
+  { chave: "dre.resultadoLiquidoInformado", rotulo: "Resultado líquido do exercício (informado)", grupo: "DRE" },
 ];
 
 export const TODOS_CAMPOS = [...CAMPOS_BALANCO, ...CAMPOS_DRE];
@@ -122,6 +124,7 @@ export function montarExercicio(ano: number, mapa: Record<string, Maybe>, docume
       outrasReceitasDespesas: g("dre.outrasReceitasDespesas"),
       tributosSobreLucro: g("dre.tributosSobreLucro"),
       depreciacaoAmortizacao: g("dre.depreciacaoAmortizacao"),
+      resultadoAntesTributos: g("dre.resultadoAntesTributos"),
       resultadoLiquidoInformado: g("dre.resultadoLiquidoInformado"),
     },
   };
@@ -182,6 +185,8 @@ export function achatarExercicio(ex: DemonstrativosExercicio): Record<string, Ma
     "dre.outrasReceitasDespesas": d.outrasReceitasDespesas,
     "dre.tributosSobreLucro": d.tributosSobreLucro,
     "dre.depreciacaoAmortizacao": d.depreciacaoAmortizacao,
+    "dre.resultadoAntesTributos": d.resultadoAntesTributos ?? null,
+    "dre.resultadoLiquidoInformado": d.resultadoLiquidoInformado ?? null,
   };
 }
 

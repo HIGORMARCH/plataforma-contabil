@@ -5,6 +5,7 @@ import { prisma } from "@/lib/db";
 import { carregarExercicios } from "@/lib/service";
 import { analisar } from "@/lib/accounting/analyze";
 import { ResumoSituacao } from "@/components/Analise";
+import { CardPastaUnica } from "@/components/CardPastaUnica";
 import { StatusBadge } from "@/components/ui";
 import { gerarRelatorioAction } from "./actions";
 import { excluirRelatorioAction } from "../../relatorios/actions";
@@ -61,6 +62,9 @@ export default async function ClienteDetalhe({ params }: { params: Promise<{ id:
             <Link href={`/painel/clientes/${id}/obrigacoes-acessorias`} className="btn btn-ghost">
               📋 Obrigações Acessórias
             </Link>
+            <Link href={`/painel/clientes/${id}/conciliacao-ecd`} className="btn btn-ghost">
+              🔍 Conciliação ECD
+            </Link>
             <Link href={`/painel/clientes/${id}/exercicios`} className="btn btn-accent">
               📄 Adicionar documentos
             </Link>
@@ -91,7 +95,7 @@ export default async function ClienteDetalhe({ params }: { params: Promise<{ id:
           </dl>
         </section>
 
-        <section>
+        <section className="space-y-4">
           {analise ? (
             <ResumoSituacao analise={analise} />
           ) : (
@@ -105,6 +109,7 @@ export default async function ClienteDetalhe({ params }: { params: Promise<{ id:
               </Link>
             </div>
           )}
+          <CardPastaUnica cliente={{ razaoSocial: cliente.razaoSocial, cnpj: cliente.cnpj }} />
         </section>
       </div>
 

@@ -7,6 +7,7 @@ import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import { prisma } from "@/lib/db";
 import { parseDecDctfAntiga } from "./parseDec";
+import { caminhoArquivo, copiarDeOrigem, type ClienteRef } from "@/lib/storage/filesystem";
 
 export interface ResultadoImportacao {
   arquivosVistos: number;
@@ -36,10 +37,11 @@ export async function varrerPastaDctfAntiga(params: {
 
   const cliente = await prisma.cliente.findUnique({
     where: { id: clienteId },
-    select: { cnpj: true },
+    select: { razaoSocial: true, cnpj: true },
   });
   if (!cliente) throw new Error("Cliente não encontrado.");
   const cnpjCliente = soDigitos(cliente.cnpj);
+  const clienteRef: ClienteRef = { razaoSocial: cliente.razaoSocial, cnpj: cliente.cnpj };
 
   const res: ResultadoImportacao = {
     arquivosVistos: 0,
@@ -98,6 +100,13 @@ export async function varrerPastaDctfAntiga(params: {
         continue;
       }
 
+      // Fonte única: copia o .dec pra C:\PlataformaContabil\<cliente>\DCTF-ANTIGA\<ano>\<mm>.dec
+      // (nomeado pelo período declarado, não pelo nome original do PGD).
+      const anoPer = parsed.periodoDeclaracao.getFullYear();
+      const mesPer = parsed.periodoDeclaracao.getMonth() + 1;
+      const alvo = caminhoArquivo(clienteRef, "DCTF-ANTIGA", anoPer, mesPer, ".dec");
+      await copiarDeOrigem(caminho, alvo);
+
       // Dedup: mesma competência + origem = pula
       const jaExiste = await prisma.dctfWebDeclaracao.findFirst({
         where: {
@@ -117,6 +126,7 @@ export async function varrerPastaDctfAntiga(params: {
         transmitida: true,
         payloadBruto: {
           nomeArquivo: nome,
+          caminhoArquivoUnico: alvo,
           razaoSocial: parsed.razaoSocial,
           debitos: parsed.debitos.map((d) => ({
             codigo: d.codigoReceita,

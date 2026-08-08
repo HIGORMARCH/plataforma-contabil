@@ -20,6 +20,7 @@
     "@xmldom/xmldom": "^0.9.10",
     "bcryptjs": "^3.0.3",
     "exceljs": "^4.4.0",
+    "fast-xml-parser": "^5.10.1",
     "jose": "^6.2.3",
     "next": "16.2.7",
     "node-forge": "^1.4.0",
