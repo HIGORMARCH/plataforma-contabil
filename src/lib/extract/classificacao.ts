@@ -17,8 +17,20 @@
 import type { CampoExtraido, ResultadoExtracao } from "./heuristic";
 import type { Maybe } from "../accounting/types";
 
-interface Conta {
+export interface Conta {
+  /**
+   * Código de CLASSIFICAÇÃO hierárquica (ex.: "1.1.50.100.1"). É o que aparece
+   * como coluna "Classificação" no PDF do Domínio. Define a árvore do plano de
+   * contas e é usado pra determinar grupo do BP (prefixo 1.1 = AC, etc).
+   */
   codigo: string;
+  /**
+   * Código SEQUENCIAL curto (ex.: "128", "5660"). É o COD_CTA que o Domínio
+   * usa internamente E o que ele exporta pra o SPED-ECD (bloco I050/I155).
+   * Serve como CHAVE de matching entre PDF do Domínio e SPED-ECD.
+   * Ausente em planos que não têm essa coluna (formato antigo).
+   */
+  codigoSequencial?: string;
   segmentos: number;
   descNorm: string;
   bruta: string;
@@ -72,7 +84,7 @@ export function detectarAnoReferencia(linhas: string[]): number | null {
   return melhor;
 }
 
-function parseContas(linhas: string[]): Conta[] {
+export function parseContas(linhas: string[]): Conta[] {
   const contas: Conta[] = [];
   for (const bruta of linhas) {
     let candidata = bruta.trim();
@@ -85,7 +97,8 @@ function parseContas(linhas: string[]): Conta[] {
     }
     const m = candidata.match(RE_CONTA);
     if (!m) continue;
-    const codigo = m[2];
+    const codigoSequencial = m[1]; // primeira coluna do PDF ("Código" — 128, 5660)
+    const codigo = m[2]; // segunda coluna ("Classificação" — 1.1.50.100.1)
     const descNorm = normalizar(m[3]);
     const mag = numero(m[4]);
     const dc = (m[5] as "D" | "C") ?? null;
@@ -93,7 +106,16 @@ function parseContas(linhas: string[]): Conta[] {
     let valor = mag;
     if (lado === "1") valor = dc === "C" ? -mag : mag;
     else if (lado === "2") valor = dc === "D" ? -mag : mag;
-    contas.push({ codigo, segmentos: codigo.split(".").length, descNorm, bruta: bruta.trim(), valor, mag, dc });
+    contas.push({
+      codigo,
+      codigoSequencial,
+      segmentos: codigo.split(".").length,
+      descNorm,
+      bruta: bruta.trim(),
+      valor,
+      mag,
+      dc,
+    });
   }
   return contas;
 }

@@ -158,6 +158,166 @@ function parseJ150(campos: string[]): ContaEcd | null {
  * Lê todas as demonstrações contidas num arquivo ECD.
  * Cada J005 abre uma nova demonstração; J100/J150 seguintes pertencem a ela.
  */
+// ---------------------------------------------------------------------------
+// Bloco I do SPED-ECD — plano de contas Domínio (I050), mapeamento pro plano
+// referencial da RFB (I051) e saldos analíticos por período (I150 + I155).
+// ---------------------------------------------------------------------------
+//
+// Essa parte do arquivo é a FONTE DE VERDADE pra fazer matching determinístico
+// Domínio × ECD por CÓDIGO DA CONTA (não por descrição, que dá falso match).
+// A conciliação de contas divergentes usa isso via extrairPlanoDominioDaEcd().
+
+/**
+ * Uma referência de plano externo (RFB, BCB, SUSEP, ...) amarrada a uma
+ * conta do plano da empresa (I051 filho de um I050).
+ */
+export interface ReferencialConta {
+  codEntRef: string; // ex.: "1" (RFB), "2" (BCB)
+  codCtaRef: string; // código da conta no plano referencial
+}
+
+export interface ContaPlanoI050 {
+  codigo: string; // COD_CTA (código do plano da empresa)
+  descricao: string;
+  descNorm: string;
+  /** S=Sintética, A=Analítica, X=extra-patrimonial (raro). */
+  indCta: "S" | "A" | "X" | "";
+  nivel: number;
+  codigoSuperior: string;
+  /** Amarração com planos externos (I051). Pode ser vazia. */
+  referenciais: ReferencialConta[];
+}
+
+export interface SaldoAnaliticoI155 {
+  codigo: string; // COD_CTA
+  /** Data-fim do período (I150). */
+  dataFim: string; // DDMMAAAA
+  valorFinal: number;
+  dcFinal: "D" | "C" | "";
+  /** Sinal aplicado à natureza da conta. */
+  valorFinalSinal: number;
+}
+
+export interface PlanoESaldosEcd {
+  /** Plano Domínio inteiro (sintéticas + analíticas) do bloco I050. */
+  contas: Map<string, ContaPlanoI050>;
+  /**
+   * Saldos analíticos por código-de-conta e período. Chave = COD_CTA.
+   * Valor = lista ordenada por data-fim (ascendente).
+   */
+  saldosPorConta: Map<string, SaldoAnaliticoI155[]>;
+}
+
+function parseI050(campos: string[]): ContaPlanoI050 | null {
+  // |I050|DT_ALT|COD_NAT|IND_CTA|NIVEL|COD_CTA|COD_CTA_SUP|CTA|
+  if (campos.length < 9) return null;
+  const codigo = campos[6] ?? "";
+  if (!codigo) return null;
+  return {
+    codigo,
+    descricao: campos[8] ?? "",
+    descNorm: normalizar(campos[8] ?? ""),
+    indCta: (campos[4] as ContaPlanoI050["indCta"]) ?? "",
+    nivel: Number(campos[5] ?? "0"),
+    codigoSuperior: campos[7] ?? "",
+    referenciais: [],
+  };
+}
+
+function parseI051(campos: string[]): ReferencialConta | null {
+  // Duas variações históricas do layout — atendemos as duas:
+  //   Antiga (leiaute <=6): |I051|COD_CCUS|COD_CTA_REF|CTA_REF|
+  //   Nova (leiaute >=7):   |I051|COD_ENT_REF|COD_CCUS|COD_CTA_REF|
+  // Heurística: se o campo 2 é numérico curto (1-2 dígitos) e o campo 4
+  // (COD_CTA_REF na nova) parece uma conta, usa layout novo. Senão usa
+  // o antigo (COD_CTA_REF é campo 3).
+  if (campos.length < 4) return null;
+  const c2 = campos[2] ?? "";
+  const c3 = campos[3] ?? "";
+  const c4 = campos[4] ?? "";
+  const parece = (s: string) => /^[\d.]+$/.test(s) && s.length >= 3;
+
+  if (parece(c4) && /^\d{1,2}$/.test(c2)) {
+    return { codEntRef: c2, codCtaRef: c4 };
+  }
+  return { codEntRef: "1", codCtaRef: c3 }; // default entidade = RFB (1)
+}
+
+function parseI155(campos: string[], dataFim: string): SaldoAnaliticoI155 | null {
+  // |I155|COD_CTA|COD_CCUS|VL_SLD_INI|IND_DC_INI|VL_DEB|VL_CRE|VL_SLD_FIN|IND_DC_FIN|COD_CNT|CTA|
+  if (campos.length < 10) return null;
+  const codigo = campos[2] ?? "";
+  if (!codigo) return null;
+  const valorFinal = num(campos[8] ?? "");
+  const dcFinal = (campos[9] ?? "") as "D" | "C" | "";
+  // Sinal contábil vai ser aplicado depois quando soubermos a natureza
+  // (ativo/passivo) via I050. Aqui deixamos o valor cru e o D/C.
+  return {
+    codigo,
+    dataFim,
+    valorFinal,
+    dcFinal,
+    valorFinalSinal: valorFinal, // recalculado depois pelo consumidor
+  };
+}
+
+/**
+ * Extrai o plano de contas Domínio (I050 + I051) e os saldos analíticos
+ * (I150 + I155) de um SPED-ECD já lido em linhas.
+ *
+ * Uso: matching determinístico Domínio × ECD pela CONTA (código Dom),
+ * não pela descrição — o que resolve casos de reagrupamento (1 analítica
+ * Dom = várias na ECD) e variação textual.
+ */
+export function extrairPlanoDominioDaEcd(linhas: string[]): PlanoESaldosEcd {
+  const contas = new Map<string, ContaPlanoI050>();
+  const saldosPorConta = new Map<string, SaldoAnaliticoI155[]>();
+  let ultimoI050: ContaPlanoI050 | null = null;
+  let periodoAtualFim = ""; // atualizado por I150
+
+  for (const linha of linhas) {
+    if (!linha.startsWith("|")) continue;
+    const campos = linha.split("|");
+    const reg = campos[1];
+
+    if (reg === "I050") {
+      const c = parseI050(campos);
+      if (c) {
+        contas.set(c.codigo, c);
+        ultimoI050 = c;
+      }
+    } else if (reg === "I051" && ultimoI050) {
+      const ref = parseI051(campos);
+      if (ref) ultimoI050.referenciais.push(ref);
+    } else if (reg === "I150") {
+      periodoAtualFim = campos[3] ?? "";
+    } else if (reg === "I155" && periodoAtualFim) {
+      const s = parseI155(campos, periodoAtualFim);
+      if (s) {
+        const lst = saldosPorConta.get(s.codigo) ?? [];
+        lst.push(s);
+        saldosPorConta.set(s.codigo, lst);
+      }
+    }
+  }
+
+  // Aplica sinal contábil a cada saldo, com base na natureza da conta (Ativo
+  // devedor = +, credor = −; Passivo/PL credor = +, devedor = −). Deduz o lado
+  // pelo prefixo do código Domínio (padrão brasileiro: 1=ativo, 2=passivo/PL).
+  for (const [codigo, saldos] of saldosPorConta) {
+    const lado = codigo.charAt(0); // "1", "2", "3", "4" ...
+    for (const s of saldos) {
+      let valor = s.valorFinal;
+      if (lado === "1" && s.dcFinal === "C") valor = -s.valorFinal;
+      else if (lado === "2" && s.dcFinal === "D") valor = -s.valorFinal;
+      s.valorFinalSinal = valor;
+    }
+    saldos.sort((a, b) => a.dataFim.localeCompare(b.dataFim));
+  }
+
+  return { contas, saldosPorConta };
+}
+
 export function extrairDemonstracoes(linhas: string[]): DemonstracaoEcd[] {
   const demonstracoes: DemonstracaoEcd[] = [];
   let atual: DemonstracaoEcd | null = null;
@@ -525,7 +685,17 @@ export async function caminhoEcdDoAno(
   const alvo = caminhoArquivo(cliente, "SPED-ECD", ano, null, ".txt");
   if (existsSync(alvo)) return alvo;
 
-  // Fallback: procura na pasta legada e copia pra única (só primeira vez).
+  // Fallback 1: já está na pasta única mas com nome não padronizado
+  // (ex.: o nome longo original do SPED "35417896000119-...-SPED-ECD.txt"
+  // colocado direto pelo usuário sem renomear). Escolhe o melhor .txt.
+  const pastaAnoUnica = path.dirname(alvo);
+  if (existsSync(pastaAnoUnica)) {
+    const escolhaNaPasta = escolherArquivoEcdEmPasta(pastaAnoUnica, ano);
+    if (escolhaNaPasta) return escolhaNaPasta;
+  }
+
+  // Fallback 2: procura na pasta legada (Cliente.pastaFiscal/ECD/) e copia
+  // pra pasta única com nome padronizado (só primeira vez).
   const pastaLegada = opts?.pastaFiscalLegada ? path.join(opts.pastaFiscalLegada, "ECD") : null;
   if (!pastaLegada || !existsSync(pastaLegada)) return null;
   const origem = escolherArquivoEcdEmPasta(pastaLegada, ano);
