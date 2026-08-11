@@ -113,6 +113,7 @@ export function conciliar(
     linha("detalhe", "passivo", "pnc.emprestimosFinanciamentos", "Empréstimos (LP)", dominio.balanco.passivoNaoCirculante.emprestimosFinanciamentos, ecd.balanco.passivoNaoCirculante.emprestimosFinanciamentos),
     linha("detalhe", "passivo", "pnc.outros", "PNC — Outros", dominio.balanco.passivoNaoCirculante.outros, ecd.balanco.passivoNaoCirculante.outros),
     linha("detalhe", "pl", "pl.capitalSocial", "Capital Social", dominio.balanco.patrimonioLiquido.capitalSocial, ecd.balanco.patrimonioLiquido.capitalSocial),
+    linha("detalhe", "pl", "pl.reservas", "Reservas", dominio.balanco.patrimonioLiquido.reservas, ecd.balanco.patrimonioLiquido.reservas),
     linha("detalhe", "pl", "pl.lucrosAcumulados", "Lucros Acumulados", dominio.balanco.patrimonioLiquido.lucrosAcumulados, ecd.balanco.patrimonioLiquido.lucrosAcumulados),
     linha("detalhe", "pl", "pl.prejuizosAcumulados", "Prejuízos Acumulados", dominio.balanco.patrimonioLiquido.prejuizosAcumulados, ecd.balanco.patrimonioLiquido.prejuizosAcumulados),
     // ---- Detalhes da DRE ----

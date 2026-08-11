@@ -123,6 +123,11 @@ const TERMOS_DETALHE: Record<string, string[]> = {
   "pc.obrigacoesTributarias": ["obrigacoes tributarias", "obrigacoes fiscais", "impostos e contribuicoes a recolher", "impostos a recolher"],
   "pc.obrigacoesTrabalhistas": ["obrigacoes trabalhista", "obrigacoes sociais", "obrigacoes com o pessoal", "salarios"],
   "pl.capitalSocial": ["capital social", "capital subscrito"],
+  // Reservas de Capital (ex.: Adiantamento p/ Futuro Aumento de Capital)
+  // aparecem em sintética própria no plano brasileiro (2.3.2 ou similar).
+  // Sem essa entrada, o parser jogava as reservas dentro do plug de lucros
+  // acumulados, gerando divergência falsa contra a ECD.
+  "pl.reservas": ["reservas de capital", "reservas", "adiantamento p/fut", "adiantamento para futuro aumento", "adiantamento p/futuro"],
 };
 
 /** Verdadeiro se `cod` está hierarquicamente sob `prefixo` (comparação por segmentos). */
@@ -219,7 +224,7 @@ export function extrairPorClassificacao(linhas: string[]): ResultadoExtracao {
   aplicarDetalhes(["ac.caixaEquivalentes", "ac.contasReceber", "ac.tributosRecuperar", "ac.estoques"], gAC);
   aplicarDetalhes(["anc.realizavelLongoPrazo", "anc.imobilizado", "anc.intangivel", "anc.investimentos"], gANC);
   aplicarDetalhes(["pc.fornecedores", "pc.obrigacoesTributarias", "pc.obrigacoesTrabalhistas"], gPC);
-  aplicarDetalhes(["pl.capitalSocial"], gPL);
+  aplicarDetalhes(["pl.capitalSocial", "pl.reservas"], gPL);
 
   // Empréstimos: roteados pelo prefixo do passivo circulante / não circulante.
   const ehEmp = (c: Conta) => /emprestimos|financiamentos|instituicoes financeiras/.test(c.descNorm);
@@ -257,8 +262,11 @@ export function extrairPorClassificacao(linhas: string[]): ResultadoExtracao {
   // ---- Patrimônio Líquido (respeita sinal: D = negativo) ----
   if (gPL) {
     const capital = detalhe["pl.capitalSocial"]?.valor ?? 0;
+    // Subtrai também as Reservas quando existem em sintética própria — senão
+    // o plug de lucros incorporaria erroneamente o saldo das reservas.
+    const reservas = detalhe["pl.reservas"]?.valor ?? 0;
     // plug de lucros/prejuízos para o PL fechar com o total do grupo (com sinal).
-    const plug = gPL.valor - capital;
+    const plug = gPL.valor - capital - reservas;
     if (plug >= 0) {
       set("pl.lucrosAcumulados", plug, `Ajuste p/ PL = ${gPL.bruta}`, "media");
     } else {

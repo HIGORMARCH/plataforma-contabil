@@ -62,7 +62,10 @@ export async function salvarExercicioManualAction(clienteId: string, fd: FormDat
   await prisma.logAcesso.create({
     data: { acao: "EXERCICIO_SALVO", detalhe: `Cliente ${clienteId} — ${ano}`, usuarioId: sessao.userId },
   });
-  revalidatePath(`/painel/clientes/${clienteId}`);
+  // Invalida cache de TODAS as subpáginas do cliente (análise, conciliação,
+  // pis-cofins, irpj-csll, obrigações etc.) — reimportação de exercício
+  // já existente exige que qualquer tela que consulte dadosJson recarregue.
+  revalidatePath(`/painel/clientes/${clienteId}`, "layout");
   redirect(`/painel/clientes/${clienteId}`);
 }
 
