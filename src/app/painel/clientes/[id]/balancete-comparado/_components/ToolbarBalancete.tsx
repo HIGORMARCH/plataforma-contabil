@@ -32,15 +32,23 @@ export function ToolbarBalancete({
   }
 
   function imprimir(escopo: "sistema" | "ecd" | "ambos") {
-    // Aplica classe temporária no body pra CSS @media print esconder o lado
-    // que não faz parte do escopo. Remove depois do print.
+    // Aplica classe temporária no body (CSS @media print esconde o lado
+    // fora do escopo) + injeta @page com orientação adequada:
+    //   ambos → landscape (12 colunas precisam da largura)
+    //   sistema/ecd → portrait (6 colunas cabem melhor em retrato)
     const body = document.body;
     body.classList.add(`print-escopo-${escopo}`);
-    // Delay 0 pra garantir que a classe entrou no DOM antes do print
+    const orientacao = escopo === "ambos" ? "landscape" : "portrait";
+    const styleTag = document.createElement("style");
+    styleTag.setAttribute("data-print-orient", orientacao);
+    styleTag.textContent = `@page { size: A4 ${orientacao}; margin: 15mm 12mm 18mm 12mm; }`;
+    document.head.appendChild(styleTag);
+    // Delay 0 pra garantir que classe + style entraram no DOM antes do print
     setTimeout(() => {
       window.print();
       setTimeout(() => {
         body.classList.remove(`print-escopo-${escopo}`);
+        styleTag.remove();
       }, 100);
     }, 0);
   }
