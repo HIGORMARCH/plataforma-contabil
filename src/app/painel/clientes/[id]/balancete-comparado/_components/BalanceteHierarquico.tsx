@@ -69,19 +69,19 @@ export function BalanceteHierarquico({
     <div className="balancete-hier bal-lado overflow-x-auto">
       <table>
         <colgroup>
-          <col style={{ width: 45 }} />
-          <col style={{ width: 275 }} />
-          <col style={{ width: 107 }} />
-          <col style={{ width: 107 }} />
-          <col style={{ width: 107 }} />
-          <col style={{ width: 107 }} />
-          <col style={{ width: 10 }} className="sep" />
-          <col style={{ width: 45 }} />
-          <col style={{ width: 275 }} />
-          <col style={{ width: 107 }} />
-          <col style={{ width: 107 }} />
-          <col style={{ width: 107 }} />
-          <col style={{ width: 107 }} />
+          <col style={{ width: "3%" }} />
+          <col style={{ width: "18.5%" }} />
+          <col style={{ width: "7%" }} />
+          <col style={{ width: "7%" }} />
+          <col style={{ width: "7%" }} />
+          <col style={{ width: "7%" }} />
+          <col style={{ width: "1%" }} className="sep" />
+          <col style={{ width: "3%" }} />
+          <col style={{ width: "18.5%" }} />
+          <col style={{ width: "7%" }} />
+          <col style={{ width: "7%" }} />
+          <col style={{ width: "7%" }} />
+          <col style={{ width: "7%" }} />
         </colgroup>
         <thead>
           <tr className="bal-title">
