@@ -106,6 +106,115 @@ export async function uploadSpedEcdAction(
 }
 
 /**
+ * Varre uma pasta LOCAL e detecta arquivos SPED-ECD dentro dela, copiando
+ * pro path padronizado do cliente/lado. Só válido em ambiente self-hosted
+ * (a "pasta" é lida do disco do servidor — que é o mesmo PC do usuário).
+ *
+ * Detecta por conteúdo: só considera arquivo cujo registro 0000 tem CNPJ
+ * batendo com o do cliente. Valida também tipo I010. Se achar múltiplos
+ * arquivos válidos, importa TODOS (um por ano).
+ */
+export async function varrerPastaEcdAction(
+  fd: FormData,
+): Promise<
+  | { ok: true; importados: Array<{ ano: number; caminho: string; tipo: string | null }>; ignorados: number }
+  | { ok: false; erro: string }
+> {
+  try {
+    const sessao = await requireSessao();
+    if (!PAPEIS_INTERNOS.includes(sessao.papel))
+      return { ok: false, erro: "Não autorizado" };
+
+    const clienteId = String(fd.get("clienteId") ?? "");
+    const lado = String(fd.get("lado") ?? "");
+    const pasta = String(fd.get("pasta") ?? "").trim();
+    if (!clienteId) return { ok: false, erro: "Falta clienteId." };
+    if (lado !== "DOMINIO" && lado !== "TRANSMITIDA")
+      return { ok: false, erro: "lado inválido." };
+    if (!pasta) return { ok: false, erro: "Informe o caminho da pasta." };
+
+    const cliente = await prisma.cliente.findFirst({
+      where: { id: clienteId, escritorioId: sessao.escritorioId },
+      select: { razaoSocial: true, cnpj: true },
+    });
+    if (!cliente) return { ok: false, erro: "Cliente não encontrado." };
+
+    const cnpjCliente = cliente.cnpj.replace(/\D/g, "");
+    const clienteRef: ClienteRef = {
+      razaoSocial: cliente.razaoSocial,
+      cnpj: cliente.cnpj,
+    };
+    const tipoDoc = lado === "DOMINIO" ? "SPED-ECD-DOMINIO" : "SPED-ECD";
+
+    const { readdirSync, statSync, readFileSync } = await import("node:fs");
+    let entradas: string[] = [];
+    try {
+      entradas = readdirSync(pasta);
+    } catch (e) {
+      return { ok: false, erro: `Pasta não encontrada ou sem acesso: ${pasta}` };
+    }
+
+    const importados: Array<{ ano: number; caminho: string; tipo: string | null }> = [];
+    let ignorados = 0;
+
+    for (const nome of entradas) {
+      const caminhoOrigem = path.join(pasta, nome);
+      let st;
+      try {
+        st = statSync(caminhoOrigem);
+      } catch {
+        continue;
+      }
+      if (!st.isFile()) continue;
+      if (!/\.(txt|ecd|sped)$/i.test(nome)) continue;
+
+      // Lê só o começo pra descobrir 0000 + I010 sem carregar arquivo enorme
+      let sample: Buffer;
+      try {
+        sample = readFileSync(caminhoOrigem);
+      } catch {
+        continue;
+      }
+      const primeiras = sample.subarray(0, 4096).toString("latin1").split(/\r?\n/);
+      const info = ecdInfo(primeiras);
+      if (!info.cnpj || !info.dtFim) {
+        ignorados++;
+        continue;
+      }
+      const cnpjArq = info.cnpj.replace(/\D/g, "");
+      if (cnpjCliente && cnpjArq && cnpjCliente !== cnpjArq) {
+        ignorados++;
+        continue;
+      }
+      const ano = Number(info.dtFim.slice(4, 8));
+      if (!ano || ano < 2000 || ano > 2100) {
+        ignorados++;
+        continue;
+      }
+
+      const destino = caminhoArquivo(clienteRef, tipoDoc, ano, null, "txt");
+      await mkdir(path.dirname(destino), { recursive: true });
+      await writeFile(destino, sample);
+      importados.push({ ano, caminho: destino, tipo: info.tipoEscrituracao });
+    }
+
+    if (importados.length === 0) {
+      return {
+        ok: false,
+        erro: `Nenhum SPED-ECD válido encontrado em ${pasta}. Ignorados: ${ignorados}.`,
+      };
+    }
+
+    revalidatePath(`/painel/clientes/${clienteId}/balancete-comparado`, "layout");
+    revalidatePath(`/painel/clientes/${clienteId}/balanco-comparado`, "layout");
+    revalidatePath(`/painel/clientes/${clienteId}/razao-contrapartida`, "layout");
+    return { ok: true, importados, ignorados };
+  } catch (e) {
+    return { ok: false, erro: (e as Error).message };
+  }
+}
+
+/**
  * Exporta o Balancete Comparado do exercício em XLSX. Devolve o binário
  * em base64 pro cliente disparar download (evita gravar em disco). Estilo
  * do arquivo espelha o do agente contábil (fundo rosa nas células
