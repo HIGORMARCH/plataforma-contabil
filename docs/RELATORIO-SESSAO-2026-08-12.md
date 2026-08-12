@@ -139,3 +139,37 @@ Nesta sessão portamos boa parte pra TypeScript e criamos as telas correspondent
 5. **FASE 5** — Matriz de Obrigações + auditoria de consistência (2-3h)
 
 **Ou:** o Higor vai usar a ferramenta no escritório amanhã. Se aparecer bug/ajuste durante uso real, esses viram prioridade sobre as fases pendentes.
+
+---
+
+## Adendo (fim da sessão — depois do primeiro checkpoint)
+
+Ainda saíram mais 3 commits depois do checkpoint inicial:
+
+**`750856f`** — file picker automático + varredura de pasta
+- Botão "Escolher/Substituir arquivo" abre o file picker do sistema (era só texto sem ação)
+- Nova aba "Varrer pasta": aponta caminho local, plataforma lê todos .txt/.ecd/.sped e importa
+- Bloco de status do arquivo carregado deixa de parecer input editável
+
+**`2b603c5`** — fix agregação de sintéticas + cache
+- Bug: quando plano do Sistema e ECD Transmitido têm hierarquias DIFERENTES (uma analítica que é filha de CLIENTES no Sistema mas de DUPLICATAS A RECEBER no ECD), agregação com plano unificado zerava a sintética no lado errado
+- Fix: cada lado agrega com seu próprio plano; estrutura de exibição continua unificada
+- `revalidatePath` reforçado pra invalidar cache de todas as telas ao substituir arquivo
+
+**`679043a`** — tentativa de layout compacto (revertido depois)
+- Colunas sticky, full-width, colunas compactadas — Higor não gostou visualmente
+
+**`82c225a`** — REVERT do 679043a
+- Voltou pra `max-w-6xl` e CSS original do balancete
+- A tabela tem scroll horizontal natural
+
+**`7c485a3`** — CSS de impressão como relatório contábil profissional
+- Times New Roman, bordas cheias, sem cores (economiza tinta)
+- Cabeçalho institucional centralizado, thead repete em cada página, page-break-inside: avoid nas linhas
+
+**Status final da sessão:** Higor reportou "está horrível" mas não conseguiu apontar exatamente o problema. Foi dormir. Próxima sessão precisa começar perguntando OBJETIVAMENTE:
+- Qual tela específica (Balanço/Balancete/Razão) está ruim
+- Se é a tela web, a impressão, ou o Excel
+- Print com anotação apontando o ponto
+
+Sem essa info, evitar tentar consertar às cegas — dá churn (foi o que rolou nos últimos commits do dia).
