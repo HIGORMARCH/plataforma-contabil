@@ -442,7 +442,7 @@ body {
   }
 
   /* Esconde tudo que é UI de aplicativo */
-  aside, nav, .no-print, header form, form button[type="submit"],
+  aside, nav, header.topbar, .no-print, header form, form button[type="submit"],
   .status-panel, .notice, .chip-year, .rule-gold, .toolbar-balancete,
   .btn, section[class*="Upload"], .acct-section, .errata, .reclass,
   .meta-strip { display: none !important; }
@@ -661,8 +661,86 @@ body {
 .balancete-hier tbody td.val,
 .balancete-hier tbody td.cod { vertical-align: middle; }
 
+/* Cabeçalho de impressão do Balancete — escondido na tela */
+.print-header { display: none; }
+
 /* No print, força 1 linha: A4 paisagem tem largura suficiente */
 @media print {
+  /* Mostra o cabeçalho de impressão */
+  .print-header {
+    display: block !important;
+    margin-bottom: 6mm;
+  }
+  .print-header .ph-timbre {
+    display: flex;
+    align-items: center;
+    gap: 5mm;
+    padding-bottom: 3mm;
+    border-bottom: 1.5pt solid #000;
+    margin-bottom: 4mm;
+  }
+  .print-header .ph-logo {
+    max-height: 18mm;
+    max-width: 40mm;
+    object-fit: contain;
+  }
+  .print-header .ph-esc-nome {
+    font-family: "Times New Roman", Georgia, serif;
+    font-size: 12pt;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: #000;
+  }
+  .print-header .ph-esc-meta {
+    font-family: "Times New Roman", Georgia, serif;
+    font-size: 8pt;
+    color: #333;
+    margin-top: 1mm;
+    line-height: 1.3;
+  }
+  /* Enunciado — só o correspondente ao escopo aparece */
+  .print-header .ph-titulo { display: none; }
+  body.print-escopo-sistema .print-header .ph-escopo-sistema,
+  body.print-escopo-ecd .print-header .ph-escopo-ecd,
+  body.print-escopo-ambos .print-header .ph-escopo-ambos {
+    display: block !important;
+  }
+  .print-header .ph-doc-nome {
+    font-family: "Times New Roman", Georgia, serif;
+    font-size: 11pt;
+    font-weight: 700;
+    text-transform: uppercase;
+    text-align: center;
+    margin: 2mm 0 1mm;
+    letter-spacing: 0.02em;
+  }
+  .print-header .ph-doc-sub {
+    font-family: "Times New Roman", Georgia, serif;
+    font-size: 8pt;
+    color: #333;
+    text-align: center;
+    font-style: italic;
+    margin-bottom: 3mm;
+    line-height: 1.3;
+  }
+  .print-header .ph-cliente {
+    font-family: "Times New Roman", Georgia, serif;
+    font-size: 9pt;
+    padding: 2mm 3mm;
+    border-top: 0.5pt solid #666;
+    border-bottom: 0.5pt solid #666;
+    background: #f5f5f5;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  .print-header .ph-cliente .ph-lbl {
+    font-size: 7.5pt;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: #555;
+    font-weight: 600;
+  }
   .balancete-hier tbody td.conta {
     white-space: nowrap;
     overflow: hidden;

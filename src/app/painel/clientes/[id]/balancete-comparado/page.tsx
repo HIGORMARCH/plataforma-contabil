@@ -29,6 +29,7 @@ import { moeda } from "@/lib/accounting/format";
 import { UploadSpedsForm } from "./_components/UploadSpedsForm";
 import { ToolbarBalancete } from "./_components/ToolbarBalancete";
 import { BalanceteHierarquico } from "./_components/BalanceteHierarquico";
+import { PrintHeader } from "./_components/PrintHeader";
 
 function formatarCnpj(cnpj: string): string {
   const d = cnpj.replace(/\D/g, "");
@@ -106,6 +107,23 @@ export default async function BalanceteComparadoPage({
   });
   if (!cliente) notFound();
 
+  // Dados do escritório pro papel timbrado (só usado no @media print)
+  const escritorio = await prisma.escritorio.findUnique({
+    where: { id: sessao.escritorioId },
+    select: {
+      razaoSocial: true,
+      nomeFantasia: true,
+      cnpj: true,
+      crc: true,
+      endereco: true,
+      telefone: true,
+      email: true,
+      site: true,
+      logoDataUrl: true,
+      rodapePadrao: true,
+    },
+  });
+
   const clienteRef: ClienteRef = {
     razaoSocial: cliente.razaoSocial,
     cnpj: cliente.cnpj,
@@ -147,8 +165,17 @@ export default async function BalanceteComparadoPage({
 
   return (
     <div className="w-full py-8 lg:py-12">
+      {/* CABEÇALHOS DE IMPRESSÃO — só aparecem no print, um por escopo */}
+      <PrintHeader
+        cliente={cliente.razaoSocial}
+        cnpj={cliente.cnpj}
+        regime={cliente.regimeTributario ?? "—"}
+        ano={anoSelecionado}
+        escritorio={escritorio}
+      />
+
       {/* CABEÇALHO EDITORIAL */}
-      <div className="mb-8">
+      <div className="mb-8 no-print">
         <Link
           href={`/painel/clientes/${id}`}
           className="text-xs text-[var(--ink-soft)] transition hover:text-[var(--brand-deep)]"
@@ -205,7 +232,7 @@ export default async function BalanceteComparadoPage({
       </dl>
 
       {/* UPLOAD DOS DOIS LADOS */}
-      <section className="mb-8">
+      <section className="mb-8 no-print">
         <div className="mb-3 flex items-baseline justify-between">
           <h2 className="display text-xl">Fontes de comparação</h2>
           <span className="eyebrow">2 arquivos SPED-ECD</span>
@@ -219,7 +246,7 @@ export default async function BalanceteComparadoPage({
 
       {/* SELETOR DE EXERCÍCIO — só aparece com dados */}
       {anosDisponiveis.length > 0 && (
-        <div className="mb-8 flex flex-wrap items-center gap-x-3 gap-y-2">
+        <div className="mb-8 flex flex-wrap items-center gap-x-3 gap-y-2 no-print">
           <span className="eyebrow mr-1">Exercício</span>
           <div className="flex flex-wrap gap-1.5">
             {anosDisponiveis.map((a) => (
@@ -238,7 +265,7 @@ export default async function BalanceteComparadoPage({
 
       {/* AVISOS DE ESTADO INCOMPLETO */}
       {(!statusDom.presente || !statusTx.presente) && anosDisponiveis.length > 0 && (
-        <div className="notice mb-4" data-tone="warn">
+        <div className="notice mb-4 no-print" data-tone="warn">
           Faltam arquivos pra comparar {anoSelecionado}:{" "}
           {!statusDom.presente && !statusTx.presente
             ? "os dois lados"
@@ -309,7 +336,7 @@ export default async function BalanceteComparadoPage({
             </div>
           ) : (
             <>
-              <div className="mb-2 flex items-baseline justify-between">
+              <div className="mb-2 flex items-baseline justify-between no-print">
                 <h3 className="display text-xl">
                   {incluirTodas ? "Balancete de Verificação" : "Divergências no Balancete"}
                 </h3>
@@ -323,7 +350,7 @@ export default async function BalanceteComparadoPage({
                 clienteId={id}
                 ano={anoSelecionado}
               />
-              <p className="mt-4 text-[11px] leading-relaxed text-[var(--ink-soft)]">
+              <p className="mt-4 text-[11px] leading-relaxed text-[var(--ink-soft)] no-print">
                 Balancete de verificação no formato tradicional: raízes
                 (Ativo/Passivo/PL/Resultado) → subgrupos (Circulante/Não
                 Circulante/Receitas/Custos/Despesas) → contas sintéticas →
