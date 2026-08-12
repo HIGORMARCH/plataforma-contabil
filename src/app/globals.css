@@ -648,12 +648,12 @@ body {
   text-overflow: ellipsis;
   white-space: nowrap;
   max-width: 0;
-  font-size: 0.72rem;
+  font-size: 0.66rem;
   letter-spacing: 0;
 }
-.balancete-hier tbody tr.sint td.conta { font-size: 0.74rem; }
-.balancete-hier tr.lvl-0 td.conta { font-size: 0.88rem !important; letter-spacing: 0.03em; }
-.balancete-hier tr.lvl-1 td.conta { font-size: 0.78rem !important; }
+.balancete-hier tbody tr.sint td.conta { font-size: 0.68rem; }
+.balancete-hier tr.lvl-0 td.conta { font-size: 0.78rem !important; letter-spacing: 0.02em; }
+.balancete-hier tr.lvl-1 td.conta { font-size: 0.7rem !important; }
 /* Nível 0 (raiz: ATIVO / PASSIVO / PL) */
 .balancete-hier tr.lvl-0 td {
   background: var(--brand-darker);
