@@ -64,21 +64,46 @@ export function BalanceteHierarquico({
   return (
     <div className="balancete-hier overflow-x-auto">
       <table>
+        {modoBalancete ? (
+          <colgroup>
+            <col style={{ width: 50 }} />
+            <col style={{ width: 158 }} />
+            <col style={{ width: 105 }} />
+            <col style={{ width: 105 }} />
+            <col style={{ width: 105 }} />
+            <col style={{ width: 105 }} />
+            <col style={{ width: 105 }} />
+            <col style={{ width: 105 }} />
+            <col style={{ width: 105 }} />
+            <col style={{ width: 105 }} />
+            <col style={{ width: 100 }} />
+            <col style={{ width: 90 }} />
+          </colgroup>
+        ) : (
+          <colgroup>
+            <col style={{ width: 65 }} />
+            <col />
+            <col style={{ width: 130 }} />
+            <col style={{ width: 130 }} />
+            <col style={{ width: 120 }} />
+            <col style={{ width: 90 }} />
+          </colgroup>
+        )}
         <thead>
           {modoBalancete ? (
             <>
               <tr>
-                <th rowSpan={2} className="left" style={{ width: 65 }}>
+                <th rowSpan={2} className="left" style={{ width: 50 }}>
                   Cód.
                 </th>
-                <th rowSpan={2} className="left" style={{ minWidth: 260 }}>
+                <th rowSpan={2} className="left" style={{ minWidth: 200 }}>
                   Conta
                 </th>
                 <th colSpan={2}>Saldo Anterior</th>
                 <th colSpan={2}>Débito</th>
                 <th colSpan={2}>Crédito</th>
                 <th colSpan={2}>Saldo Atual</th>
-                <th rowSpan={2} style={{ width: 120 }}>
+                <th rowSpan={2} style={{ width: 95 }}>
                   Δ SF
                 </th>
                 <th rowSpan={2} className="status-col">
@@ -133,7 +158,7 @@ export function BalanceteHierarquico({
                   title={isAnal ? "Clique pra ver detalhamento e razão comparado" : undefined}
                 >
                   <td className="cod">{l.codigo}</td>
-                  <td className="conta" data-nivel={String(lvl)}>
+                  <td className="conta" data-nivel={String(lvl)} title={l.descricao}>
                     {l.descricao}
                   </td>
                   {modoBalancete ? (

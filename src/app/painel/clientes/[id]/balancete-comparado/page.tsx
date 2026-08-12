@@ -146,7 +146,7 @@ export default async function BalanceteComparadoPage({
   }
 
   return (
-    <div className="mx-auto max-w-6xl px-6 py-8 lg:px-10 lg:py-12">
+    <div className="w-full py-8 lg:py-12">
       {/* CABEÇALHO EDITORIAL */}
       <div className="mb-8">
         <Link
