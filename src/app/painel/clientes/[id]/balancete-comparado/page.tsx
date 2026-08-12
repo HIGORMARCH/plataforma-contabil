@@ -146,7 +146,7 @@ export default async function BalanceteComparadoPage({
   }
 
   return (
-    <div className="mx-auto max-w-6xl px-6 py-8 lg:px-10 lg:py-12">
+    <div className="mx-auto max-w-[1600px] px-4 py-8 lg:px-8 lg:py-12">
       {/* CABEÇALHO EDITORIAL */}
       <div className="mb-8">
         <Link
@@ -173,7 +173,7 @@ export default async function BalanceteComparadoPage({
         </h1>
 
         <p className="mt-3 max-w-[62ch] text-[0.92rem] leading-relaxed text-[var(--ink-soft)]">
-          Cruza o SPED-ECD do Domínio (estado atual da contabilidade) com o
+          Cruza o SPED-ECD do Sistema (estado atual da contabilidade) com o
           SPED-ECD transmitido à Receita, conta analítica por conta analítica.
           Divergências revelam ajustes feitos depois da transmissão, ainda
           pendentes de retificação.
@@ -243,7 +243,7 @@ export default async function BalanceteComparadoPage({
           {!statusDom.presente && !statusTx.presente
             ? "os dois lados"
             : !statusDom.presente
-              ? "SPED do Domínio"
+              ? "SPED do Sistema"
               : "SPED transmitido"}
           . Envie no formulário acima.
         </div>
@@ -268,8 +268,8 @@ export default async function BalanceteComparadoPage({
               </div>
               <div className="status-msg">
                 {resumo.totalContasDivergentes === 0
-                  ? `Todas as contas fecham entre Domínio e Transmitida em ${anoSelecionado}`
-                  : `${resumo.totalContasDivergentes} conta(s) divergem entre Domínio e Transmitida em ${anoSelecionado}`}
+                  ? `Todas as contas fecham entre Sistema e ECD em ${anoSelecionado}`
+                  : `${resumo.totalContasDivergentes} conta(s) divergem entre Sistema e ECD em ${anoSelecionado}`}
               </div>
             </div>
             <div className="status-count">
@@ -329,7 +329,7 @@ export default async function BalanceteComparadoPage({
                 Circulante/Receitas/Custos/Despesas) → contas sintéticas →
                 analíticas. Sintéticas totalizam as descendentes. Clique numa
                 analítica <b>divergente</b> pra ver o detalhamento (SI, Débito,
-                Crédito, SF do Domínio vs. Transmitida) e o razão comparado.
+                Crédito, SF do Sistema vs. ECD) e o razão comparado.
                 Convenção: DEVEDOR em positivo, CREDOR em negativo.
               </p>
             </>
