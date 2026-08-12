@@ -89,7 +89,9 @@ export function ToolbarBalancete({
 
       <div className="toolbar-group">
         <button type="button" className="btn btn-ghost" onClick={imprimir}>
-          Imprimir
+          {filtroAtual === "divergentes"
+            ? "Imprimir divergentes"
+            : "Imprimir balancetes completos"}
         </button>
         <button
           type="button"

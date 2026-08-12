@@ -609,11 +609,11 @@ body {
   background: var(--brand-darker);
   color: var(--brand-2);
   font-family: var(--font-mono), ui-monospace, monospace;
-  font-size: 0.6rem;
-  letter-spacing: 0.16em;
+  font-size: 0.58rem;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
   font-weight: 600;
-  padding: 0.55rem 0.4rem;
+  padding: 0.5rem 0.3rem;
   text-align: right;
   border-bottom: 1px solid var(--brand-2);
   white-space: nowrap;
@@ -663,7 +663,7 @@ body {
   border-bottom: none;
 }
 .balancete-hier tr.lvl-0 td.cod { color: rgba(210, 158, 74, 0.55); font-family: var(--font-mono); font-size: 0.65rem; text-transform: none; letter-spacing: 0.1em; }
-.balancete-hier tr.lvl-0 td.val { color: #fff; font-weight: 600; font-family: var(--font-mono); font-size: 0.64rem; text-transform: none; letter-spacing: -0.01em; padding: 0.5rem 0.3rem; }
+.balancete-hier tr.lvl-0 td.val { color: #fff; font-weight: 600; font-family: var(--font-mono); font-size: 0.62rem; text-transform: none; letter-spacing: -0.02em; padding: 0.5rem 0.25rem; }
 
 /* Nível 1 (Ativo Circulante, PL...) */
 .balancete-hier tr.lvl-1 td {
@@ -716,17 +716,38 @@ body {
 .balancete-hier tr.anal.diverge td.val.dom,
 .balancete-hier tr.anal.diverge td.val.ecd { background: var(--danger-soft); }
 
-/* Sinal de divergência sem coluna Status: borda esquerda vermelha na
-   primeira célula da linha (Cód). Aplica em analíticas E sintéticas
-   divergentes, exceto raiz nível 0 (que tem fundo escuro próprio). */
-.balancete-hier tr.diverge:not(.lvl-0) td.cod {
-  border-left: 3px solid var(--danger);
-  padding-left: calc(0.9rem - 3px);
+/* --------------------------------------------------------------------------
+   Modo LADO A LADO — dois balancetes (Sistema | ECD) na mesma tabela.
+   Divergentes: linha INTEIRA em rosa vermelho suave.
+   -------------------------------------------------------------------------- */
+.balancete-hier.bal-lado td.sep-col,
+.balancete-hier.bal-lado th.sep-col {
+  padding: 0;
+  border-left: 1px solid var(--brand-2-line);
+  border-right: 1px solid var(--brand-2-line);
+  background: #f8f3e6;
 }
-/* Ponto vermelho discreto ao lado do código pra sintéticas divergentes */
-.balancete-hier tr.sint.diverge:not(.lvl-0) td.cod {
-  position: relative;
+.balancete-hier.bal-lado .bal-title th.lado-title {
+  background: var(--brand-deep);
+  color: var(--brand-2);
+  font-family: var(--font-serif), Georgia, serif;
+  font-size: 0.78rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  text-align: center;
+  padding: 0.6rem 0.5rem;
+  border-bottom: 2px solid var(--brand-2);
 }
+/* Divergente: linha inteira vermelha suave, dois lados */
+.balancete-hier.bal-lado tr.diverge:not(.lvl-0) td { background: var(--danger-soft) !important; }
+.balancete-hier.bal-lado tr.diverge:not(.lvl-0) td.sep-col { background: #f3c9c6 !important; }
+.balancete-hier.bal-lado tr.diverge:not(.lvl-0) td.val { color: var(--danger); font-weight: 700; }
+.balancete-hier.bal-lado tr.diverge:not(.lvl-0) td.conta,
+.balancete-hier.bal-lado tr.diverge:not(.lvl-0) td.cod { color: #7a2a28; }
+
+/* Hover sobrepõe fundo suave */
+.balancete-hier.bal-lado tr.anal:hover td:not(.sep-col) { background: #faede9 !important; cursor: pointer; }
+.balancete-hier.bal-lado tr.anal.expandida td:not(.sep-col) { background: #f7dcd7 !important; }
 
 /* Raiz e nível 1 SEMPRE preservam seu fundo, mesmo divergentes.
    O Δ e o badge dão o alerta sem quebrar a hierarquia visual. */
