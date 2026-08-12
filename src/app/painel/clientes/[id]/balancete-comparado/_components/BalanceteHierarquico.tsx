@@ -3,10 +3,7 @@
 import { Fragment, useState } from "react";
 import Link from "next/link";
 import { moeda } from "@/lib/accounting/format";
-import type {
-  LinhaHierarquica,
-  StatusConta,
-} from "@/lib/accounting/balanceteComparado";
+import type { LinhaHierarquica } from "@/lib/accounting/balanceteComparado";
 
 const TOL = 0.02;
 
@@ -59,7 +56,7 @@ export function BalanceteHierarquico({
   }
 
   const modoBalancete = modo === "balancete";
-  const colspan = modoBalancete ? 12 : 6;
+  const colspan = modoBalancete ? 11 : 5;
 
   return (
     <div className="balancete-hier overflow-x-auto">
@@ -67,26 +64,24 @@ export function BalanceteHierarquico({
         {modoBalancete ? (
           <colgroup>
             <col style={{ width: 50 }} />
-            <col style={{ width: 158 }} />
-            <col style={{ width: 105 }} />
-            <col style={{ width: 105 }} />
-            <col style={{ width: 105 }} />
-            <col style={{ width: 105 }} />
-            <col style={{ width: 105 }} />
-            <col style={{ width: 105 }} />
-            <col style={{ width: 105 }} />
-            <col style={{ width: 105 }} />
+            <col style={{ width: 216 }} />
+            <col style={{ width: 110 }} />
+            <col style={{ width: 110 }} />
+            <col style={{ width: 110 }} />
+            <col style={{ width: 110 }} />
+            <col style={{ width: 110 }} />
+            <col style={{ width: 110 }} />
+            <col style={{ width: 110 }} />
+            <col style={{ width: 110 }} />
             <col style={{ width: 100 }} />
-            <col style={{ width: 90 }} />
           </colgroup>
         ) : (
           <colgroup>
             <col style={{ width: 65 }} />
             <col />
+            <col style={{ width: 150 }} />
+            <col style={{ width: 150 }} />
             <col style={{ width: 130 }} />
-            <col style={{ width: 130 }} />
-            <col style={{ width: 120 }} />
-            <col style={{ width: 90 }} />
           </colgroup>
         )}
         <thead>
@@ -96,18 +91,15 @@ export function BalanceteHierarquico({
                 <th rowSpan={2} className="left" style={{ width: 50 }}>
                   Cód.
                 </th>
-                <th rowSpan={2} className="left" style={{ minWidth: 200 }}>
+                <th rowSpan={2} className="left">
                   Conta
                 </th>
                 <th colSpan={2}>Saldo Anterior</th>
                 <th colSpan={2}>Débito</th>
                 <th colSpan={2}>Crédito</th>
                 <th colSpan={2}>Saldo Atual</th>
-                <th rowSpan={2} style={{ width: 95 }}>
+                <th rowSpan={2}>
                   Δ SF
-                </th>
-                <th rowSpan={2} className="status-col">
-                  Status
                 </th>
               </tr>
               <tr className="sub">
@@ -127,10 +119,9 @@ export function BalanceteHierarquico({
                 Cód.
               </th>
               <th className="left">Conta</th>
-              <th style={{ width: 150 }}>SF Sistema</th>
-              <th style={{ width: 150 }}>SF ECD</th>
-              <th style={{ width: 140 }}>Δ Saldo Final</th>
-              <th className="status-col">Status</th>
+              <th>SF Sistema</th>
+              <th>SF ECD</th>
+              <th>Δ Saldo Final</th>
             </tr>
           )}
         </thead>
@@ -185,13 +176,6 @@ export function BalanceteHierarquico({
                   >
                     {formatarDelta(l.diferencas.saldoFinal)}
                   </td>
-                  <td className="status-col">
-                    <StatusBadge
-                      status={l.status}
-                      isSint={isSint}
-                      temDescDivergente={l.temDescendenteDivergente}
-                    />
-                  </td>
                 </tr>
 
                 {isExpandida && isAnal && (
@@ -211,36 +195,6 @@ export function BalanceteHierarquico({
         </tbody>
       </table>
     </div>
-  );
-}
-
-/**
- * Só 2 estados no visual: OK (azul) e Divergente (vermelho suave).
- * Os subtipos Só Domínio / Só ECD / Sinal Invertido continuam classificados
- * internamente (útil pra exportação/análise) mas aqui mostramos como
- * "Divergente" — o contador se preocupa em identificar o problema, não em
- * classificar sua categoria.
- */
-function StatusBadge({
-  status,
-  isSint,
-  temDescDivergente,
-}: {
-  status: StatusConta;
-  isSint: boolean;
-  temDescDivergente: boolean;
-}) {
-  // Vazio = nada a mostrar
-  if (status === "VAZIO" && !temDescDivergente) {
-    return <span className="st-vazio">—</span>;
-  }
-  const divergeVisual = isSint
-    ? temDescDivergente
-    : status !== "OK" && status !== "VAZIO";
-  return divergeVisual ? (
-    <span className="st-badge st-diverge">Divergente</span>
-  ) : (
-    <span className="st-badge st-ok">OK</span>
   );
 }
 

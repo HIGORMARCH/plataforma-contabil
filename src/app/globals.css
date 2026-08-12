@@ -648,6 +648,8 @@ body {
   text-overflow: ellipsis;
   white-space: nowrap;
   max-width: 0;
+  font-size: 0.72rem;
+  letter-spacing: -0.005em;
 }
 /* Nível 0 (raiz: ATIVO / PASSIVO / PL) */
 .balancete-hier tr.lvl-0 td {
@@ -695,14 +697,14 @@ body {
 /* Analíticas — regular */
 .balancete-hier tr.anal td { color: var(--ink); }
 
-/* Indentação por nível — pad-left crescente na descrição */
-.balancete-hier td.conta[data-nivel="0"] { padding-left: 0.9rem; }
-.balancete-hier td.conta[data-nivel="1"] { padding-left: 1.8rem; }
-.balancete-hier td.conta[data-nivel="2"] { padding-left: 2.7rem; }
-.balancete-hier td.conta[data-nivel="3"] { padding-left: 3.6rem; }
-.balancete-hier td.conta[data-nivel="4"] { padding-left: 4.5rem; }
-.balancete-hier td.conta[data-nivel="5"] { padding-left: 5.4rem; }
-.balancete-hier td.conta[data-nivel="6"] { padding-left: 6.3rem; }
+/* Indentação por nível — pad-left crescente na descrição (compacto) */
+.balancete-hier td.conta[data-nivel="0"] { padding-left: 0.6rem; }
+.balancete-hier td.conta[data-nivel="1"] { padding-left: 1.1rem; }
+.balancete-hier td.conta[data-nivel="2"] { padding-left: 1.6rem; }
+.balancete-hier td.conta[data-nivel="3"] { padding-left: 2.1rem; }
+.balancete-hier td.conta[data-nivel="4"] { padding-left: 2.6rem; }
+.balancete-hier td.conta[data-nivel="5"] { padding-left: 3.1rem; }
+.balancete-hier td.conta[data-nivel="6"] { padding-left: 3.6rem; }
 
 /* Divergente — só ANALÍTICAS ganham destaque de fundo/texto.
    Sintéticas (raiz, nível 1, nível 2+) mantêm sua identidade visual;
@@ -713,6 +715,18 @@ body {
    o texto da descrição — mantém legibilidade da conta. */
 .balancete-hier tr.anal.diverge td.val.dom,
 .balancete-hier tr.anal.diverge td.val.ecd { background: var(--danger-soft); }
+
+/* Sinal de divergência sem coluna Status: borda esquerda vermelha na
+   primeira célula da linha (Cód). Aplica em analíticas E sintéticas
+   divergentes, exceto raiz nível 0 (que tem fundo escuro próprio). */
+.balancete-hier tr.diverge:not(.lvl-0) td.cod {
+  border-left: 3px solid var(--danger);
+  padding-left: calc(0.9rem - 3px);
+}
+/* Ponto vermelho discreto ao lado do código pra sintéticas divergentes */
+.balancete-hier tr.sint.diverge:not(.lvl-0) td.cod {
+  position: relative;
+}
 
 /* Raiz e nível 1 SEMPRE preservam seu fundo, mesmo divergentes.
    O Δ e o badge dão o alerta sem quebrar a hierarquia visual. */
