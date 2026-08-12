@@ -644,16 +644,32 @@ body {
 }
 .balancete-hier tbody td.conta {
   color: var(--ink);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  max-width: 0;
   font-size: 0.66rem;
   letter-spacing: 0;
+  /* Quebra livre em várias linhas se necessário — não corta com ellipsis */
+  white-space: normal;
+  overflow-wrap: anywhere;
+  line-height: 1.2;
+  vertical-align: middle;
+  padding-top: 0.3rem;
+  padding-bottom: 0.3rem;
 }
 .balancete-hier tbody tr.sint td.conta { font-size: 0.68rem; }
 .balancete-hier tr.lvl-0 td.conta { font-size: 0.78rem !important; letter-spacing: 0.02em; }
 .balancete-hier tr.lvl-1 td.conta { font-size: 0.7rem !important; }
+/* Alinhamento vertical: valores centralizam com o texto (que pode ter n linhas) */
+.balancete-hier tbody td.val,
+.balancete-hier tbody td.cod { vertical-align: middle; }
+
+/* No print, força 1 linha: A4 paisagem tem largura suficiente */
+@media print {
+  .balancete-hier tbody td.conta {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    line-height: 1.3;
+  }
+}
 /* Nível 0 (raiz: ATIVO / PASSIVO / PL) */
 .balancete-hier tr.lvl-0 td {
   background: var(--brand-darker);
