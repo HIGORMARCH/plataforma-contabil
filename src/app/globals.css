@@ -628,11 +628,11 @@ body {
 .balancete-hier tbody td.val {
   text-align: right;
   font-family: var(--font-mono), ui-monospace, monospace;
-  font-size: 0.66rem;
+  font-size: 0.72rem;
   white-space: nowrap;
-  padding-left: 0.2rem;
-  padding-right: 0.4rem;
-  letter-spacing: -0.01em;
+  padding-left: 0.3rem;
+  padding-right: 0.5rem;
+  letter-spacing: 0;
 }
 .balancete-hier tbody td.conta { padding-right: 0.6rem; }
 .balancete-hier tbody td.cod { padding-left: 0.9rem; }
@@ -649,8 +649,11 @@ body {
   white-space: nowrap;
   max-width: 0;
   font-size: 0.72rem;
-  letter-spacing: -0.005em;
+  letter-spacing: 0;
 }
+.balancete-hier tbody tr.sint td.conta { font-size: 0.74rem; }
+.balancete-hier tr.lvl-0 td.conta { font-size: 0.88rem !important; letter-spacing: 0.03em; }
+.balancete-hier tr.lvl-1 td.conta { font-size: 0.78rem !important; }
 /* Nível 0 (raiz: ATIVO / PASSIVO / PL) */
 .balancete-hier tr.lvl-0 td {
   background: var(--brand-darker);
@@ -698,13 +701,13 @@ body {
 .balancete-hier tr.anal td { color: var(--ink); }
 
 /* Indentação por nível — pad-left crescente na descrição (compacto) */
-.balancete-hier td.conta[data-nivel="0"] { padding-left: 0.6rem; }
-.balancete-hier td.conta[data-nivel="1"] { padding-left: 1.1rem; }
-.balancete-hier td.conta[data-nivel="2"] { padding-left: 1.6rem; }
-.balancete-hier td.conta[data-nivel="3"] { padding-left: 2.1rem; }
-.balancete-hier td.conta[data-nivel="4"] { padding-left: 2.6rem; }
-.balancete-hier td.conta[data-nivel="5"] { padding-left: 3.1rem; }
-.balancete-hier td.conta[data-nivel="6"] { padding-left: 3.6rem; }
+.balancete-hier td.conta[data-nivel="0"] { padding-left: 0.4rem; }
+.balancete-hier td.conta[data-nivel="1"] { padding-left: 0.75rem; }
+.balancete-hier td.conta[data-nivel="2"] { padding-left: 1.1rem; }
+.balancete-hier td.conta[data-nivel="3"] { padding-left: 1.45rem; }
+.balancete-hier td.conta[data-nivel="4"] { padding-left: 1.8rem; }
+.balancete-hier td.conta[data-nivel="5"] { padding-left: 2.15rem; }
+.balancete-hier td.conta[data-nivel="6"] { padding-left: 2.5rem; }
 
 /* Divergente — só ANALÍTICAS ganham destaque de fundo/texto.
    Sintéticas (raiz, nível 1, nível 2+) mantêm sua identidade visual;

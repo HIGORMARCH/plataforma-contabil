@@ -67,7 +67,7 @@ export default async function PainelLayout({ children }: { children: React.React
       ];
 
   return (
-    <div className="flex min-h-screen flex-1">
+    <div className="flex min-h-screen flex-1 flex-col">
       <Sidebar
         itens={itens}
         nome={sessao.nome}
@@ -75,7 +75,7 @@ export default async function PainelLayout({ children }: { children: React.React
         escritorio={escritorio?.nomeFantasia ?? escritorio?.razaoSocial ?? "Escritório"}
       />
       <main className="flex-1 overflow-x-hidden">
-        <div className="mx-auto max-w-[100rem] px-6 py-8 lg:px-10">{children}</div>
+        <div className="mx-auto max-w-[120rem] px-6 py-8 lg:px-10">{children}</div>
       </main>
     </div>
   );

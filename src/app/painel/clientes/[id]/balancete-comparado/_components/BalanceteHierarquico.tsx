@@ -70,18 +70,18 @@ export function BalanceteHierarquico({
       <table>
         <colgroup>
           <col style={{ width: 45 }} />
-          <col style={{ width: 175 }} />
-          <col style={{ width: 100 }} />
-          <col style={{ width: 100 }} />
-          <col style={{ width: 100 }} />
-          <col style={{ width: 100 }} />
+          <col style={{ width: 275 }} />
+          <col style={{ width: 107 }} />
+          <col style={{ width: 107 }} />
+          <col style={{ width: 107 }} />
+          <col style={{ width: 107 }} />
           <col style={{ width: 10 }} className="sep" />
           <col style={{ width: 45 }} />
-          <col style={{ width: 175 }} />
-          <col style={{ width: 100 }} />
-          <col style={{ width: 100 }} />
-          <col style={{ width: 100 }} />
-          <col style={{ width: 100 }} />
+          <col style={{ width: 275 }} />
+          <col style={{ width: 107 }} />
+          <col style={{ width: 107 }} />
+          <col style={{ width: 107 }} />
+          <col style={{ width: 107 }} />
         </colgroup>
         <thead>
           <tr className="bal-title">
