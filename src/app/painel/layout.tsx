@@ -20,6 +20,9 @@ export default async function PainelLayout({ children }: { children: React.React
           rotulo: "Auditoria de Obrigações Acessórias",
           icone: "🧾",
         },
+        { grupo: "Fiscal", href: "/painel/sped-fiscal", rotulo: "SPED-Fiscal", icone: "🧾" },
+        { grupo: "Fiscal", href: "/painel/pis-cofins", rotulo: "PIS/COFINS", icone: "💰" },
+        { grupo: "Fiscal", href: "/painel/irpj-csll", rotulo: "IRPJ/CSLL", icone: "🧮" },
 
         {
           grupo: "Contábil",
@@ -33,6 +36,10 @@ export default async function PainelLayout({ children }: { children: React.React
           rotulo: "Conciliação — Pagamentos de Impostos Estaduais",
           icone: "🏛️",
         },
+        { grupo: "Contábil", href: "/painel/conciliacao-ecd", rotulo: "Conciliação ECD (nível 3)", icone: "🔍" },
+        { grupo: "Contábil", href: "/painel/balanco", rotulo: "Balanço Comparado", icone: "📋" },
+        { grupo: "Contábil", href: "/painel/balancete", rotulo: "Balancete Comparado", icone: "📊" },
+        { grupo: "Contábil", href: "/painel/razao-contrapartida", rotulo: "Razão / Contrapartida", icone: "🔎" },
 
         {
           grupo: "Auditoria",

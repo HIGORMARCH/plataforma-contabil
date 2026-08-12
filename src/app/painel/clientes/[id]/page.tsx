@@ -44,27 +44,18 @@ export default async function ClienteDetalhe({ params }: { params: Promise<{ id:
         <Link href="/painel/clientes" className="text-sm text-slate-500 hover:underline">
           ← Voltar para clientes
         </Link>
-        <div className="mt-1 flex flex-wrap items-center justify-between gap-3">
-          <h1 className="text-2xl font-bold text-slate-800">{cliente.razaoSocial}</h1>
-          <div className="flex gap-2">
-            <Link href={`/painel/clientes/${id}/editar`} className="btn btn-ghost">
-              ✏️ Editar cadastro
+        <div className="mt-1 flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-bold text-slate-800">{cliente.razaoSocial}</h1>
+            <Link
+              href={`/painel/clientes/${id}/editar`}
+              className="mt-1 inline-block text-xs text-[var(--ink-soft)] underline decoration-dotted underline-offset-2 hover:text-[var(--brand-deep)]"
+            >
+              editar cadastro
             </Link>
-            <Link href={`/painel/clientes/${id}/sped`} className="btn btn-ghost">
-              🧾 SPED-Fiscal
-            </Link>
-            <Link href={`/painel/clientes/${id}/pis-cofins`} className="btn btn-ghost">
-              💰 PIS/COFINS
-            </Link>
-            <Link href={`/painel/clientes/${id}/irpj-csll`} className="btn btn-ghost">
-              🧮 IRPJ/CSLL
-            </Link>
-            <Link href={`/painel/clientes/${id}/obrigacoes-acessorias`} className="btn btn-ghost">
-              📋 Obrigações Acessórias
-            </Link>
-            <Link href={`/painel/clientes/${id}/conciliacao-ecd`} className="btn btn-ghost">
-              🔍 Conciliação ECD
-            </Link>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
             <Link href={`/painel/clientes/${id}/exercicios`} className="btn btn-accent">
               📄 Adicionar documentos
             </Link>
@@ -80,6 +71,12 @@ export default async function ClienteDetalhe({ params }: { params: Promise<{ id:
             )}
           </div>
         </div>
+        <p className="mt-3 max-w-[62ch] text-[11px] leading-relaxed text-[var(--ink-soft)]">
+          Os módulos de auditoria (SPED-Fiscal, PIS/COFINS, IRPJ/CSLL, Conciliação ECD,
+          Balanço, Balancete, Razão / Contrapartida) foram movidos pro menu lateral, sob
+          suas categorias <b>Fiscal</b> e <b>Contábil</b>. Selecione o módulo lá e escolha
+          este cliente na lista.
+        </p>
       </div>
 
       <div className="grid gap-6 lg:grid-cols-3">
@@ -179,3 +176,4 @@ export default async function ClienteDetalhe({ params }: { params: Promise<{ id:
     </div>
   );
 }
+

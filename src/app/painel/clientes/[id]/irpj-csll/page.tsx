@@ -1,7 +1,9 @@
+import path from "node:path";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requirePapel, PAPEIS_INTERNOS } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import { pastaCliente } from "@/lib/storage/filesystem";
 import { VarrerPastaEcfButton } from "./_components/VarrerPastaEcfButton";
 import { UploadEcfForm } from "./_components/UploadEcfForm";
 
@@ -70,9 +72,16 @@ export default async function IrpjCsllPage({
 
   const cliente = await prisma.cliente.findFirst({
     where: { id, escritorioId: sessao.escritorioId },
-    select: { id: true, razaoSocial: true, cnpj: true, regimeTributario: true, pastaFiscal: true },
+    select: { id: true, razaoSocial: true, cnpj: true, regimeTributario: true },
   });
   if (!cliente) notFound();
+
+  // Pasta única padronizada: C:\PlataformaContabil\<CLIENTE>_<CNPJ>\SPED-ECF
+  // A varredura é recursiva, então pega todos os anos dentro dessa raiz.
+  const pastaEcf = path.join(
+    pastaCliente({ razaoSocial: cliente.razaoSocial, cnpj: cliente.cnpj }),
+    "SPED-ECF",
+  );
 
   // Anos com dados (ECF ou DCTF) — não mostra ano vazio no seletor
   const [ecfAnos, dctfPeriodos] = await Promise.all([
@@ -180,7 +189,7 @@ export default async function IrpjCsllPage({
 
       {/* Ações */}
       <div className="grid gap-3 md:grid-cols-2">
-        <VarrerPastaEcfButton clienteId={id} pastaSugerida={cliente.pastaFiscal} />
+        <VarrerPastaEcfButton clienteId={id} pastaSugerida={pastaEcf} />
         <UploadEcfForm clienteId={id} />
       </div>
 

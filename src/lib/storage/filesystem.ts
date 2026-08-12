@@ -31,6 +31,7 @@ export type TipoDocumento =
   | "SPED-CONTRIBUICOES"
   | "SPED-FISCAL"
   | "SPED-ECD"
+  | "SPED-ECD-DOMINIO"
   | "SPED-ECF"
   | "BALANCOS-DOMINIO"
   | "DEFIS";

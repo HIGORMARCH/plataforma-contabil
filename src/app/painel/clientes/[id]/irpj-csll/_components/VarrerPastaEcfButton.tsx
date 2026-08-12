@@ -46,13 +46,12 @@ export function VarrerPastaEcfButton({
           type="text"
           value={pasta}
           onChange={(e) => setPasta(e.target.value)}
-          placeholder={pastaSugerida ?? `Z:\\...\\DECLARAÇÕES\\ECF`}
+          placeholder={pastaSugerida ?? `C:\\PlataformaContabil\\<CLIENTE>_<CNPJ>\\SPED-ECF`}
           className="input font-mono text-xs"
         />
         <p className="mt-1 text-[11px] text-slate-500">
-          {pastaSugerida
-            ? `Sugerida (pastaFiscal): ${pastaSugerida}. Ajuste pra apontar direto na subpasta ECF se preciso.`
-            : "Aponte pra pasta onde estão os arquivos SPEDECF-*.txt. Cadastre pastaFiscal no cliente pra ter default."}
+          Pasta única da plataforma: <code className="font-mono">{pastaSugerida}</code>.
+          Coloque os SPEDECF-*.txt aqui (subpasta por ano opcional — a varredura é recursiva).
         </p>
       </div>
       <button type="button" onClick={varrer} disabled={pending} className="btn btn-accent text-sm">
