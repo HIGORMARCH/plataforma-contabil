@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState } from "react";
+import { useRef, useState } from "react";
 
 export interface ItemMenu {
   href: string;
@@ -33,6 +33,20 @@ export function Sidebar({
 }) {
   const path = usePathname();
   const [aberto, setAberto] = useState<string | null>(null);
+  const fecharTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  function abrirGrupo(titulo: string) {
+    if (fecharTimer.current) {
+      clearTimeout(fecharTimer.current);
+      fecharTimer.current = null;
+    }
+    setAberto(titulo);
+  }
+
+  function agendarFechar() {
+    if (fecharTimer.current) clearTimeout(fecharTimer.current);
+    fecharTimer.current = setTimeout(() => setAberto(null), 220);
+  }
 
   // Item avulso (Painel) — sem grupo, vira link direto
   const itensAvulsos = itens.filter((it) => !it.grupo);
@@ -88,8 +102,8 @@ export function Sidebar({
             <div
               key={g.titulo}
               className="relative"
-              onMouseEnter={() => setAberto(g.titulo)}
-              onMouseLeave={() => setAberto((cur) => (cur === g.titulo ? null : cur))}
+              onMouseEnter={() => abrirGrupo(g.titulo)}
+              onMouseLeave={agendarFechar}
             >
               <button
                 type="button"
@@ -102,7 +116,12 @@ export function Sidebar({
                 <span aria-hidden className="text-[9px] opacity-70">▾</span>
               </button>
               {isOpen && (
-                <div className="absolute left-0 top-full mt-1 min-w-[280px] rounded-md border border-black/10 bg-white text-[var(--ink)] shadow-xl">
+                <div
+                  className="absolute left-0 top-full min-w-[280px] rounded-md border border-black/10 bg-white pt-1 text-[var(--ink)] shadow-xl"
+                  style={{ paddingTop: 0, marginTop: 2 }}
+                  onMouseEnter={() => abrirGrupo(g.titulo)}
+                  onMouseLeave={agendarFechar}
+                >
                   <ul className="py-1">
                     {g.itens.map((it) => {
                       const ativo =
