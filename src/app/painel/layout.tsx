@@ -75,7 +75,7 @@ export default async function PainelLayout({ children }: { children: React.React
         escritorio={escritorio?.nomeFantasia ?? escritorio?.razaoSocial ?? "Escritório"}
       />
       <main className="flex-1 overflow-x-hidden">
-        <div className="mx-auto w-full max-w-none px-4 py-6 lg:px-6">{children}</div>
+        <div className="mx-auto max-w-6xl px-6 py-8">{children}</div>
       </main>
     </div>
   );

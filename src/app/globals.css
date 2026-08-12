@@ -496,65 +496,20 @@ body {
 .balancete-hier thead th:first-child,
 .balancete-hier thead th.left { text-align: left; }
 .balancete-hier tbody td {
-  padding: 0.35rem 0.55rem;
+  padding: 0.4rem 0.9rem;
   border-bottom: 1px solid #f3efe4;
   font-variant-numeric: tabular-nums;
 }
 .balancete-hier tbody td.val {
   text-align: right;
   font-family: var(--font-mono), ui-monospace, monospace;
-  font-size: 0.72rem;
-  white-space: nowrap;
+  font-size: 0.78rem;
 }
 .balancete-hier tbody td.cod {
   color: var(--ink-soft);
   font-family: var(--font-mono), ui-monospace, monospace;
-  font-size: 0.68rem;
-  width: 55px;
-  position: sticky;
-  left: 0;
-  background: #fff;
-  z-index: 2;
-}
-.balancete-hier tbody td.conta {
-  position: sticky;
-  left: 55px;
-  background: #fff;
-  z-index: 2;
-  min-width: 230px;
-  max-width: 320px;
-}
-.balancete-hier tbody tr.lvl-0 td.cod,
-.balancete-hier tbody tr.lvl-0 td.conta { background: var(--brand-darker); }
-.balancete-hier tbody tr.lvl-1 td.cod,
-.balancete-hier tbody tr.lvl-1 td.conta { background: var(--brand-2-soft); }
-.balancete-hier tbody tr.anal:hover td.cod,
-.balancete-hier tbody tr.anal:hover td.conta { background: #fbf9f4; }
-.balancete-hier tbody tr.anal.diverge td.cod,
-.balancete-hier tbody tr.anal.diverge td.conta { background: var(--danger-soft); }
-.balancete-hier thead th {
-  padding: 0.55rem 0.4rem;
-  white-space: nowrap;
-}
-.balancete-hier thead th:first-child,
-.balancete-hier thead th:nth-child(2) {
-  position: sticky;
-  left: 0;
-  z-index: 3;
-  background: var(--brand-darker);
-}
-.balancete-hier thead th:nth-child(2) { left: 55px; }
-
-/* Sub-headers Sist/ECD e valores mais compactos */
-.balancete-hier thead tr.sub th.sublabel {
-  padding: 0.3rem 0.35rem;
-  min-width: 100px;
-  max-width: 110px;
-}
-.balancete-hier tbody td.val {
-  min-width: 100px;
-  max-width: 110px;
-  padding: 0.3rem 0.4rem;
+  font-size: 0.72rem;
+  width: 75px;
 }
 .balancete-hier tbody td.conta {
   color: var(--ink);
