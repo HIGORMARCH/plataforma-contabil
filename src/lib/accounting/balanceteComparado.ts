@@ -255,15 +255,24 @@ export function compararBalancetesHierarquico(
   const naturezas = opts.naturezas ?? NATUREZAS_PATRIMONIAIS;
   const tol = opts.tolerancia ?? TOL;
 
-  // União dos planos — usa Domínio como referência e complementa com ECD
+  // União dos planos — usa Sistema como referência e complementa com ECD.
+  // Serve pra decidir QUAIS linhas exibir (a união dos códigos).
   const planoUnificado = new Map<string, PlanoContaEcd>(planoDom);
   for (const [cod, info] of planoEcd) {
     if (!planoUnificado.has(cod)) planoUnificado.set(cod, info);
   }
 
-  // Agrega sintéticas dos dois lados usando o plano unificado
-  const agDom = agregarSinteticas(saldosDom, planoUnificado);
-  const agEcd = agregarSinteticas(saldosEcd, planoUnificado);
+  // Agrega sintéticas de cada lado usando o PLANO PRÓPRIO daquele lado.
+  // Motivo: os planos podem ter hierarquias diferentes (uma analítica que
+  // no Sistema está sob CLIENTES pode estar sob DUPLICATAS A RECEBER no
+  // ECD Transmitido). Se usássemos plano unificado, contas conhecidas só
+  // por um lado seriam somadas no lado errado e zerariam a sintética.
+  const agDom = agregarSinteticas(saldosDom, planoDom);
+  const agEcd = agregarSinteticas(saldosEcd, planoEcd);
+  // Estrutura da árvore usa plano unificado (pra exibir tudo que existe em
+  // qualquer um dos lados). Cada linha sai com sua natureza/nível/pai
+  // conforme o plano que a definiu (o unificado escolhe Sistema como
+  // primário e ECD como complemento).
   const { filhos, raizes } = estruturaHierarquica(planoUnificado);
 
   const linhas: LinhaHierarquica[] = [];

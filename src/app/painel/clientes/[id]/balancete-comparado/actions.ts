@@ -91,8 +91,17 @@ export async function uploadSpedEcdAction(
     await mkdir(path.dirname(destino), { recursive: true });
     await writeFile(destino, bytes);
 
+    // Invalida cache de TODAS as telas que consomem esse SPED — quando o
+    // arquivo é substituído (upload novo do mesmo ano), o Next precisa
+    // refazer o parse. `layout` propaga pra descendentes.
     revalidatePath(`/painel/clientes/${clienteId}/balancete-comparado`, "layout");
     revalidatePath(`/painel/clientes/${clienteId}/balanco-comparado`, "layout");
+    revalidatePath(`/painel/clientes/${clienteId}/razao-contrapartida`, "layout");
+    revalidatePath(`/painel/clientes/${clienteId}/conciliacao-ecd`, "layout");
+    // Índices no sidebar podem ter contadores/situação — revalida
+    revalidatePath(`/painel/balancete`, "layout");
+    revalidatePath(`/painel/balanco`, "layout");
+    revalidatePath(`/painel/razao-contrapartida`, "layout");
     return {
       ok: true,
       mensagem: `SPED-ECD ${lado} ${ano} salvo.`,
