@@ -424,48 +424,171 @@ body {
 }
 
 /* Impressão — só o miolo do relatório vai pra papel */
+/* -------------------------------------------------------------------------
+   IMPRESSÃO — layout de RELATÓRIO CONTÁBIL profissional (não tela).
+   Cabeçalho institucional (razão social, CNPJ, período), tabela densa,
+   rodapé com espaço pra assinatura. Preto/branco pra economizar tinta.
+   ------------------------------------------------------------------------- */
 @media print {
   @page {
     size: A4 landscape;
-    margin: 14mm 12mm 14mm 12mm;
+    margin: 20mm 15mm 22mm 15mm;
   }
   html, body {
     background: #fff !important;
     color: #000 !important;
-    font-size: 10pt;
+    font-size: 9.5pt;
+    font-family: "Times New Roman", Georgia, serif;
   }
-  /* Esconde sidebar do painel + tudo marcado como no-print */
-  aside, nav, .no-print, header form, form button[type="submit"] {
-    display: none !important;
+
+  /* Esconde tudo que é UI de aplicativo */
+  aside, nav, .no-print, header form, form button[type="submit"],
+  .status-panel, .notice, .chip-year, .rule-gold, .toolbar-balancete,
+  .btn, section[class*="Upload"], .acct-section, .errata, .reclass,
+  .meta-strip { display: none !important; }
+
+  /* Cabeçalho editorial vira cabeçalho de relatório */
+  .display, h1.display {
+    font-family: "Times New Roman", Georgia, serif !important;
+    color: #000 !important;
+    font-size: 18pt !important;
+    font-weight: 700 !important;
+    letter-spacing: 0 !important;
+    text-align: center;
+    margin: 0 0 4mm 0;
+    line-height: 1.1;
   }
-  /* Remove sombras/borders pesadas no papel */
-  .status-panel, .notice, .meta-strip, .acct-list {
-    box-shadow: none !important;
-    break-inside: avoid;
+  .display .italic { font-style: italic; font-weight: 400; color: #666 !important; }
+  .eyebrow {
+    display: block;
+    text-align: center;
+    font-family: "Times New Roman", Georgia, serif !important;
+    text-transform: uppercase;
+    letter-spacing: 0.15em;
+    font-size: 8pt !important;
+    color: #555 !important;
+    margin-bottom: 2mm;
   }
-  .acct-item {
-    break-inside: avoid;
-    page-break-inside: avoid;
+  .eyebrow-sep { color: #999 !important; }
+
+  /* Descrição/subtítulo — vira lead do relatório */
+  main h1.display + p,
+  main .display + p {
+    text-align: center;
+    max-width: none !important;
+    font-size: 9pt !important;
+    color: #333 !important;
+    margin: 0 auto 6mm;
+    font-style: italic;
   }
-  .acct-section-header {
-    break-after: avoid;
-  }
-  /* Faixa da seção no papel: sem fundo escuro (economiza tinta), só linha grossa */
-  .acct-section-header {
-    background: #fff !important;
-    color: var(--brand-darker) !important;
-    border-top: 3px solid var(--brand-darker);
-    border-bottom: 1px solid var(--brand-2);
-    padding: 0.4rem 0.6rem;
-  }
-  .acct-section-header .title { color: var(--brand-darker) !important; }
-  .acct-section-header .count { color: #555 !important; }
-  /* Grid mais denso no papel */
-  .acct-item { padding: 0.4rem 0.5rem 0.5rem; }
-  .acct-grid { font-size: 8.5pt; }
-  .acct-grid .val.diff { background: transparent !important; border-bottom: 1px dotted var(--danger); }
-  .acct-grid .val.delta { color: var(--danger) !important; }
+
   main { padding: 0 !important; max-width: none !important; }
+  main > div { max-width: none !important; padding: 0 !important; }
+
+  /* Cabeçalho do relatório: linha superior + inferior grossas */
+  main > div > div:first-child {
+    border-top: 2px solid #000;
+    border-bottom: 1px solid #000;
+    padding: 4mm 0 !important;
+    margin-bottom: 5mm !important;
+  }
+
+  /* Balancete hierárquico — vira tabela de relatório contábil clássico */
+  .balancete-hier {
+    border: 1px solid #000 !important;
+    border-radius: 0 !important;
+    overflow: visible !important;
+    background: #fff !important;
+  }
+  .balancete-hier table {
+    font-size: 8pt !important;
+    font-family: "Times New Roman", Georgia, serif !important;
+    border-collapse: collapse !important;
+    width: 100% !important;
+  }
+  .balancete-hier thead th {
+    background: #f0f0f0 !important;
+    color: #000 !important;
+    border: 1px solid #000 !important;
+    padding: 1.5mm 2mm !important;
+    font-size: 7.5pt !important;
+    letter-spacing: 0 !important;
+    font-family: "Times New Roman", Georgia, serif !important;
+    text-transform: uppercase;
+    font-weight: 700 !important;
+  }
+  .balancete-hier thead tr.sub th.sublabel {
+    background: #f5f5f5 !important;
+    color: #000 !important;
+    font-size: 6.5pt !important;
+    text-transform: none;
+  }
+  .balancete-hier tbody td {
+    border: 1px solid #ccc !important;
+    padding: 1mm 2mm !important;
+    font-size: 8pt !important;
+    font-family: "Times New Roman", Georgia, serif !important;
+    color: #000 !important;
+    background: #fff !important;
+  }
+  .balancete-hier tbody td.val {
+    font-family: "Courier New", monospace !important;
+    font-size: 7.5pt !important;
+  }
+  .balancete-hier tr.lvl-0 td {
+    background: #333 !important;
+    color: #fff !important;
+    font-weight: 700 !important;
+    font-family: "Times New Roman", Georgia, serif !important;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    font-size: 9pt !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  .balancete-hier tr.lvl-0 td.val { color: #fff !important; }
+  .balancete-hier tr.lvl-1 td {
+    background: #e0e0e0 !important;
+    color: #000 !important;
+    font-weight: 700 !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  .balancete-hier tr.sint td.conta { font-weight: 700 !important; }
+  .balancete-hier tr.diverge td.val.dif { color: #000 !important; font-weight: 700 !important; }
+  .balancete-hier tr.anal.diverge td.val.dom,
+  .balancete-hier tr.anal.diverge td.val.ecd {
+    background: #fff !important;
+    text-decoration: underline;
+    text-decoration-style: dotted;
+  }
+  .balancete-hier tr { page-break-inside: avoid; }
+  .balancete-hier thead { display: table-header-group; } /* repete no topo de cada página */
+  .balancete-hier tbody tr.drilldown { display: none !important; }
+
+  /* Badges: só texto no papel, sem cor de fundo */
+  .st-badge {
+    background: transparent !important;
+    border: 1px solid #000 !important;
+    color: #000 !important;
+    padding: 0 2mm !important;
+    font-size: 6.5pt !important;
+    font-family: "Times New Roman", Georgia, serif !important;
+  }
+  .st-badge.st-diverge { border-color: #000 !important; font-weight: 700; }
+
+  /* Rodapé: assinatura + data + timbre */
+  main > div::after {
+    content: "";
+    display: block;
+    margin-top: 15mm;
+    padding-top: 4mm;
+    border-top: 1px solid #000;
+    text-align: center;
+    font-size: 8pt;
+    color: #555;
+  }
+
   a { color: inherit !important; text-decoration: none !important; }
 }
 
