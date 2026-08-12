@@ -31,8 +31,18 @@ export function ToolbarBalancete({
     router.push(`${pathname}?${params.toString()}`);
   }
 
-  function imprimir() {
-    window.print();
+  function imprimir(escopo: "sistema" | "ecd" | "ambos") {
+    // Aplica classe temporária no body pra CSS @media print esconder o lado
+    // que não faz parte do escopo. Remove depois do print.
+    const body = document.body;
+    body.classList.add(`print-escopo-${escopo}`);
+    // Delay 0 pra garantir que a classe entrou no DOM antes do print
+    setTimeout(() => {
+      window.print();
+      setTimeout(() => {
+        body.classList.remove(`print-escopo-${escopo}`);
+      }, 100);
+    }, 0);
   }
 
   function exportar() {
@@ -88,11 +98,34 @@ export function ToolbarBalancete({
       </div>
 
       <div className="toolbar-group">
-        <button type="button" className="btn btn-ghost" onClick={imprimir}>
-          {filtroAtual === "divergentes"
-            ? "Imprimir divergentes"
-            : "Imprimir balancetes completos"}
+        <span className="eyebrow mr-2">Imprimir</span>
+        <button
+          type="button"
+          className="btn btn-ghost"
+          onClick={() => imprimir("sistema")}
+          title="Imprimir só o balancete do Sistema"
+        >
+          Sistema
         </button>
+        <button
+          type="button"
+          className="btn btn-ghost"
+          onClick={() => imprimir("ecd")}
+          title="Imprimir só o balancete da ECD Transmitida"
+        >
+          ECD
+        </button>
+        <button
+          type="button"
+          className="btn btn-ghost"
+          onClick={() => imprimir("ambos")}
+          title="Imprimir os dois balancetes lado a lado"
+        >
+          Ambos
+        </button>
+        <span className="mx-2 text-[11px] text-[var(--ink-soft)]">
+          ({filtroAtual === "divergentes" ? "só divergentes" : "completo"})
+        </span>
         <button
           type="button"
           className="btn btn-accent"

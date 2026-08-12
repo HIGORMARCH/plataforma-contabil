@@ -69,40 +69,40 @@ export function BalanceteHierarquico({
     <div className="balancete-hier bal-lado overflow-x-auto">
       <table>
         <colgroup>
-          <col style={{ width: "3%" }} />
-          <col style={{ width: "18.5%" }} />
-          <col style={{ width: "7%" }} />
-          <col style={{ width: "7%" }} />
-          <col style={{ width: "7%" }} />
-          <col style={{ width: "7%" }} />
+          <col style={{ width: "3%" }} className="lado-sistema" />
+          <col style={{ width: "18.5%" }} className="lado-sistema" />
+          <col style={{ width: "7%" }} className="lado-sistema" />
+          <col style={{ width: "7%" }} className="lado-sistema" />
+          <col style={{ width: "7%" }} className="lado-sistema" />
+          <col style={{ width: "7%" }} className="lado-sistema" />
           <col style={{ width: "1%" }} className="sep" />
-          <col style={{ width: "3%" }} />
-          <col style={{ width: "18.5%" }} />
-          <col style={{ width: "7%" }} />
-          <col style={{ width: "7%" }} />
-          <col style={{ width: "7%" }} />
-          <col style={{ width: "7%" }} />
+          <col style={{ width: "3%" }} className="lado-ecd" />
+          <col style={{ width: "18.5%" }} className="lado-ecd" />
+          <col style={{ width: "7%" }} className="lado-ecd" />
+          <col style={{ width: "7%" }} className="lado-ecd" />
+          <col style={{ width: "7%" }} className="lado-ecd" />
+          <col style={{ width: "7%" }} className="lado-ecd" />
         </colgroup>
         <thead>
           <tr className="bal-title">
-            <th colSpan={6} className="lado-title">Balancete Sistema</th>
+            <th colSpan={6} className="lado-title lado-sistema">Balancete Sistema</th>
             <th className="sep-col" />
-            <th colSpan={6} className="lado-title">Balancete ECD (Transmitida)</th>
+            <th colSpan={6} className="lado-title lado-ecd">Balancete ECD (Transmitida)</th>
           </tr>
           <tr>
-            <th className="left">Cód.</th>
-            <th className="left">Descrição da conta</th>
-            <th>Anterior</th>
-            <th>Débito</th>
-            <th>Crédito</th>
-            <th>Atual</th>
+            <th className="left lado-sistema">Cód.</th>
+            <th className="left lado-sistema">Descrição da conta</th>
+            <th className="lado-sistema">Anterior</th>
+            <th className="lado-sistema">Débito</th>
+            <th className="lado-sistema">Crédito</th>
+            <th className="lado-sistema">Atual</th>
             <th className="sep-col" />
-            <th className="left">Cód.</th>
-            <th className="left">Descrição da conta</th>
-            <th>Anterior</th>
-            <th>Débito</th>
-            <th>Crédito</th>
-            <th>Atual</th>
+            <th className="left lado-ecd">Cód.</th>
+            <th className="left lado-ecd">Descrição da conta</th>
+            <th className="lado-ecd">Anterior</th>
+            <th className="lado-ecd">Débito</th>
+            <th className="lado-ecd">Crédito</th>
+            <th className="lado-ecd">Atual</th>
           </tr>
         </thead>
         <tbody>
@@ -128,23 +128,23 @@ export function BalanceteHierarquico({
                   onClick={isAnal ? () => toggleExpansao(l.codigo) : undefined}
                   title={isAnal ? "Clique pra ver detalhamento e razão comparado" : undefined}
                 >
-                  <td className="cod">{l.codigo}</td>
-                  <td className="conta" data-nivel={String(lvl)} title={l.descricao}>
+                  <td className="cod lado-sistema">{l.codigo}</td>
+                  <td className="conta lado-sistema" data-nivel={String(lvl)} title={l.descricao}>
                     {l.descricao}
                   </td>
-                  <td className="val">{formatarSaldo(l.dominio.saldoInicial)}</td>
-                  <td className="val">{formatarSaldo(l.dominio.debito)}</td>
-                  <td className="val">{formatarSaldo(l.dominio.credito)}</td>
-                  <td className="val">{formatarSaldo(l.dominio.saldoFinal)}</td>
+                  <td className="val lado-sistema">{formatarSaldo(l.dominio.saldoInicial)}</td>
+                  <td className="val lado-sistema">{formatarSaldo(l.dominio.debito)}</td>
+                  <td className="val lado-sistema">{formatarSaldo(l.dominio.credito)}</td>
+                  <td className="val lado-sistema">{formatarSaldo(l.dominio.saldoFinal)}</td>
                   <td className="sep-col" />
-                  <td className="cod">{l.codigo}</td>
-                  <td className="conta" data-nivel={String(lvl)} title={l.descricao}>
+                  <td className="cod lado-ecd">{l.codigo}</td>
+                  <td className="conta lado-ecd" data-nivel={String(lvl)} title={l.descricao}>
                     {l.descricao}
                   </td>
-                  <td className="val">{formatarSaldo(l.ecd.saldoInicial)}</td>
-                  <td className="val">{formatarSaldo(l.ecd.debito)}</td>
-                  <td className="val">{formatarSaldo(l.ecd.credito)}</td>
-                  <td className="val">{formatarSaldo(l.ecd.saldoFinal)}</td>
+                  <td className="val lado-ecd">{formatarSaldo(l.ecd.saldoInicial)}</td>
+                  <td className="val lado-ecd">{formatarSaldo(l.ecd.debito)}</td>
+                  <td className="val lado-ecd">{formatarSaldo(l.ecd.credito)}</td>
+                  <td className="val lado-ecd">{formatarSaldo(l.ecd.saldoFinal)}</td>
                 </tr>
 
                 {isExpandida && isAnal && (
