@@ -58,3 +58,7 @@ next-env.d.ts
 # Backups de banco (nao versionar)
 *.bak-*
 prisma/*.bak-*
+*.dump
+*.dump.gz
+/backups/
+/dumps/
