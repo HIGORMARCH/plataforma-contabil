@@ -49,7 +49,15 @@ Quando Higor sinalizar fim de sessão ("vamos fechar", "boa noite", equivalente)
 
 Detalhe completo em `~/.claude/CLAUDE.md` global do Higor.
 
-## Última sessão (10/08/2026)
+## Última sessão (16/08/2026)
+
+- **Backup diário do banco (Postgres do 220)** implementado — task local dentro do 220 rodando 20:30 diária, dump em `C:\Aplicacoes\backups-postgres\` (VOECLOUD replica off-site). Retenção 3 dias. Ver `docs/RELATORIO-SESSAO-2026-08-16.md`.
+- `.gitignore` reforçado — bloqueia `/backups/`, `/dumps/`, `*.dump` (commit `4e33c24`).
+- **Regra nova (feedback):** uma sessão do Claude por aplicação. Nada de misturar MarchERP + Plataforma + robô Onvio na mesma conversa. Ver `~/.claude/projects/.../feedback_uma_sessao_por_aplicacao.md`.
+
+**Ação do Higor pendente (herança da 10/08):** reimportar 2018 Casa São Paulo pela UI pra validar os fixes de conciliação nível 3.
+
+## Sessão anterior (10/08/2026)
 
 - Revert da ferramenta de vinculação plano de contas (matching por código sequencial fazia conta errada bater)
 - Revert da aba "Contas divergentes" da conciliação (mesmo motivo)
@@ -57,8 +65,6 @@ Detalhe completo em `~/.claude/CLAUDE.md` global do Higor.
 - Fix parser: reconhece `2.3.2 RESERVAS DE CAPITAL` como sintética própria
 - Fix cache: `revalidatePath(path, "layout")` invalida descendentes
 - Balanço 2018 Casa São Paulo (CNPJ 37.417.896/0001-19) alinhado nível 3 após reclassificações no Domínio
-
-**Ação do Higor pendente:** reimportar 2018 Casa São Paulo pela UI pra validar os fixes.
 
 ## Onde buscar o resto
 
