@@ -36,6 +36,12 @@ export default async function PainelLayout({ children }: { children: React.React
           rotulo: "Conciliação — Pagamentos de Impostos Estaduais",
           icone: "🏛️",
         },
+        {
+          grupo: "Contábil",
+          href: "/painel/impostos-declarados",
+          rotulo: "Impostos a Pagar (declarações)",
+          icone: "🧾",
+        },
         { grupo: "Contábil", href: "/painel/conciliacao-ecd", rotulo: "Conciliação ECD (nível 3)", icone: "🔍" },
         { grupo: "Contábil", href: "/painel/balanco", rotulo: "Balanço Comparado", icone: "📋" },
         { grupo: "Contábil", href: "/painel/balancete", rotulo: "Balancete Comparado", icone: "📊" },

@@ -9,6 +9,7 @@
 
 import { comCertificadoDoCliente } from "@/lib/certificados/runtime";
 import { prisma } from "@/lib/db";
+import { recortarPeriodo, descreverRecorte } from "@/lib/atendimento";
 import { consultarDeclaracaoCompleta, modoAtual, type DctfWebResposta } from "./dctfwebClient";
 
 function soDigitos(s: string | null | undefined): string {
@@ -53,15 +54,39 @@ export async function sincronizarDctfWeb(params: {
   try {
     const cliente = await prisma.cliente.findUnique({
       where: { id: clienteId },
-      select: { metodoAcessoEcac: true, cnpj: true },
+      select: {
+        metodoAcessoEcac: true,
+        cnpj: true,
+        atendimentoInicio: true,
+        atendimentoFim: true,
+      },
     });
     if (!cliente) throw new Error("Cliente não encontrado.");
     const cnpjDigits = soDigitos(cliente.cnpj);
 
-    // Enumera cada mês do range
+    // GUARD DE PERÍODO — cada competência aqui é UMA CHAMADA PAGA ao SERPRO.
+    // Consultar mês em que o escritório não atendeu o cliente é dinheiro fora
+    // sem chance de retorno útil. Recorta antes de enumerar.
+    const pedido = {
+      de: new Date(Date.UTC(periodoInicial.getFullYear(), periodoInicial.getMonth(), 1)),
+      ate: new Date(Date.UTC(periodoFinal.getFullYear(), periodoFinal.getMonth(), 1)),
+    };
+    const janela = recortarPeriodo(cliente, pedido.de, pedido.ate);
+    if (!janela) {
+      const msg =
+        "Nenhuma competência do intervalo está dentro do período de atendimento do cliente — nenhuma chamada ao SERPRO foi feita.";
+      await prisma.dctfWebSincronizacao.update({
+        where: { id: sinc.id },
+        data: { sucesso: true, declaracoesRetornadas: 0, mensagem: msg },
+      });
+      return { ok: true, declaracoes: 0, sincronizacaoId: sinc.id, modo };
+    }
+    const avisoRecorte = descreverRecorte(pedido, janela);
+
+    // Enumera cada mês do range (já recortado)
     const meses: Array<{ ano: number; mes: number; primeiroDia: Date }> = [];
-    const cursor = new Date(periodoInicial.getFullYear(), periodoInicial.getMonth(), 1);
-    const limite = new Date(periodoFinal.getFullYear(), periodoFinal.getMonth(), 1);
+    const cursor = new Date(janela.de.getUTCFullYear(), janela.de.getUTCMonth(), 1);
+    const limite = new Date(janela.ate.getUTCFullYear(), janela.ate.getUTCMonth(), 1);
     while (cursor <= limite) {
       meses.push({
         ano: cursor.getFullYear(),
@@ -199,10 +224,15 @@ export async function sincronizarDctfWeb(params: {
         // se todas retornaram vazio (o cliente pode não ter DCTFWeb no
         // período — legítimo). Falha só se TODAS deram erro técnico.
         sucesso: resumoErro === 0 || resumoOk > 0,
-        mensagem:
+        mensagem: [
+          avisoRecorte,
           modo === "mock"
             ? `MOCK: ${totalDeclaracoes} declaração(ões) sintética(s) gravada(s). Alterne SERPRO_DCTFWEB_MODE=real quando cert/procuração estiverem prontos.`
-            : `${totalDeclaracoes} declaração(ões) sincronizada(s) via Integra Contador. Resumo: ${resumoOk} ok, ${resumoVazio} vazio(s), ${resumoErro} erro(s). Detalhe por competência: ${detalheMeses}`.slice(0, 2000),
+            : `${totalDeclaracoes} declaração(ões) sincronizada(s) via Integra Contador. Resumo: ${resumoOk} ok, ${resumoVazio} vazio(s), ${resumoErro} erro(s). Detalhe por competência: ${detalheMeses}`,
+        ]
+          .filter(Boolean)
+          .join(" ")
+          .slice(0, 2000),
       },
     });
 

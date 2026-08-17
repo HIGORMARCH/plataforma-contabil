@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db";
 import { decifrar } from "@/lib/crypto";
 import { rasparPortalSimples, type EntregaSimplesRaspada } from "./scraperPortal";
+import { recortarPeriodo, competenciaUtc } from "@/lib/atendimento";
 
 /**
  * Orquestrador: decifra o PFX do cliente, dispara o robô, persiste as entregas
@@ -25,9 +26,26 @@ export async function sincronizarSimplesNacional(params: {
       cnpj: true,
       certificadoArquivo: true,
       certificadoSenha: true,
+      atendimentoInicio: true,
+      atendimentoFim: true,
     },
   });
   if (!cliente) throw new Error("cliente não encontrado");
+
+  // GUARD DE PERÍODO — não abrir o robô no portal pra ano que o escritório não
+  // atendeu. PGDAS-D e DEFIS são federais, então a vigência da IE não entra aqui.
+  const janela = recortarPeriodo(
+    cliente,
+    competenciaUtc(params.anoInicial, 1),
+    competenciaUtc(params.anoFinal, 12),
+  );
+  if (!janela) {
+    throw new Error(
+      "nenhum ano do intervalo está dentro do período de atendimento do cliente — ajuste o cadastro ou o intervalo",
+    );
+  }
+  const anoInicial = janela.de.getUTCFullYear();
+  const anoFinal = janela.ate.getUTCFullYear();
   if (!cliente.cnpj) throw new Error("cliente sem CNPJ cadastrado");
   if (!cliente.certificadoArquivo || !cliente.certificadoSenha) {
     throw new Error(
@@ -41,8 +59,10 @@ export async function sincronizarSimplesNacional(params: {
   const sincronizacao = await prisma.simplesNacionalSincronizacao.create({
     data: {
       clienteId: params.clienteId,
-      anoInicial: params.anoInicial,
-      anoFinal: params.anoFinal,
+      // Grava o range EFETIVAMENTE consultado (já recortado), não o pedido —
+      // é o que explica depois por que um ano não veio.
+      anoInicial,
+      anoFinal,
       tiposConsultados: (params.tipos ?? ["PGDAS_D", "DEFIS"]).join(","),
       executadoPor: params.executadoPor,
     },
@@ -54,8 +74,8 @@ export async function sincronizarSimplesNacional(params: {
       cnpj: cliente.cnpj,
       pfxBuffer: Buffer.from(cliente.certificadoArquivo),
       pfxSenha: senhaClara,
-      anoInicial: params.anoInicial,
-      anoFinal: params.anoFinal,
+      anoInicial,
+      anoFinal,
       tipos: params.tipos,
       headless: params.headless ?? true,
     });

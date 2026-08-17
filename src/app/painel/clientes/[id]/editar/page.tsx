@@ -5,6 +5,7 @@ import { prisma } from "@/lib/db";
 import { editarClienteAction } from "../../actions";
 import { AcessoEcacFields } from "../../_components/AcessoEcacFields";
 import { AcessoSefazFields } from "../../_components/AcessoSefazFields";
+import { PeriodoAtendimentoFields } from "../../_components/PeriodoAtendimentoFields";
 import { ExcluirClienteButton } from "../../_components/ExcluirClienteButton";
 
 function Campo({
@@ -128,6 +129,15 @@ export default async function EditarClientePage({
             <Campo nome="uf" label="UF" placeholder="SP" defaultValue={cliente.uf} />
           </div>
         </section>
+
+        <PeriodoAtendimentoFields
+          valores={{
+            atendimentoInicio: cliente.atendimentoInicio,
+            atendimentoFim: cliente.atendimentoFim,
+            ieInicio: cliente.ieInicio,
+            ieFim: cliente.ieFim,
+          }}
+        />
 
         <AcessoEcacFields
           metodoInicial={cliente.metodoAcessoEcac}

@@ -49,7 +49,19 @@ Quando Higor sinalizar fim de sessão ("vamos fechar", "boa noite", equivalente)
 
 Detalhe completo em `~/.claude/CLAUDE.md` global do Higor.
 
-## Última sessão (16/08/2026)
+## Última sessão (16/08/2026 — noite)
+
+Primeira empresa do Simples na base (LUPO QUIOSQUE) revelou que a auditoria de ICMS não enxergava o regime:
+
+- **Auditoria ciente do regime** — no Simples não existe ICMS normal (está no DAS); o destaque virou **Complementação de Alíquota** (tipo C do Segmento E), com difal em linha própria. `src/lib/regime.ts`.
+- **Relatório de Impostos a Pagar** (novo módulo, menu Contábil) — consolida GIAM/SPED/DCTFWeb/ECF com total por declaração, sem total geral (o mesmo tributo aparece em duas fontes). Imprime com papel timbrado e coluna "Conferido" pra conciliação bancária.
+- **Período de atendimento do cliente** — 4 campos novos em `Cliente`; guard nos 3 robôs (SERPRO, Portal Simples, SEFAZ) pra não consultar portal fora do período, e telas marcam "fora do período" em vez de lacuna.
+- **Descoberta:** PGDASD do SERPRO só devolve PDF em base64, não tem JSON com valores. Mas o PDF é texto puro e já foi mapeado — ver memória `reference_layout_pgdasd_pdf`.
+- **Atenção:** `.env` de dev aponta pra `localhost:5432`, não pro 220. A migration foi aplicada só no local.
+
+Ver `docs/RELATORIO-SESSAO-2026-08-16.md` (seção "Sessão 2").
+
+## Sessão anterior (16/08/2026 — manhã)
 
 - **Backup diário do banco (Postgres do 220)** implementado — task local dentro do 220 rodando 20:30 diária, dump em `C:\Aplicacoes\backups-postgres\` (VOECLOUD replica off-site). Retenção 3 dias. Ver `docs/RELATORIO-SESSAO-2026-08-16.md`.
 - `.gitignore` reforçado — bloqueia `/backups/`, `/dumps/`, `*.dump` (commit `4e33c24`).

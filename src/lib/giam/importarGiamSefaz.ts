@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db";
 import { decifrar } from "@/lib/crypto";
 import { raspaGiamSefaz, SefazPortalError, type GiamSefazApuracaoRaspada } from "./sefazScraper";
+import { foraDoPeriodo, competenciaUtc } from "@/lib/atendimento";
 
 export interface ResumoSincronizacaoSefaz {
   sincronizacaoId: string;
@@ -30,7 +31,16 @@ export async function sincronizarGiamSefaz(opts: {
 
   const cliente = await prisma.cliente.findUnique({
     where: { id: clienteId },
-    select: { id: true, inscricaoEstadual: true, senhaSefaz: true, razaoSocial: true },
+    select: {
+      id: true,
+      inscricaoEstadual: true,
+      senhaSefaz: true,
+      razaoSocial: true,
+      atendimentoInicio: true,
+      atendimentoFim: true,
+      ieInicio: true,
+      ieFim: true,
+    },
   });
   if (!cliente) {
     throw new Error("Cliente não encontrado.");
@@ -41,6 +51,24 @@ export async function sincronizarGiamSefaz(opts: {
   if (!cliente.senhaSefaz) {
     return criarErro(clienteId, ano, meses, executadoPor, "Cliente sem senha SEFAZ cadastrada.");
   }
+
+  // GUARD DE PERÍODO — a GIAM é obrigação ESTADUAL, então além do período de
+  // atendimento vale a vigência da inscrição estadual: antes de existir IE não
+  // há GIAM a buscar no portal (caso LUPO QUIOSQUE, 07/2019).
+  const mesesPedidos = meses ?? [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
+  const mesesNoPeriodo = mesesPedidos.filter(
+    (m) => foraDoPeriodo(cliente, competenciaUtc(ano, m), { exigeIe: true }) === null,
+  );
+  if (mesesNoPeriodo.length === 0) {
+    return criarErro(
+      clienteId,
+      ano,
+      meses,
+      executadoPor,
+      `Nenhuma competência de ${ano} está dentro do período de atendimento / vigência da inscrição estadual — o portal não foi consultado.`,
+    );
+  }
+  const mesesDescartados = mesesPedidos.filter((m) => !mesesNoPeriodo.includes(m));
 
   let senha: string;
   try {
@@ -53,9 +81,9 @@ export async function sincronizarGiamSefaz(opts: {
     data: {
       clienteId,
       ano,
-      mesInicial: meses ? Math.min(...meses) : 1,
-      mesFinal: meses ? Math.max(...meses) : 12,
-      competenciasSolicitadas: meses?.length ?? 12,
+      mesInicial: Math.min(...mesesNoPeriodo),
+      mesFinal: Math.max(...mesesNoPeriodo),
+      competenciasSolicitadas: mesesNoPeriodo.length,
       sucesso: false,
       executadoPor,
     },
@@ -70,7 +98,7 @@ export async function sincronizarGiamSefaz(opts: {
       ie: cliente.inscricaoEstadual,
       senha,
       ano,
-      meses,
+      meses: mesesNoPeriodo,
       headless,
     });
 
@@ -100,9 +128,17 @@ export async function sincronizarGiamSefaz(opts: {
     };
   }
 
-  const mensagem = erros.length === 0
+  const base = erros.length === 0
     ? `${importadas} nova(s), ${substituidas} substituída(s)`
     : `${importadas} ok, ${substituidas} substituídas, ${erros.length} com erro`;
+  // Deixa explícito o que o guard cortou — senão o contador pede 12 meses,
+  // recebe 5 e não sabe por quê.
+  const mensagem =
+    mesesDescartados.length > 0
+      ? `${base}. ${mesesDescartados.length} competência(s) fora do período de atendimento / vigência da IE não foram consultadas: ${mesesDescartados
+          .map((m) => String(m).padStart(2, "0"))
+          .join(", ")}.`
+      : base;
 
   await prisma.giamSefazSincronizacao.update({
     where: { id: sync.id },

@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { requireSessao, PAPEIS_INTERNOS } from "@/lib/auth";
 import { redirect } from "next/navigation";
 
@@ -35,7 +36,14 @@ export default async function ConciliacaoEstadualPage() {
       <div className="rounded-xl border border-amber-200 bg-amber-50 px-5 py-4">
         <p className="text-sm font-semibold text-amber-900">Em construção</p>
         <p className="mt-1 text-sm text-amber-800">
-          A tela está sendo montada. Abaixo, o que ela vai fazer.
+          O confronto com o Razão ainda está sendo montado. Abaixo, o que ele vai fazer.
+        </p>
+        <p className="mt-2 text-sm text-amber-800">
+          Enquanto isso, o <strong>lado das declarações já está pronto</strong>: o relatório de
+          impostos a pagar reúne o que a GIAM e as demais declarações apontam, por competência.{" "}
+          <Link href="/painel/impostos-declarados" className="font-semibold underline">
+            Abrir o relatório
+          </Link>
         </p>
       </div>
 

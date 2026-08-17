@@ -82,6 +82,28 @@ Registro de decisões que moldam o sistema. Formato: **Título** — data — mo
 **Motivo:** feedback do dono. Planilhas/txt com credenciais nunca devem ser abertas por mim — mesmo "só pra estrutura".
 **Consequência:** ao encontrar arquivo suspeito, pedir descrição verbal ao Higor. Não abrir com Read/Bash.
 
+## Matriz de confronto do Simples Nacional — federal × estadual, por cadência
+
+**Data:** 2026-08-16
+**Motivo:** Higor definiu que o Simples tem DOIS confrontos de cadências diferentes, e cada declaração federal tem sua contraparte estadual. Tratar tudo como "conciliação do Simples" misturava mensal com anual e escolhia a fonte errada.
+
+|  | Federal | Estadual |
+|---|---|---|
+| **Mensal** | PGDAS-D | GIAM |
+| **Anual** | DEFIS | DIF |
+
+**Consequência:**
+- **PGDAS-D × GIAM** é o motor mensal — pega omissão de receita e erro de apuração no mês.
+- **DEFIS × DIF** é o fechamento anual — as duas declaram movimento econômico do exercício, uma pra RFB e outra pra SEFAZ-TO.
+- A conciliação de BALANÇO do Simples (Domínio × DEFIS) continua valendo, mas é outra coisa: usa a DEFIS como substituta da ECD, não como par da DIF.
+- Fonte da DIF: portal do contribuinte SEFAZ-TO (`https://contribuinte.sefaz.to.gov.br/`), declaração anual. Ainda sem parser nem modelo.
+
+## Simples Nacional: linha principal do ICMS é a complementação de alíquota
+
+**Data:** 2026-08-16
+**Motivo:** empresa do Simples não tem apuração normal de ICMS (está dentro do DAS) e não entrega SPED-Fiscal. Destacar "ICMS a Recolher (Normal)" pra ela mostrava zero e o índice marcava todas as competências como "sem par" — ruído puro.
+**Consequência:** tela de confronto é ciente do regime (`src/lib/regime.ts`). No Simples, o destaque vai pra **Complementação de Alíquota** (tipo "C" do Segmento E) e o difal ganha linha própria. Difal e complementação nunca se somam à apuração normal nem entre si. GIAM sem SPED no Simples deixou de contar como pendência.
+
 ---
 
 ## Como usar este arquivo

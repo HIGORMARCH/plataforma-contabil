@@ -1101,3 +1101,105 @@ body {
   color: var(--brand-deep);
   font-weight: 600;
 }
+
+/* ---------------------------------------------------------------------------
+   Relatório de Impostos a Pagar — impressão para conciliação bancária.
+
+   Mesmo padrão do Balancete (print enxuto + papel timbrado): na tela some o
+   cabeçalho de impressão e a coluna "Conferido"; no papel some a UI de
+   aplicativo e sobra timbre + tabela.
+
+   A coluna "Conferido" só existe no papel: é onde o contador marca o tributo
+   que localizou no extrato bancário.
+   -------------------------------------------------------------------------- */
+.print-only { display: none !important; }
+.caixa-conferido {
+  display: inline-block;
+  width: 3.5mm;
+  height: 3.5mm;
+  border: 0.6pt solid #333;
+}
+
+@media print {
+  th.print-only,
+  td.print-only { display: table-cell !important; }
+
+  /* Nada dentro do relatório pode rolar no papel — o scroll da tela vira
+     barra impressa. Zera overflow em todos os ancestrais, não só no container
+     da tabela. */
+  html, body, main { overflow: visible !important; }
+  .impostos-declarados,
+  .impostos-declarados * { overflow: visible !important; }
+  .impostos-declarados .overflow-x-auto {
+    border: none !important;
+    border-radius: 0 !important;
+  }
+
+  /* `table-layout: fixed` + larguras explícitas é o que garante que a tabela
+     CABE na folha. Só pedir overflow visible não basta: o `min-w-[900px]` da
+     tela continuaria empurrando a tabela pra fora da área útil do A4. */
+  .impostos-tabela {
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    table-layout: fixed;
+    border-collapse: collapse;
+    font-family: "Times New Roman", Georgia, serif;
+    font-size: 8.5pt;
+  }
+  .impostos-tabela th:nth-child(1), .impostos-tabela td:nth-child(1) { width: 9%; }
+  .impostos-tabela th:nth-child(2), .impostos-tabela td:nth-child(2) { width: 7%; }
+  .impostos-tabela th:nth-child(3), .impostos-tabela td:nth-child(3) { width: 16%; }
+  .impostos-tabela th:nth-child(4), .impostos-tabela td:nth-child(4) { width: 8%; }
+  .impostos-tabela th:nth-child(5), .impostos-tabela td:nth-child(5) { width: 32%; }
+  .impostos-tabela th:nth-child(6), .impostos-tabela td:nth-child(6) { width: 10%; }
+  .impostos-tabela th:nth-child(7), .impostos-tabela td:nth-child(7) { width: 12%; }
+  .impostos-tabela th:nth-child(8), .impostos-tabela td:nth-child(8) { width: 6%; }
+  /* Detalhe é a coluna longa — quebra em vez de alargar a tabela */
+  .impostos-tabela td { word-wrap: break-word; overflow-wrap: anywhere; }
+  /* Cabeçalho repete em toda página; linha nunca parte no meio */
+  .impostos-tabela thead { display: table-header-group; }
+  .impostos-tabela tr { page-break-inside: avoid; }
+  .impostos-tabela thead th {
+    border-bottom: 1pt solid #000 !important;
+    background: transparent !important;
+    color: #000 !important;
+    padding: 1.5mm 2mm !important;
+    font-size: 7.5pt;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+  .impostos-tabela tbody td {
+    border-bottom: 0.4pt solid #bbb !important;
+    padding: 1.2mm 2mm !important;
+    color: #000 !important;
+    vertical-align: top;
+  }
+  /* Crachás de esfera viram texto puro — economia de tinta */
+  .impostos-tabela tbody td span {
+    background: transparent !important;
+    color: #000 !important;
+    padding: 0 !important;
+    border-radius: 0 !important;
+    font-size: 7.5pt;
+    font-weight: 400;
+  }
+  .impostos-tabela tbody td span.caixa-conferido {
+    border: 0.6pt solid #333 !important;
+  }
+
+  /* Totais por declaração — viram faixa compacta acima da tabela */
+  .impostos-declarados .grid {
+    display: flex !important;
+    flex-wrap: wrap;
+    gap: 4mm !important;
+    margin-bottom: 4mm !important;
+  }
+  .impostos-declarados .grid > div {
+    border: none !important;
+    border-left: 1.5pt solid #000 !important;
+    border-radius: 0 !important;
+    padding: 0 0 0 2mm !important;
+    background: transparent !important;
+  }
+}

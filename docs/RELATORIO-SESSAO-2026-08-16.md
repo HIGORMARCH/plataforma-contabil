@@ -92,3 +92,134 @@ Se surgir algo pra Plataforma: reimportar o Balanço 2018 Casa São Paulo pra va
 ---
 
 **Sessão encerrada** ~14:00 hora Brasília. Higor vai abrir sessões dedicadas pra MarchERP e Plataforma separadamente daqui em diante — sem mistura de contexto.
+
+---
+---
+
+# Sessão 2 — 16/08/2026 (noite)
+
+**Foco principal:** Simples Nacional na auditoria de ICMS, relatório de impostos a pagar e período de atendimento do cliente.
+
+**Gatilho:** Higor cadastrou a LUPO QUIOSQUE (PALMAS QUIOSQUE COMERCIO DE ACESSORIOS E VESTUARIO LTDA, CNPJ 34.351.482/0001-46), primeira empresa do Simples na base, pra conferir PGDAS e DEFIS.
+
+---
+
+## 1. Diagnóstico — a auditoria de ICMS não enxergava o Simples
+
+Consulta ao banco na LUPO QUIOSQUE:
+
+| Medida | Valor |
+|---|---|
+| GIAM do Domínio | 84 |
+| Espelhos do portal SEFAZ | 82 |
+| SPED-Fiscal | 0 |
+| Segmento E tipo `C` (complementação) | 78 linhas · R$ 70.901,51 |
+| Segmento E tipo `D` (difal entradas) | 44 linhas · R$ 7.669,67 |
+| Segmento E tipo `N` (normal) | **zero linhas** |
+
+**A descoberta:** empresa do Simples não tem uma única linha de ICMS normal — está tudo no DAS. O que ela recolhe em guia estadual é complementação e difal. A tela destacava "ICMS a Recolher (Normal)", que era `0 × 0` nas 82 competências: verde "bate" significando nada. E o índice marcava as 84 competências como "sem par" por falta de SPED, que é o comportamento correto do Simples.
+
+---
+
+## 2. Entregue
+
+### 2.1 Auditoria ciente do regime
+
+- `src/lib/regime.ts` (novo) — `ehSimples()`, que estava duplicado em dois arquivos.
+- Tela de competência: no Simples o destaque vai pra **Complementação de Alíquota** (tipo `C`); difal (`D`+`F`) ganhou linha própria. Difal e complementação nunca somam com a apuração normal nem entre si.
+- Rótulos encurtados a pedido do Higor: "Crédito das Entradas (ICMS)" → **Crédito**; "Débito das Saídas (ICMS)" → **Débito**.
+- Alerta de incoerência interna: se o A26 do Segmento A divergir da linha `D` do Segmento E, faixa âmbar mostra os dois valores. Importa fiel, aponta, não conserta.
+- Índice: crachá "Simples", chip "N GIAM (Simples)"; GIAM sem SPED deixou de contar como pendência.
+
+### 2.2 Relatório de Impostos a Pagar (novo módulo)
+
+Rota `/painel/impostos-declarados` (menu Contábil), com link a partir da Conciliação Estadual.
+
+- `src/lib/impostos/declarados.ts` — consolida GIAM (ICMS por tipo, com vencimento), SPED-Fiscal (só onde não há GIAM, pra não duplicar), DCTFWeb (uma linha por código de receita, preferindo `saldoAPagar`) e ECF (IRPJ/CSLL trimestral).
+- **Decisão:** não existe total geral. O mesmo tributo pode ser declarado em duas fontes na mesma competência (DCTFWeb confessa o que a ECF apurou) e um número único mentiria. Há total por declaração + alerta de conflito.
+- **Impressão pra conciliação bancária:** papel timbrado no padrão do balancete, coluna "Conferido" que só existe no papel, cabeçalho repetindo por página, crachás viram texto preto. Correção aplicada: `table-layout: fixed` + larguras por coluna — o `min-w-[900px]` da tela estourava o A4 e fazia sair barra de rolagem no papel.
+
+### 2.3 Período de atendimento do cliente
+
+**Motivação:** a plataforma acusava 07/2019 e 07/2026 da LUPO como lacuna. Nenhum era erro — 07/2019 é anterior à IE (obtida em 08/2019) e 07/2026 é posterior à saída do cliente. Sem registrar isso, o contador precisa lembrar de cabeça pra sempre.
+
+- Quatro campos em `Cliente`: `atendimentoInicio`, `atendimentoFim`, `ieInicio`, `ieFim`. Data em vez de booleano porque `atendimentoFim` nulo já serve de flag "ativo" e ainda dá o recorte por competência.
+- `src/lib/atendimento.ts` — `foraDoPeriodo()` pras telas e `recortarPeriodo()` pro guard dos robôs.
+- Seção "Período de atendimento" no cadastro (novo + editar).
+- **Guard nos três robôs:**
+
+| Robô | Comportamento |
+|---|---|
+| SERPRO DCTFWeb | Recorta o range antes de enumerar. Se nada sobra, encerra **sem nenhuma chamada paga** |
+| Portal Simples | Recorta os anos; grava no log o range efetivamente consultado |
+| SEFAZ (GIAM) | Filtra mês a mês considerando também a vigência da IE; informa quais descartou |
+
+- Índice da auditoria: chip "N fora do período" tracejado; essas competências saem da conta de "sem par".
+
+### 2.4 Correção de bloqueio do build
+
+`scripts/conferir-codigos-dctf-sped.ts` tinha `Set<"1"|"2">` recebendo `.has(string)`. Erro pré-existente que impedia qualquer `next build`. Corrigido.
+
+---
+
+## 3. Descoberta importante — PGDASD do SERPRO só devolve PDF
+
+Pesquisa na doc oficial antes de codar o confronto PGDAS × GIAM:
+
+| Serviço | Saída |
+|---|---|
+| CONSDECLARACAO13 | lista de declarações do ano |
+| CONSULTIMADECREC14 | recibo + declaração, **PDF base64** |
+| CONSDECREC15 | recibo, **PDF base64** |
+| CONSEXTRATO16 | extrato do DAS, **PDF base64** |
+
+**Nenhum serviço devolve valores em JSON.** Diferente da DCTFWeb, que tem `CONSXMLDECLARACAO38` retornando XML de verdade, o PGDASD não tem equivalente. Pra tirar receita bruta do PGDAS é obrigatório decodificar o base64 e parsear o PDF. Registrado na memória `reference_integra_contador_catalogo`.
+
+Path da doc: usar `/pt/solucoes/integra-sn/pgdasd/` — o `/pt/sistemas/pgdasd/` devolve HTTP 500 intermitente.
+
+---
+
+## 4. Matriz de confronto do Simples (decisão do Higor)
+
+|  | Federal | Estadual |
+|---|---|---|
+| **Mensal** | PGDAS-D | GIAM |
+| **Anual** | DEFIS | DIF |
+
+A conciliação de balanço do Simples (Domínio × DEFIS) continua valendo, mas é outra coisa: usa a DEFIS como substituta da ECD, não como par da DIF. Registrado em `.claude/decisoes.md`.
+
+---
+
+## 5. Estado do banco
+
+- `prisma db push` aplicou as 4 colunas novas — **aditivas e nulas**, nenhum dado existente tocado.
+- **Atenção:** o `.env` desta máquina aponta pra `localhost:5432`, não pro 220. A migration foi aplicada no Postgres local. **Quando for pro 220, precisa rodar `prisma db push` lá.**
+- `prisma generate` exigiu derrubar o dev server (EPERM no `query_engine-windows.dll.node`).
+- Backup manual não foi feito: exigiria abrir o `.env` pra ler a string de conexão com senha. Mudança é aditiva e o backup diário das 20:30 segue valendo.
+
+---
+
+## 6. Verificação
+
+- `next build` completo: todas as rotas compilam, incluindo as duas novas.
+- Typecheck: **zero erros** (era 1 pré-existente, corrigido).
+- Testes: 61 passando.
+- **Não houve verificação visual** — as telas exigem login e a sessão não preenche campo de senha.
+
+---
+
+## 7. O que ficou para a próxima
+
+| # | Item | Depende de |
+|---|---|---|
+| 1 | Preencher os períodos da LUPO (IE 08/2019, atendimento até 06/2026) | Higor — pela UI |
+| 2 | Conferir 02/2026 e 03/2026 da LUPO: têm GIAM no Domínio sem Espelho no portal | Higor |
+| 3 | Coluna SEFAZ pra complementação/difal — hoje R$ 78 mil sem conferência contra o portal | Um Espelho da GIAM de empresa do Simples |
+| 4 | Parser do PDF do PGDAS | Um PDF de declaração PGDAS-D |
+| 5 | Conciliação Domínio × DEFIS (valores) | XML/recibo da DEFIS |
+| 6 | Exportar XLSX do relatório de impostos | Decisão do Higor |
+| 7 | `prisma db push` no 220 quando for deployar | Deploy |
+
+---
+
+**Sessão encerrada** ~22:40 hora Brasília.

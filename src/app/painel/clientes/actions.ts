@@ -12,6 +12,22 @@ function campo(fd: FormData, nome: string): string | null {
   return s === "" ? null : s;
 }
 
+/**
+ * Campo de competência (`<input type="month">`, formato "AAAA-MM") → primeiro
+ * dia do mês em UTC. Mesma convenção de `periodoApuracao` nas apurações, pra
+ * comparar data com data sem susto de fuso.
+ */
+function campoCompetencia(fd: FormData, nome: string): Date | null {
+  const s = campo(fd, nome);
+  if (!s) return null;
+  const m = /^(\d{4})-(\d{2})$/.exec(s);
+  if (!m) return null;
+  const ano = Number(m[1]);
+  const mes = Number(m[2]);
+  if (!ano || mes < 1 || mes > 12) return null;
+  return new Date(Date.UTC(ano, mes - 1, 1));
+}
+
 export async function criarClienteAction(fd: FormData) {
   const sessao = await requireSessao();
   if (!PAPEIS_INTERNOS.includes(sessao.papel)) redirect("/painel");
@@ -51,6 +67,10 @@ export async function criarClienteAction(fd: FormData) {
       crcContador: campo(fd, "crcContador"),
       email: campo(fd, "email"),
       telefone: campo(fd, "telefone"),
+      atendimentoInicio: campoCompetencia(fd, "atendimentoInicio"),
+      atendimentoFim: campoCompetencia(fd, "atendimentoFim"),
+      ieInicio: campoCompetencia(fd, "ieInicio"),
+      ieFim: campoCompetencia(fd, "ieFim"),
       metodoAcessoEcac,
       certificadoCaminho,
       certificadoSenha,
@@ -158,6 +178,10 @@ export async function editarClienteAction(id: string, fd: FormData) {
       crcContador: campo(fd, "crcContador"),
       email: campo(fd, "email"),
       telefone: campo(fd, "telefone"),
+      atendimentoInicio: campoCompetencia(fd, "atendimentoInicio"),
+      atendimentoFim: campoCompetencia(fd, "atendimentoFim"),
+      ieInicio: campoCompetencia(fd, "ieInicio"),
+      ieFim: campoCompetencia(fd, "ieFim"),
       metodoAcessoEcac,
       certificadoCaminho,
       certificadoSenha,

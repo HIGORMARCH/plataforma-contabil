@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { requireSessao, PAPEIS_INTERNOS } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import { ehSimples } from "@/lib/regime";
 
 /**
  * Confronto de UMA competência (cliente × ano × mês) entre as 3 fontes:
@@ -34,7 +35,22 @@ const fmtMesAno = new Intl.DateTimeFormat("pt-BR", {
 });
 
 const TOLERANCIA = 0.01;
-const TIPO_NORMAL = "N";
+
+// Segmento E da GIAM — ICMS a recolher quebrado por tipo.
+const TIPO_NORMAL = "N"; // apuração normal (só existe no Regime Normal)
+const TIPO_DIFAL_ENTRADAS = "D"; // diferencial de alíquota das entradas
+const TIPO_COMPLEMENTACAO = "C"; // complementação de alíquota (Simples Nacional)
+const TIPO_DIFAL_SAIDAS = "F"; // diferencial de alíquota das saídas
+
+/** Soma as linhas do Segmento E de um ou mais tipos. */
+function somaTipos(
+  linhas: Array<{ tipo: string; valor: unknown }>,
+  ...tipos: string[]
+): number {
+  return linhas
+    .filter((l) => tipos.includes(l.tipo))
+    .reduce((s, l) => s + Number(l.valor), 0);
+}
 
 export default async function ConfrontoCompetencia({
   params,
@@ -60,9 +76,15 @@ export default async function ConfrontoCompetencia({
       nomeFantasia: true,
       cnpj: true,
       inscricaoEstadual: true,
+      regimeTributario: true,
     },
   });
   if (!cliente) notFound();
+
+  // Empresa do Simples não apura ICMS normal (está no DAS). O que ela recolhe
+  // em guia estadual própria é a complementação / diferencial de alíquota —
+  // é essa a linha principal do confronto pra ela.
+  const simples = ehSimples(cliente.regimeTributario);
 
   const [sped, giamDominio, giamSefaz] = await Promise.all([
     prisma.spedApuracao.findFirst({
@@ -103,9 +125,19 @@ export default async function ConfrontoCompetencia({
         debitoSaidas: Number(giamDominio.debitoSaidas),
         saldoCredorAnterior: Number(giamDominio.saldoCredorAnterior),
         deducoes: Number(giamDominio.deducoes),
-        icmsARecolher: giamDominio.icmsARecolher
-          .filter((l) => l.tipo === TIPO_NORMAL)
-          .reduce((s, l) => s + Number(l.valor), 0),
+        icmsARecolher: somaTipos(giamDominio.icmsARecolher, TIPO_NORMAL),
+        // Duas colunas próprias, pedido do Higor: difal e complementação nunca
+        // se misturam com a apuração normal nem entre si.
+        difal: somaTipos(
+          giamDominio.icmsARecolher,
+          TIPO_DIFAL_ENTRADAS,
+          TIPO_DIFAL_SAIDAS,
+        ),
+        complementacao: somaTipos(giamDominio.icmsARecolher, TIPO_COMPLEMENTACAO),
+        // A26 do Segmento A — difal a recolher declarado no cabeçalho da
+        // apuração. Independente do Segmento E; se divergir do tipo D, a
+        // própria declaração está incoerente.
+        difalSegmentoA: Number(giamDominio.difAliquotaARecolher),
       }
     : null;
 
@@ -120,6 +152,19 @@ export default async function ConfrontoCompetencia({
         icmsARecolher: Number(giamSefaz.icmsARecolherNormal),
       }
     : null;
+
+  const temDifal =
+    (giamTotais?.difal ?? 0) !== 0 || (giamTotais?.difalSegmentoA ?? 0) !== 0;
+
+  // Incoerência INTERNA da própria declaração: o difal do cabeçalho (A26) e o
+  // do Segmento E (tipo D) deveriam bater. Regra do Higor: importar fiel e
+  // apontar — nunca "consertar" nem escolher um dos dois.
+  const difalIncoerente =
+    giamTotais !== null &&
+    Math.abs(
+      giamTotais.difalSegmentoA -
+        somaTipos(giamDominio?.icmsARecolher ?? [], TIPO_DIFAL_ENTRADAS),
+    ) > TOLERANCIA;
 
   const entradasDominio = (giamDominio?.linhasSegmentoB ?? []).filter((l) => l.natureza === "0");
   const saidasDominio = (giamDominio?.linhasSegmentoB ?? []).filter((l) => l.natureza === "1");
@@ -190,19 +235,72 @@ export default async function ConfrontoCompetencia({
             <tbody>
               <LinhaComparativa rotulo="Total Compras" sped={spedTotais?.totalCompras ?? null} giam={giamTotais?.totalCompras ?? null} sefaz={sefazTotais?.totalCompras ?? null} />
               <LinhaComparativa rotulo="Total Vendas" sped={spedTotais?.totalVendas ?? null} giam={giamTotais?.totalVendas ?? null} sefaz={sefazTotais?.totalVendas ?? null} />
-              <LinhaComparativa rotulo="Crédito das Entradas (ICMS)" sped={spedTotais?.creditoEntradas ?? null} giam={giamTotais?.creditoEntradas ?? null} sefaz={sefazTotais?.creditoEntradas ?? null} />
-              <LinhaComparativa rotulo="Débito das Saídas (ICMS)" sped={spedTotais?.debitoSaidas ?? null} giam={giamTotais?.debitoSaidas ?? null} sefaz={sefazTotais?.debitoSaidas ?? null} />
+              <LinhaComparativa rotulo="Crédito" sped={spedTotais?.creditoEntradas ?? null} giam={giamTotais?.creditoEntradas ?? null} sefaz={sefazTotais?.creditoEntradas ?? null} />
+              <LinhaComparativa rotulo="Débito" sped={spedTotais?.debitoSaidas ?? null} giam={giamTotais?.debitoSaidas ?? null} sefaz={sefazTotais?.debitoSaidas ?? null} />
               <LinhaComparativa rotulo="Saldo Credor Anterior" sped={spedTotais?.saldoCredorAnterior ?? null} giam={giamTotais?.saldoCredorAnterior ?? null} sefaz={sefazTotais?.saldoCredorAnterior ?? null} />
               <LinhaComparativa rotulo="Deduções" sped={spedTotais?.deducoes ?? null} giam={giamTotais?.deducoes ?? null} sefaz={sefazTotais?.deducoes ?? null} />
-              <LinhaComparativa rotulo="ICMS a Recolher (Normal)" sped={spedTotais?.icmsARecolher ?? null} giam={giamTotais?.icmsARecolher ?? null} sefaz={sefazTotais?.icmsARecolher ?? null} destaque />
+              <LinhaComparativa rotulo="ICMS a Recolher (Normal)" sped={spedTotais?.icmsARecolher ?? null} giam={giamTotais?.icmsARecolher ?? null} sefaz={sefazTotais?.icmsARecolher ?? null} destaque={!simples} />
+
+              {/* Colunas próprias do difal e da complementação. Não entram na
+                  apuração normal e não se somam entre si. A de complementação
+                  aparece sempre no Simples (é a linha principal dela), mesmo
+                  zerada; as demais só quando há valor declarado. */}
+              {(simples || (giamTotais?.complementacao ?? 0) !== 0) && (
+                <LinhaComparativa
+                  rotulo="ICMS Complementação de Alíquota"
+                  sped={null}
+                  giam={giamTotais?.complementacao ?? null}
+                  sefaz={null}
+                  destaque={simples}
+                />
+              )}
+              {temDifal && (
+                <LinhaComparativa
+                  rotulo="Diferencial de Alíquota"
+                  sped={null}
+                  giam={giamTotais?.difal ?? null}
+                  sefaz={null}
+                />
+              )}
             </tbody>
           </table>
         </div>
 
-        <p className="mt-3 text-xs text-slate-400">
-          <em>ICMS a Recolher</em> na GIAM = apenas o tipo &quot;N&quot; do Segmento E (comparável
-          com o E110 do SPED). Difal e ST aparecem no bloco informativo abaixo.
-        </p>
+        {simples ? (
+          <p className="mt-3 text-xs text-slate-400">
+            Cliente do <b>Simples Nacional</b>: o ICMS da apuração normal está dentro do DAS, por
+            isso a linha &quot;Normal&quot; fica zerada e a linha principal é a{" "}
+            <b>Complementação de Alíquota</b> (tipo &quot;C&quot; do Segmento E), recolhida em guia
+            estadual própria.
+          </p>
+        ) : (
+          <p className="mt-3 text-xs text-slate-400">
+            <em>ICMS a Recolher (Normal)</em> na GIAM = apenas o tipo &quot;N&quot; do Segmento E
+            (comparável com o E110 do SPED). Difal e complementação têm linha própria e não se
+            somam à apuração normal — o ST segue no bloco informativo abaixo.
+          </p>
+        )}
+
+        {(simples || temDifal) && (
+          <p className="mt-1.5 text-xs text-slate-400">
+            Difal e complementação ainda <b>não têm coluna SEFAZ</b>: o Espelho raspado do portal
+            grava só o ICMS normal. Enquanto isso, essas linhas mostram &quot;—&quot; nas colunas
+            SPED e SEFAZ.
+          </p>
+        )}
+
+        {difalIncoerente && (
+          <div className="mt-3 rounded border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+            <b>Incoerência na própria GIAM do Domínio.</b> O diferencial de alíquota declarado no
+            cabeçalho (Segmento A, campo A26 ={" "}
+            {fmtBrl.format(giamTotais?.difalSegmentoA ?? 0)}) não bate com a linha tipo
+            &quot;D&quot; do Segmento E ={" "}
+            {fmtBrl.format(
+              somaTipos(giamDominio?.icmsARecolher ?? [], TIPO_DIFAL_ENTRADAS),
+            )}
+            . A plataforma importa fiel os dois — a decisão de qual está certo é do contador.
+          </div>
+        )}
       </section>
 
       {/* ---- BLOCO 2: CFOP × CFOP — Domínio vs SEFAZ ---- */}

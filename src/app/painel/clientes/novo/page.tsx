@@ -4,6 +4,7 @@ import { BuscarCNPJ } from "@/components/BuscarCNPJ";
 import { criarClienteAction } from "../actions";
 import { AcessoEcacFields } from "../_components/AcessoEcacFields";
 import { AcessoSefazFields } from "../_components/AcessoSefazFields";
+import { PeriodoAtendimentoFields } from "../_components/PeriodoAtendimentoFields";
 
 function Campo({
   nome,
@@ -107,6 +108,8 @@ export default async function NovoClientePage({
             <Campo nome="uf" label="UF" placeholder="SP" />
           </div>
         </section>
+
+        <PeriodoAtendimentoFields />
 
         <AcessoEcacFields />
 

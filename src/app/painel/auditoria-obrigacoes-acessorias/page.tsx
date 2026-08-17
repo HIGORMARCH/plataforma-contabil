@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { requireSessao, PAPEIS_INTERNOS } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import { ehSimples } from "@/lib/regime";
+import { foraDoPeriodo, ROTULO_FORA_DO_PERIODO, type ForaDoPeriodo } from "@/lib/atendimento";
 import { redirect } from "next/navigation";
 
 /**
@@ -34,13 +36,28 @@ import { redirect } from "next/navigation";
 
 const TOLERANCIA = 0.01; // centavo — diferença abaixo disso é arredondamento
 const TIPO_NORMAL = "N";
+const TIPO_DIFAL_ENTRADAS = "D";
+const TIPO_COMPLEMENTACAO = "C";
+
+/**
+ * Simples Nacional: não existe apuração normal de ICMS (está no DAS) e a
+ * empresa não entrega SPED-Fiscal. O que ela declara na GIAM e recolhe em guia
+ * própria é a COMPLEMENTAÇÃO e o DIFERENCIAL de alíquota — logo, o confronto
+ * SPED × GIAM tipo "N" não se aplica: ficaria "sem par" em todas as
+ * competências, virando ruído. Pra esses clientes a coluna GIAM mostra
+ * complementação + difal e o resultado é rotulado como tal.
+ */
+const TIPOS_SIMPLES = [TIPO_COMPLEMENTACAO, TIPO_DIFAL_ENTRADAS];
 
 type LinhaCompetencia = {
   competencia: string; // MM/AAAA
+  data: Date; // primeiro dia da competência — pra avaliar o período de atendimento
   sped: number | null;
-  giam: number | null; // só o tipo N
-  outrosTipos: number; // difal, ST etc. — informativo
+  giam: number | null; // tipo N — ou complementação + difal, se Simples
+  outrosTipos: number; // demais tipos — informativo
   diferenca: number | null;
+  /** Preenchido quando a competência está fora do atendimento / vigência da IE. */
+  fora: ForaDoPeriodo;
 };
 
 export default async function AuditoriaObrigacoesAcessoriasPage() {
@@ -56,6 +73,11 @@ export default async function AuditoriaObrigacoesAcessoriasPage() {
       nomeFantasia: true,
       cnpj: true,
       inscricaoEstadual: true,
+      regimeTributario: true,
+      atendimentoInicio: true,
+      atendimentoFim: true,
+      ieInicio: true,
+      ieFim: true,
       spedApuracoes: {
         select: { periodoApuracao: true, icmsARecolher: true },
         orderBy: { periodoApuracao: "asc" },
@@ -72,29 +94,38 @@ export default async function AuditoriaObrigacoesAcessoriasPage() {
   });
 
   const linhas = clientes.map((c) => {
+    const simples = ehSimples(c.regimeTributario);
     const porCompetencia = new Map<string, LinhaCompetencia>();
 
     const chave = (d: Date) =>
       `${String(d.getUTCMonth() + 1).padStart(2, "0")}/${d.getUTCFullYear()}`;
 
+    // ICMS é obrigação estadual, então a vigência da IE conta junto com o
+    // período de atendimento.
+    const avaliarPeriodo = (d: Date) => foraDoPeriodo(c, d, { exigeIe: true });
+
     for (const a of c.spedApuracoes) {
       const k = chave(a.periodoApuracao);
       porCompetencia.set(k, {
         competencia: k,
+        data: a.periodoApuracao,
         sped: Number(a.icmsARecolher),
         giam: null,
         outrosTipos: 0,
         diferenca: null,
+        fora: avaliarPeriodo(a.periodoApuracao),
       });
     }
     for (const g of c.giamApuracoes) {
       const k = chave(g.periodoApuracao);
-      // Só o tipo N (apuração normal) é comparável com o E110 do SPED.
+      // Regime Normal: só o tipo N é comparável com o E110 do SPED.
+      // Simples: complementação (C) + difal de entradas (D) — não há tipo N.
+      const tiposPrincipais = simples ? TIPOS_SIMPLES : [TIPO_NORMAL];
       const normal = g.icmsARecolher
-        .filter((l) => l.tipo === TIPO_NORMAL)
+        .filter((l) => tiposPrincipais.includes(l.tipo))
         .reduce((s, l) => s + Number(l.valor), 0);
       const outros = g.icmsARecolher
-        .filter((l) => l.tipo !== TIPO_NORMAL)
+        .filter((l) => !tiposPrincipais.includes(l.tipo))
         .reduce((s, l) => s + Number(l.valor), 0);
 
       const atual = porCompetencia.get(k);
@@ -104,10 +135,12 @@ export default async function AuditoriaObrigacoesAcessoriasPage() {
       } else {
         porCompetencia.set(k, {
           competencia: k,
+          data: g.periodoApuracao,
           sped: null,
           giam: normal,
           outrosTipos: outros,
           diferenca: null,
+          fora: avaliarPeriodo(g.periodoApuracao),
         });
       }
     }
@@ -120,10 +153,22 @@ export default async function AuditoriaObrigacoesAcessoriasPage() {
     );
     const conferidas = competencias.filter((l) => l.diferenca !== null);
     const divergentes = conferidas.filter((l) => Math.abs(l.diferenca!) > TOLERANCIA);
-    const soUmLado = competencias.filter((l) => l.sped === null || l.giam === null);
+    // No Simples, GIAM sem SPED é o esperado — não é lacuna a cobrar.
+    // Competência fora do período de atendimento também não é lacuna: o
+    // escritório não atendia o cliente, ou a IE ainda não existia.
+    const soUmLado = simples
+      ? []
+      : competencias.filter((l) => !l.fora && (l.sped === null || l.giam === null));
+    const somenteGiam = simples
+      ? competencias.filter((l) => !l.fora && l.giam !== null).length
+      : 0;
+    const foraDoAtendimento = competencias.filter((l) => l.fora).length;
 
     return {
       cliente: c,
+      simples,
+      somenteGiam,
+      foraDoAtendimento,
       competencias,
       totalSped: c.spedApuracoes.length,
       totalGiam: c.giamApuracoes.length,
@@ -220,6 +265,11 @@ export default async function AuditoriaObrigacoesAcessoriasPage() {
                       >
                         {l.cliente.nomeFantasia || l.cliente.razaoSocial}
                       </Link>
+                      {l.simples && (
+                        <span className="ml-2 rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-sky-800">
+                          Simples
+                        </span>
+                      )}
                       <div className="text-xs text-slate-400">{l.cliente.cnpj}</div>
                     </td>
                     <td className="px-4 py-3 text-slate-600">
@@ -241,6 +291,8 @@ export default async function AuditoriaObrigacoesAcessoriasPage() {
                         conferidas={l.conferidas}
                         divergentes={l.divergentes}
                         soUmLado={l.soUmLado}
+                        somenteGiam={l.somenteGiam}
+                        foraDoAtendimento={l.foraDoAtendimento}
                       />
                     </td>
                   </tr>
@@ -259,6 +311,12 @@ export default async function AuditoriaObrigacoesAcessoriasPage() {
               O <strong>diferencial de alíquota</strong> e a <strong>substituição tributária</strong>{" "}
               aparecem na GIAM em linhas próprias e <strong>não existem no E110</strong> — por isso
               não entram na comparação. Somá-los acusaria divergência em todo mês que tivesse difal.
+            </p>
+            <p className="mt-1.5">
+              Cliente do <strong>Simples Nacional</strong> (crachá azul) não tem apuração normal de
+              ICMS — está no DAS — nem entrega SPED-Fiscal. Pra ele a coluna GIAM traz a{" "}
+              <strong>complementação de alíquota</strong> e o <strong>difal de entradas</strong>, e
+              a ausência de SPED não conta como pendência.
             </p>
             <p className="mt-1.5">Clique no cliente para ver competência por competência.</p>
           </div>
@@ -299,12 +357,30 @@ function Resultado({
   conferidas,
   divergentes,
   soUmLado,
+  somenteGiam = 0,
+  foraDoAtendimento = 0,
 }: {
   conferidas: number;
   divergentes: number;
   soUmLado: number;
+  /** Simples: competências com GIAM e sem SPED — situação normal, não lacuna. */
+  somenteGiam?: number;
+  /** Competências anteriores/posteriores ao atendimento ou à vigência da IE. */
+  foraDoAtendimento?: number;
 }) {
   const partes: React.ReactNode[] = [];
+
+  if (somenteGiam > 0) {
+    partes.push(
+      <span
+        key="simples"
+        className="rounded-full bg-sky-100 px-2 py-0.5 text-xs font-semibold text-sky-800"
+        title="Simples Nacional: complementação / difal declarados na GIAM. Não há SPED-Fiscal a confrontar."
+      >
+        {somenteGiam} GIAM (Simples)
+      </span>,
+    );
+  }
 
   if (divergentes > 0) {
     partes.push(
@@ -333,6 +409,17 @@ function Resultado({
         className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600"
       >
         {soUmLado} sem par
+      </span>,
+    );
+  }
+  if (foraDoAtendimento > 0) {
+    partes.push(
+      <span
+        key="fora"
+        className="rounded-full border border-dashed border-slate-300 px-2 py-0.5 text-xs font-medium text-slate-500"
+        title="Competências fora do período de atendimento do escritório ou da vigência da inscrição estadual — não são pendência."
+      >
+        {foraDoAtendimento} fora do período
       </span>,
     );
   }
@@ -368,8 +455,9 @@ function ChipsCompetencia({
       {competencias.map((c) => {
         const [mes, ano] = c.competencia.split("/");
         const href = `/painel/auditoria-obrigacoes-acessorias/${clienteId}/${ano}/${mes}`;
-        const status =
-          c.sped === null || c.giam === null
+        const status = c.fora
+          ? "fora"
+          : c.sped === null || c.giam === null
             ? "sem-par"
             : Math.abs(c.diferenca ?? 0) > TOLERANCIA
               ? "divergente"
@@ -379,13 +467,17 @@ function ChipsCompetencia({
             ? "bg-emerald-50 text-emerald-800 hover:bg-emerald-100 border-emerald-200"
             : status === "divergente"
               ? "bg-amber-50 text-amber-800 hover:bg-amber-100 border-amber-200"
-              : "bg-slate-50 text-slate-500 hover:bg-slate-100 border-slate-200";
+              : status === "fora"
+                ? "border-dashed border-slate-300 text-slate-400 hover:bg-slate-50"
+                : "bg-slate-50 text-slate-500 hover:bg-slate-100 border-slate-200";
         const titulo =
           status === "ok"
             ? "SPED e GIAM Domínio batem — abrir detalhes"
             : status === "divergente"
               ? `Divergência de ${new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(c.diferenca ?? 0)} — abrir detalhes`
-              : "Só um lado importado — abrir detalhes";
+              : status === "fora"
+                ? `${ROTULO_FORA_DO_PERIODO[c.fora!]} — não é pendência`
+                : "Só um lado importado — abrir detalhes";
         return (
           <Link
             key={c.competencia}

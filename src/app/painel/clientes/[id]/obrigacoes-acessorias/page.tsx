@@ -4,6 +4,7 @@ import { requirePapel, PAPEIS_INTERNOS } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { consolidarObrigacoes, type CelulaObrigacao, type StatusEntrega } from "@/lib/obrigacoes-acessorias/consolidar";
 import { frequencia, ROTULOS_OBRIGACAO, type TipoObrigacao } from "@/lib/obrigacoes-acessorias/tipos";
+import { ehSimples } from "@/lib/regime";
 import { alternarIncluirNoRelatorioAction } from "./actions";
 import { VarrerPastaObrigacoesButton } from "./_components/VarrerPastaObrigacoesButton";
 import { EntregaManualForm } from "./_components/EntregaManualForm";
@@ -16,11 +17,6 @@ const fmtData = new Intl.DateTimeFormat("pt-BR", {
   timeZone: "UTC",
 });
 
-const SIMPLES_LABELS = ["Simples Nacional", "SIMPLES", "Simples", "MEI"];
-function ehSimples(regime: string | null | undefined): boolean {
-  if (!regime) return false;
-  return SIMPLES_LABELS.some((l) => regime.toLowerCase().includes(l.toLowerCase()));
-}
 
 export default async function ObrigacoesAcessoriasPage({
   params,

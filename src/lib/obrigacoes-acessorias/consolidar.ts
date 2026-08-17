@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db";
+import { ehSimples } from "@/lib/regime";
 import {
   prazoDctfAntiga,
   prazoDctfWeb,
@@ -63,14 +64,6 @@ export type GradeObrigacoes = {
     naoLocalizadas: number;
   };
 };
-
-const SIMPLES_LABELS = ["Simples Nacional", "SIMPLES", "Simples", "MEI"];
-
-function ehSimples(regime: string | null | undefined): boolean {
-  if (!regime) return false;
-  const r = regime.trim();
-  return SIMPLES_LABELS.some((l) => r.toLowerCase().includes(l.toLowerCase()));
-}
 
 function calcularPrazo(tipo: TipoObrigacao, ano: number, mes: number | null): Date {
   switch (tipo) {
