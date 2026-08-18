@@ -390,14 +390,28 @@ model VigenciaNcm {
 // Uma linha por NCM da vigência (deduplicado).
 // ---------------------------------------------------------------------------
 model NcmVigencia {
-  id             String          @id @default(cuid())
-  vigencia       VigenciaNcm     @relation(fields: [vigenciaId], references: [id], onDelete: Cascade)
-  vigenciaId     String
-  ncm            String // 8 dígitos
-  configuracao   ConfiguracaoNcm @relation(fields: [configuracaoId], references: [id])
-  configuracaoId String
-  origem         String // seed_autmais | econet_auto | manual
-  observacao     String?
+  id         String      @id @default(cuid())
+  vigencia   VigenciaNcm @relation(fields: [vigenciaId], references: [id], onDelete: Cascade)
+  vigenciaId String
+  ncm        String // 8 dígitos
+
+  // OPCIONAL desde 16/08/2026: linha vinda da tabela legada do cliente não
+  // aponta pra configuração nossa. Ela só registra "este NCM já existe no
+  // Domínio dele, com a classificação dele" — não sabemos qual das nossas
+  // configurações equivale, porque o arquivo do cliente não traz CST/natureza.
+  configuracao   ConfiguracaoNcm? @relation(fields: [configuracaoId], references: [id])
+  configuracaoId String?
+
+  // Numeração NO ESPAÇO DO CLIENTE (a tabela do Domínio dele), que é distinta
+  // da nossa `ConfiguracaoNcm.codigo` — global e compartilhada entre escritórios.
+  // Ex.: na Casa São Paulo o código 32 é "ARTIGOS PARA TÊNIS DE MESA"; no nosso
+  // catálogo o 32 é "MONOFASICO - 202". Misturar os dois corromperia o TXT.
+  // Legado vem do arquivo; NCM novo continua a sequência (72 em diante).
+  codigoCliente    Int?
+  descricaoCliente String?
+
+  origem     String // cliente_legado | seed_autmais | econet_auto | manual
+  observacao String?
 
   createdAt DateTime @default(now())
 

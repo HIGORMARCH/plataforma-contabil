@@ -21,6 +21,16 @@ interface NcmItem {
 // de importar o TXT.
 const CODIGO_ULTIMO_PAI = 57;
 
+interface ResultadoTabelaLegada {
+  ok: boolean;
+  incluidos: number;
+  ignorados: number;
+  codigos: number;
+  ncmsUnicos: number;
+  proximoCodigoCliente: number;
+  avisos: string[];
+}
+
 interface ResultadoUpload {
   ok: boolean;
   ncmsProcessados: number;
@@ -49,6 +59,30 @@ export function EditorVigencia({
   const [resultado, setResultado] = useState<ResultadoUpload | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const [importandoLegado, setImportandoLegado] = useState(false);
+  const [resultadoLegado, setResultadoLegado] = useState<ResultadoTabelaLegada | null>(null);
+
+  async function enviarTabelaLegada(f: File) {
+    setImportandoLegado(true);
+    setErro(null);
+    setResultadoLegado(null);
+    try {
+      const fd = new FormData();
+      fd.append("arquivo", f);
+      const r = await fetch(
+        `/api/tributacao-ncm/vigencias/${vigenciaId}/importar-tabela-legada`,
+        { method: "POST", body: fd },
+      );
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.erro ?? "Erro ao importar a tabela do cliente");
+      setResultadoLegado(j);
+      router.refresh();
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : String(e));
+    } finally {
+      setImportandoLegado(false);
+    }
+  }
 
   async function enviarArquivo(f: File) {
     setUploadando(true);
@@ -85,8 +119,69 @@ export function EditorVigencia({
   const grupos = [...agrupado.entries()].sort(([a], [b]) => a - b);
   const configsNovas = grupos.filter(([codigo]) => codigo > CODIGO_ULTIMO_PAI);
 
+  const totalLegado = ncmsIniciais.filter((n) => n.origem === "cliente_legado").length;
+
   return (
     <div>
+      {/* Tabela que o cliente já tem no Domínio */}
+      <section className="mb-6">
+        <h2 className="mb-3 text-lg font-bold text-slate-800">
+          Tabela atual do cliente (Domínio)
+        </h2>
+        <div className="card p-4">
+          {totalLegado > 0 ? (
+            <p className="text-sm text-slate-600">
+              ✔ <b>{totalLegado} NCMs</b> importados da tabela que o cliente já usa. Eles ficam{" "}
+              <b>intocáveis</b>: as próximas planilhas só acrescentam o que faltar, nunca
+              reclassificam o que já está aqui.
+            </p>
+          ) : (
+            <>
+              <p className="mb-3 text-sm text-slate-600">
+                Se o cliente <b>já tem</b> tabela de tributação no Domínio, importe-a primeiro. Sem
+                isso, o sistema montaria a vigência do zero pela nossa base e atropelaria a
+                classificação que ele já usa.
+              </p>
+              <p className="mb-3 text-xs text-slate-500">
+                Formato esperado: <code>código|descrição|NCM</code>, uma linha por NCM — o extrato
+                que o Domínio gera. Arquivo em Latin-1, geralmente sem extensão.
+              </p>
+              <input
+                type="file"
+                className="block w-full text-sm text-slate-600 file:mr-3 file:rounded file:border-0 file:bg-slate-100 file:px-3 file:py-2 file:text-sm file:font-medium hover:file:bg-slate-200"
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  if (f) enviarTabelaLegada(f);
+                }}
+                disabled={uploadando || importandoLegado}
+              />
+              {importandoLegado && (
+                <div className="mt-3 text-sm text-blue-600">Importando tabela do cliente...</div>
+              )}
+            </>
+          )}
+          {resultadoLegado && (
+            <div className="mt-3 rounded border border-green-300 bg-green-50 p-3 text-sm text-green-900">
+              <div>
+                ✔ {resultadoLegado.incluidos} NCMs incluídos em {resultadoLegado.codigos} códigos
+                {resultadoLegado.ignorados > 0 && ` · ${resultadoLegado.ignorados} já existiam`}
+              </div>
+              <div className="mt-1 text-xs">
+                Os NCMs novos serão numerados a partir do código{" "}
+                <b>{resultadoLegado.proximoCodigoCliente}</b>.
+              </div>
+              {resultadoLegado.avisos.length > 0 && (
+                <ul className="mt-2 list-disc pl-5 text-xs text-amber-800">
+                  {resultadoLegado.avisos.map((a, i) => (
+                    <li key={i}>{a}</li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
+        </div>
+      </section>
+
       {/* Upload */}
       <section className="mb-6">
         <h2 className="mb-3 text-lg font-bold text-slate-800">Importar estoque do cliente</h2>

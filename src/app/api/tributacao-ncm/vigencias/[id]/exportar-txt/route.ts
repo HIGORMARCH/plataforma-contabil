@@ -30,26 +30,38 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
     return NextResponse.json({ ok: false, erro: "Vigência não encontrada" }, { status: 404 });
   }
 
-  // 1) Base semente: TODAS as configurações + seus NCMs (o arquivo pai)
-  const baseNcms = await prisma.ncmBase.findMany({
-    include: { configuracao: true },
-  });
-  const ncmsNoPai = new Set(baseNcms.map((n) => n.ncm));
+  // O cliente já tinha tabela própria importada nesta vigência?
+  //
+  // Se sim, NÃO se manda o arquivo pai: a numeração dele (códigos 2..71 na Casa
+  // São Paulo) é independente da nossa numeração global, e o mesmo número
+  // significa coisas diferentes nos dois lados. Despejar o pai por cima
+  // corromperia a tabela que ele já usa. Exporta-se apenas o que é NOVO, na
+  // numeração DELE — os códigos antigos já estão no Domínio dele.
+  const temTabelaLegada = vigencia.ncms.some((n) => n.origem === "cliente_legado");
 
-  // 2) Monta linhas do arquivo pai
-  const linhasPai: LinhaNcmTxt[] = baseNcms.map((n) => ({
-    codigo: n.configuracao.codigo,
-    descricao: n.configuracao.descricao,
-    ncm: n.ncm,
-    cstEntrada: n.configuracao.cstEntrada,
-    cstSaida: n.configuracao.cstSaida,
-    natureza: n.configuracao.natureza,
-  }));
+  let linhasPai: LinhaNcmTxt[] = [];
+  let linhasNovas: LinhaNcmTxt[];
 
-  // 3) NCMs da vigência que NÃO estão no pai (os complementos deste cliente)
-  const linhasNovas: LinhaNcmTxt[] = vigencia.ncms
-    .filter((n) => !ncmsNoPai.has(n.ncm))
-    .map((n) => ({
+  if (temTabelaLegada) {
+    linhasNovas = vigencia.ncms
+      .filter((n) => n.origem !== "cliente_legado" && n.configuracao !== null)
+      .map((n) => ({
+        // codigoCliente é a sequência dele (72 em diante). Só cai pro código
+        // global se por algum motivo a linha não tiver recebido numeração.
+        codigo: n.codigoCliente ?? n.configuracao!.codigo,
+        descricao: n.configuracao!.descricao,
+        ncm: n.ncm,
+        cstEntrada: n.configuracao!.cstEntrada,
+        cstSaida: n.configuracao!.cstSaida,
+        natureza: n.configuracao!.natureza,
+      }));
+  } else {
+    // Comportamento original: cliente sem tabela prévia recebe o arquivo pai
+    // inteiro + os complementos, e o Domínio importa só o que não existe.
+    const baseNcms = await prisma.ncmBase.findMany({ include: { configuracao: true } });
+    const ncmsNoPai = new Set(baseNcms.map((n) => n.ncm));
+
+    linhasPai = baseNcms.map((n) => ({
       codigo: n.configuracao.codigo,
       descricao: n.configuracao.descricao,
       ncm: n.ncm,
@@ -57,6 +69,18 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
       cstSaida: n.configuracao.cstSaida,
       natureza: n.configuracao.natureza,
     }));
+
+    linhasNovas = vigencia.ncms
+      .filter((n) => !ncmsNoPai.has(n.ncm) && n.configuracao !== null)
+      .map((n) => ({
+        codigo: n.configuracao!.codigo,
+        descricao: n.configuracao!.descricao,
+        ncm: n.ncm,
+        cstEntrada: n.configuracao!.cstEntrada,
+        cstSaida: n.configuracao!.cstSaida,
+        natureza: n.configuracao!.natureza,
+      }));
+  }
 
   const linhas = [...linhasPai, ...linhasNovas];
   const bytes = gerarTxtDominio(linhas);

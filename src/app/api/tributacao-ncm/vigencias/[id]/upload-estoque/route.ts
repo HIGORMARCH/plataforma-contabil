@@ -89,26 +89,46 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     );
   }
 
-  // 3) Cruza com base local
+  // 3) SÓ ACRESCENTA — nunca reclassifica.
+  //
+  // Regra estabelecida em 16/08/2026 (caso Casa São Paulo): o cliente já tinha
+  // tabela própria no Domínio, com 70 códigos e classificação distinta da nossa.
+  // O comportamento anterior era `upsert` com `update`, o que sobrescrevia a
+  // classificação dele pela da nossa base a cada planilha subida — destruindo
+  // exatamente o que o contador já havia decidido.
+  const existentes = await prisma.ncmVigencia.findMany({
+    where: { vigenciaId },
+    select: { ncm: true },
+  });
+  const jaNaVigencia = new Set(existentes.map((e) => e.ncm));
+  const novosDaPlanilha = resultado.ncmsUnicos.filter((n) => !jaNaVigencia.has(n));
+  const preservados = resultado.ncmsUnicos.length - novosDaPlanilha.length;
+
+  // Numeração no espaço do cliente: continua de onde a tabela dele parou.
+  const maxCliente = await prisma.ncmVigencia.aggregate({
+    where: { vigenciaId },
+    _max: { codigoCliente: true },
+  });
+  let proximoCodigoCliente = (maxCliente._max.codigoCliente ?? 0) + 1;
+
   const base = await prisma.ncmBase.findMany({
-    where: { ncm: { in: resultado.ncmsUnicos } },
+    where: { ncm: { in: novosDaPlanilha } },
     include: { configuracao: true },
   });
   const baseByNcm = new Map(base.map((b) => [b.ncm, b]));
 
-  const conhecidos = resultado.ncmsUnicos.filter((n) => baseByNcm.has(n));
-  const faltantes = resultado.ncmsUnicos.filter((n) => !baseByNcm.has(n));
+  const conhecidos = novosDaPlanilha.filter((n) => baseByNcm.has(n));
+  const faltantes = novosDaPlanilha.filter((n) => !baseByNcm.has(n));
 
   let cadastrados = 0;
   for (const ncm of conhecidos) {
     const cfg = baseByNcm.get(ncm)!;
-    await prisma.ncmVigencia.upsert({
-      where: { vigenciaId_ncm: { vigenciaId, ncm } },
-      update: { configuracaoId: cfg.configuracaoId, origem: "seed_autmais" },
-      create: {
+    await prisma.ncmVigencia.create({
+      data: {
         vigenciaId,
         ncm,
         configuracaoId: cfg.configuracaoId,
+        codigoCliente: proximoCodigoCliente++,
         origem: "seed_autmais",
       },
     });
@@ -151,10 +171,14 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
             },
           });
         }
-        await prisma.ncmVigencia.upsert({
-          where: { vigenciaId_ncm: { vigenciaId, ncm } },
-          update: { configuracaoId: config.id, origem: "econet_auto" },
-          create: { vigenciaId, ncm, configuracaoId: config.id, origem: "econet_auto" },
+        await prisma.ncmVigencia.create({
+          data: {
+            vigenciaId,
+            ncm,
+            configuracaoId: config.id,
+            codigoCliente: proximoCodigoCliente++,
+            origem: "econet_auto",
+          },
         });
         await prisma.ncmBase.upsert({
           where: { ncm },
@@ -190,6 +214,9 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     parserUsado,
     totalProdutos: resultado.produtos.length,
     ncmsProcessados: resultado.ncmsUnicos.length,
+    // Já estavam na vigência (tabela legada do cliente ou upload anterior) e
+    // foram mantidos como estavam — não reclassificados.
+    ncmsPreservados: preservados,
     ncmsCadastradosDaBase: cadastrados,
     ncmsResolvidosViaEconet: econetSucessos.length,
     ncmsFaltantes: ncmsRealmenteFaltantes,
