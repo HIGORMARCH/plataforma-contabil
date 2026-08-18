@@ -180,6 +180,38 @@ export async function consultarNcmEconet(
     (a, b) => (PRECEDENCIA.indexOf(a) === -1 ? 99 : PRECEDENCIA.indexOf(a)) - (PRECEDENCIA.indexOf(b) === -1 ? 99 : PRECEDENCIA.indexOf(b)),
   );
 
+  // ⚠️ DISTINÇÃO CRÍTICA (16/08/2026).
+  //
+  // Antes, qualquer resultado sem aba correspondente virava "normal". Isso
+  // confundia dois casos MUITO diferentes:
+  //
+  //   a) a página veio e nenhuma aba é de regime especial → é tributação
+  //      normal de verdade, conclusão legítima;
+  //   b) a página não veio (layout mudou, sessão sem acesso ao conteúdo) →
+  //      não sabemos nada, e responder "normal" é ADIVINHAR.
+  //
+  // O caso (b) chegou a acontecer em produção: 69 NCMs seguidos voltaram
+  // "Tributacao Normal - 0" com ZERO abas, incluindo xampu (monofásico
+  // clássico). Gravar isso na NcmBase — que é compartilhada entre escritórios —
+  // teria transformado produto de alíquota zero em tributado para todo mundo.
+  //
+  // Agora (b) devolve erro e entra no mesmo caminho dos NCMs não encontrados:
+  // aparece pro contador decidir, em vez de virar normal por omissão.
+  if (abas.length === 0) {
+    return {
+      ncm,
+      tipo: "revisar",
+      cstEntrada: "",
+      cstSaida: "",
+      descricaoBase: "",
+      natureza: "",
+      todasAbas: [],
+      erro:
+        "Econet não devolveu as abas de tributação — não é possível classificar. " +
+        "Verifique se a sessão tem acesso ao conteúdo ou se o layout do site mudou.",
+    };
+  }
+
   const tipoEscolhido = (tiposDetectados[0] ?? "normal") as keyof typeof TIPO_CFG;
   const cfg = TIPO_CFG[tipoEscolhido];
 
