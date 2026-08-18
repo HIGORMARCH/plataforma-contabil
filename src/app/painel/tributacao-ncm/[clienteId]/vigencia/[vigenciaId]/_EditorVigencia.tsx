@@ -21,6 +21,15 @@ interface NcmItem {
 // de importar o TXT.
 const CODIGO_ULTIMO_PAI = 57;
 
+interface ResultadoEconetItem {
+  ncm: string;
+  ok: boolean;
+  tipo?: string;
+  codigo?: number;
+  descricao?: string;
+  erro?: string;
+}
+
 interface ResultadoTabelaLegada {
   ok: boolean;
   incluidos: number;
@@ -61,6 +70,38 @@ export function EditorVigencia({
   const inputRef = useRef<HTMLInputElement>(null);
   const [importandoLegado, setImportandoLegado] = useState(false);
   const [resultadoLegado, setResultadoLegado] = useState<ResultadoTabelaLegada | null>(null);
+  const [ncmsBusca, setNcmsBusca] = useState("");
+  const [consultando, setConsultando] = useState(false);
+  const [resultadoEconet, setResultadoEconet] = useState<ResultadoEconetItem[] | null>(null);
+
+  async function consultarEconet() {
+    const ncms = ncmsBusca
+      .split(/[\s,;]+/)
+      .map((s) => s.replace(/\D/g, ""))
+      .filter((s) => s.length === 8);
+    if (ncms.length === 0) {
+      setErro("Informe ao menos um NCM com 8 dígitos.");
+      return;
+    }
+    setConsultando(true);
+    setErro(null);
+    setResultadoEconet(null);
+    try {
+      const r = await fetch(`/api/tributacao-ncm/vigencias/${vigenciaId}/consultar-econet`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ncms }),
+      });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.erro ?? "Erro na consulta");
+      setResultadoEconet(j.resultados ?? []);
+      router.refresh();
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : String(e));
+    } finally {
+      setConsultando(false);
+    }
+  }
 
   async function enviarTabelaLegada(f: File) {
     setImportandoLegado(true);
@@ -123,6 +164,66 @@ export function EditorVigencia({
 
   return (
     <div>
+      {/* Consulta Econet direto na tela — sem script, sem depender de lembrar
+          que existe um .py no Z:. */}
+      <section className="mb-6">
+        <h2 className="mb-3 text-lg font-bold text-slate-800">Consultar NCM na Econet</h2>
+        <div className="card p-4">
+          <p className="mb-3 text-sm text-slate-600">
+            Digite um ou mais NCMs (separados por vírgula, espaço ou linha). A classificação vem da
+            Econet e é gravada nesta vigência e na base padrão. NCM que já está na vigência não é
+            reclassificado.
+          </p>
+          <textarea
+            rows={2}
+            className="input mb-3 font-mono text-sm"
+            placeholder="33051000, 96190000"
+            value={ncmsBusca}
+            onChange={(e) => setNcmsBusca(e.target.value)}
+            disabled={consultando}
+          />
+          <button
+            type="button"
+            className="btn btn-primary"
+            onClick={consultarEconet}
+            disabled={consultando || !ncmsBusca.trim()}
+          >
+            {consultando ? "Consultando..." : "Consultar Econet"}
+          </button>
+          <p className="mt-2 text-xs text-slate-400">
+            Credencial e status da sessão ficam em Administração → Configurações.
+          </p>
+
+          {resultadoEconet && (
+            <div className="mt-3 overflow-x-auto rounded border border-slate-200">
+              <table className="w-full text-sm">
+                <thead className="bg-slate-50 text-left text-xs uppercase text-slate-500">
+                  <tr>
+                    <th className="px-3 py-2">NCM</th>
+                    <th className="px-3 py-2">Resultado</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {resultadoEconet.map((r) => (
+                    <tr key={r.ncm} className="border-t border-slate-100">
+                      <td className="px-3 py-2 font-mono">{r.ncm}</td>
+                      <td className="px-3 py-2">
+                        {r.ok ? (
+                          <span className="text-emerald-700">
+                            {r.tipo} — {r.descricao} (código {r.codigo})
+                          </span>
+                        ) : (
+                          <span className="text-amber-800">{r.erro}</span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      </section>
       {/* Tabela que o cliente já tem no Domínio */}
       <section className="mb-6">
         <h2 className="mb-3 text-lg font-bold text-slate-800">

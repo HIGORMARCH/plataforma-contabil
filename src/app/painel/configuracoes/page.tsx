@@ -110,7 +110,7 @@ export default async function ConfiguracoesPage({
 
           <div className="grid gap-4 md:grid-cols-2">
             <div>
-              <label className="label" htmlFor="econetUsuario">Usuário</label>
+              <label className="label" htmlFor="econetUsuario">Código do cliente</label>
               <input
                 id="econetUsuario"
                 name="econetUsuario"

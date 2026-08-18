@@ -90,10 +90,12 @@ export async function POST(_req: Request, ctx: { params: Promise<{ id: string }>
         });
       }
 
-      // Grava na vigência
+      // Grava na vigência — SEM sobrescrever. Se o NCM já está lá (veio da
+      // tabela legada do cliente ou de upload anterior), a classificação
+      // existente vale; só o que falta é acrescentado.
       await prisma.ncmVigencia.upsert({
         where: { vigenciaId_ncm: { vigenciaId, ncm } },
-        update: { configuracaoId: config.id, origem: "econet_auto" },
+        update: {},
         create: {
           vigenciaId,
           ncm,

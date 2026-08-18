@@ -113,7 +113,22 @@ function extraiNatureza(htmlAba: string): string {
 }
 
 async function fetchLatin1(url: string, headers: Record<string, string>, init?: RequestInit): Promise<string> {
-  const r = await fetch(url, { ...init, headers });
+  // ⚠️ Os headers do `init` TÊM PRECEDÊNCIA sobre os da sessão.
+  //
+  // Antes era `{ ...init, headers }`, com o `headers` depois do spread — o que
+  // descartava silenciosamente os headers passados no init. Na prática, matava
+  // o `Content-Type: application/x-www-form-urlencoded` do POST da etapa 2:
+  // sem ele o PHP não parseia o corpo, `$_POST` chega vazio e o site devolve a
+  // TELA DE BUSCA em vez do resultado.
+  //
+  // O efeito era invisível — HTTP 200, HTML válido, só que sem as abas. Como o
+  // parser tratava "sem aba" como tributação normal, TODO NCM consultado voltava
+  // "Tributacao Normal - 0". Ao corrigir, a resposta do mesmo NCM saltou de
+  // 15 KB para 83 KB, com as TabbedPanels no lugar.
+  const r = await fetch(url, {
+    ...init,
+    headers: { ...headers, ...((init?.headers as Record<string, string>) ?? {}) },
+  });
   if (!r.ok) throw new Error(`HTTP ${r.status} — sessão pode ter expirado`);
   const buf = new Uint8Array(await r.arrayBuffer());
   // decode windows-1252
