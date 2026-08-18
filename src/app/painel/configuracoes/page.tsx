@@ -1,7 +1,7 @@
 import { requireSessao } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { redirect } from "next/navigation";
-import { salvarPapelTimbradoAction } from "./actions";
+import { salvarPapelTimbradoAction, salvarCredencialEconetAction } from "./actions";
 
 function Campo({ nome, label, valor, placeholder }: { nome: string; label: string; valor?: string | null; placeholder?: string }) {
   return (
@@ -90,6 +90,68 @@ export default async function ConfiguracoesPage({
         <div className="flex justify-end">
           <button type="submit" className="btn btn-primary">Salvar configurações</button>
         </div>
+      </form>
+
+      {/* Formulário separado: credencial não viaja junto com papel timbrado. */}
+      <form action={salvarCredencialEconetAction} className="mt-8">
+        <section className="card p-5">
+          <h2 className="mb-1 text-sm font-bold uppercase tracking-wide text-slate-500">
+            Credencial Econet
+          </h2>
+          <p className="mb-4 max-w-[70ch] text-xs text-slate-500">
+            Usada na consulta de tributação por NCM. A senha é cifrada antes de ir pro banco e
+            nunca volta pra esta tela.
+          </p>
+
+          <div className="mb-4 rounded border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+            <b>O login da Econet exige CAPTCHA</b>, então não dá pra autenticar sozinho. Cadastrar
+            aqui faz o robô pré-preencher usuário e senha — resta a você só resolver o desafio.
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-2">
+            <div>
+              <label className="label" htmlFor="econetUsuario">Usuário</label>
+              <input
+                id="econetUsuario"
+                name="econetUsuario"
+                className="input"
+                defaultValue={e?.econetUsuario ?? ""}
+                autoComplete="off"
+              />
+            </div>
+            <div>
+              <label className="label" htmlFor="econetSenha">Senha</label>
+              <input
+                id="econetSenha"
+                name="econetSenha"
+                type="password"
+                className="input"
+                placeholder={e?.econetSenha ? "•••••••• (cadastrada)" : "Digite a senha"}
+                autoComplete="new-password"
+              />
+              <p className="mt-1 text-xs text-slate-400">
+                {e?.econetSenha
+                  ? "Deixe em branco para manter a senha atual."
+                  : "Nenhuma senha cadastrada ainda."}
+              </p>
+            </div>
+          </div>
+
+          <p className="mt-4 text-xs text-slate-500">
+            Sessão renovada pela última vez:{" "}
+            <b>
+              {e?.econetSessaoEm
+                ? e.econetSessaoEm.toLocaleString("pt-BR")
+                : "nunca registrada nesta tela"}
+            </b>
+            . Uma sessão vencida faz a Econet responder &quot;NCM não encontrado&quot; em toda
+            consulta — a mesma mensagem de NCM inexistente, por isso a falha passa despercebida.
+          </p>
+
+          <div className="mt-4 flex justify-end">
+            <button type="submit" className="btn btn-primary">Salvar credencial</button>
+          </div>
+        </section>
       </form>
     </div>
   );

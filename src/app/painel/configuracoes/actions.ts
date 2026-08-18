@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import { requireSessao } from "@/lib/auth";
+import { cifrar } from "@/lib/crypto";
 
 function txt(fd: FormData, nome: string): string | null {
   const v = String(fd.get(nome) ?? "").trim();
@@ -49,4 +50,42 @@ export async function salvarPapelTimbradoAction(fd: FormData) {
   });
   revalidatePath("/painel/configuracoes");
   redirect("/painel/configuracoes?ok=1");
+}
+
+/**
+ * Credencial da Econet usada na consulta de tributação por NCM.
+ *
+ * A senha é cifrada antes de tocar o banco (AES-256-GCM, mesmo esquema da senha
+ * SEFAZ) e NUNCA volta pra tela — o formulário só informa se já existe uma
+ * cadastrada. Senha em branco no envio significa "mantém a atual", pra permitir
+ * corrigir só o usuário sem redigitar a senha.
+ *
+ * ⚠️ Isto não automatiza o login: a Econet exige CAPTCHA. Serve pra o robô
+ * pré-preencher os campos e deixar pro humano apenas o desafio.
+ */
+export async function salvarCredencialEconetAction(fd: FormData) {
+  const sessao = await requireSessao();
+  if (sessao.papel !== "ADMIN") redirect("/painel");
+
+  const usuario = txt(fd, "econetUsuario");
+  const senhaClara = txt(fd, "econetSenha");
+
+  await prisma.escritorio.update({
+    where: { id: sessao.escritorioId },
+    data: {
+      econetUsuario: usuario,
+      ...(senhaClara ? { econetSenha: cifrar(senhaClara) } : {}),
+    },
+  });
+
+  await prisma.logAcesso.create({
+    data: {
+      acao: "CREDENCIAL_ECONET_ATUALIZADA",
+      // Nunca registrar a senha, nem parcialmente.
+      detalhe: usuario ? `usuário ${usuario}` : "credencial removida",
+      usuarioId: sessao.userId,
+    },
+  });
+  revalidatePath("/painel/configuracoes");
+  redirect("/painel/configuracoes?econet=1");
 }

@@ -30,6 +30,23 @@ model Escritorio {
   corSecundaria     String  @default("#2c7a7b")
   rodapePadrao      String?
 
+  // ---- Credencial da Econet (consulta de tributação por NCM) ----
+  //
+  // Antes de 16/08/2026 isso vivia enterrado num script Python em
+  // `Z:\...\TRIBUTACAO NCM\config\econet-login.py`, que ninguém lembrava que
+  // existia — a sessão expirava e só se descobria quando dezenas de consultas
+  // falhavam em silêncio ("NCM não encontrado" é a MESMA mensagem que a Econet
+  // devolve pra sessão morta).
+  //
+  // Senha cifrada em AES-256-GCM (src/lib/crypto.ts), igual à senha SEFAZ e à
+  // do certificado. Nunca volta pra tela: a UI só mostra "cadastrada".
+  //
+  // ⚠️ O login da Econet tem CAPTCHA. Isto NÃO automatiza a autenticação —
+  // serve pra pré-preencher usuário e senha e deixar pro humano só o CAPTCHA.
+  econetUsuario      String?
+  econetSenha        String? // cifrada
+  econetSessaoEm     DateTime? // quando o storage_state foi renovado pela última vez
+
   usuarios Usuario[]
   clientes Cliente[]
 
