@@ -3,6 +3,7 @@ import { requireSessao, PAPEIS_INTERNOS } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { redirect, notFound } from "next/navigation";
 import { EditorVigencia } from "./_EditorVigencia";
+import { RelatorioProcesso } from "./_RelatorioProcesso";
 
 export default async function VigenciaPage(
   props: { params: Promise<{ clienteId: string; vigenciaId: string }> }
@@ -27,6 +28,22 @@ export default async function VigenciaPage(
     notFound();
   }
 
+  // Timbre do escritório — só usado no @media print.
+  const escritorio = await prisma.escritorio.findUnique({
+    where: { id: sessao.escritorioId },
+    select: {
+      razaoSocial: true,
+      nomeFantasia: true,
+      cnpj: true,
+      crc: true,
+      endereco: true,
+      telefone: true,
+      email: true,
+      site: true,
+      logoDataUrl: true,
+    },
+  });
+
   return (
     <div>
       <div className="mb-4 text-sm">
@@ -48,6 +65,22 @@ export default async function VigenciaPage(
         </p>
       </header>
 
+      <RelatorioProcesso
+        cliente={vigencia.cliente.razaoSocial}
+        cnpj={vigencia.cliente.cnpj}
+        vigencia={vigencia.dataVigencia}
+        escritorio={escritorio}
+        linhas={vigencia.ncms.map((n) => ({
+          ncm: n.ncm,
+          origem: n.origem,
+          codigoCliente: n.codigoCliente,
+          descricaoCliente: n.descricaoCliente,
+          tipo: n.configuracao?.tipo ?? null,
+          codigoConfig: n.configuracao?.codigo ?? null,
+          descricaoConfig: n.configuracao?.descricao ?? null,
+        }))}
+      />
+
       <EditorVigencia
         vigenciaId={vigencia.id}
         clienteId={clienteId}
@@ -65,6 +98,12 @@ export default async function VigenciaPage(
           cstSaida: n.configuracao?.cstSaida ?? "",
           natureza: n.configuracao?.natureza ?? "",
           tipo: n.configuracao?.tipo ?? "legado",
+          // Distingue os DOIS espaços de numeração que convivem nesta tela:
+          // o nosso (ConfiguracaoNcm.codigo, global) e o do cliente
+          // (codigoCliente, da tabela que ele já tem no Domínio). Sem esta
+          // marca, a tela comparava o código do cliente com o nosso limite de
+          // 57 e mandava cadastrar no Domínio configurações que já existiam lá.
+          temConfigNossa: Boolean(n.configuracaoId),
         }))}
       />
     </div>

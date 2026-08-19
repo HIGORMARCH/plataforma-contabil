@@ -6,6 +6,7 @@ import { parseEstoqueViaPython } from "@/lib/parse-estoque-python";
 import { garantirPastaVigencia, caminhoArquivoEstoque } from "@/lib/upload-path";
 import { writeFile } from "node:fs/promises";
 import { consultarNcmEconet, type AtividadeConsulta } from "@/lib/consulta-econet";
+import { carregarSessaoEconet } from "@/lib/econet-sessao";
 import { atividadeTributariaFromCnae } from "@/lib/atividade-tributaria";
 
 export async function POST(req: Request, ctx: { params: Promise<{ id: string }> }) {
@@ -129,7 +130,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
         ncm,
         configuracaoId: cfg.configuracaoId,
         codigoCliente: proximoCodigoCliente++,
-        origem: "seed_autmais",
+        origem: "base_plataforma",
       },
     });
     cadastrados++;
@@ -147,9 +148,21 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     const maxCodigo = await prisma.configuracaoNcm.aggregate({ _max: { codigo: true } });
     let proximoCodigo = (maxCodigo._max.codigo ?? 0) + 1;
 
-    for (const ncm of faltantes) {
+    // Sessão carregada UMA vez pro lote inteiro: decifrar custa scrypt.
+    // Sem sessão não adianta tentar NCM nenhum — todos falhariam igual.
+    const sessaoEconet = await carregarSessaoEconet(sessao.escritorioId);
+    if (!sessaoEconet) {
+      for (const ncm of faltantes) {
+        econetFalhas.push({
+          ncm,
+          erro: "Nenhuma sessão da Econet cadastrada. Renove em Administração > Configurações.",
+        });
+      }
+    }
+
+    for (const ncm of sessaoEconet ? faltantes : []) {
       try {
-        const r = await consultarNcmEconet(ncm, atividade);
+        const r = await consultarNcmEconet(ncm, atividade, sessaoEconet!);
         if (r.erro) {
           econetFalhas.push({ ncm, erro: r.erro });
           continue;

@@ -3,6 +3,7 @@ import { requireSessao, PAPEIS_INTERNOS } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { redirect } from "next/navigation";
 import { ROTULO_ATIVIDADE_TRIBUTARIA, type AtividadeTributaria } from "@/lib/atividade-tributaria";
+import { PainelBase } from "./_PainelBase";
 
 export default async function TributacaoNcmHome() {
   const sessao = await requireSessao();
@@ -51,10 +52,12 @@ export default async function TributacaoNcmHome() {
         </div>
       </section>
 
+      <PainelBase escritorioId={sessao.escritorioId} />
+
       {totalConfigs === 0 && (
         <div className="mb-8 rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
-          ⚠ <b>Base semente ainda não carregada.</b> Rode uma vez o seed pra popular as 54 configurações do arquivo pai da
-          Autmais + os NCMs conhecidos:
+          ⚠ <b>Base de NCM ainda não carregada.</b> Rode uma vez o seed pra popular as 54 configurações
+          iniciais + os NCMs conhecidos. Daí em diante a base é da plataforma e cresce a cada consulta:
           <pre className="mt-2 rounded bg-amber-100 p-2 text-xs">
             cd C:\Dev\plataforma-contabil{"\n"}
             npx tsx prisma/seed-tributacao-ncm.ts

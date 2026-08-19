@@ -64,23 +64,44 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   });
   const jaNaVigencia = new Set(existentes.map((e) => e.ncm));
 
+  // DE-PARA AUTOMÁTICO com a base da plataforma (regra do Higor, 19/08/2026):
+  // quando a tabela de um cliente entra, ela já é cruzada com a nossa base pelo
+  // NCM. O que casar recebe a nossa classificação na hora; só o que sobrar
+  // precisa ir à Econet. A base é nossa e cresce a cada consulta, então cada
+  // cliente novo tende a exigir menos Econet que o anterior.
+  //
+  // O código e a descrição DO CLIENTE continuam gravados de qualquer forma, e a
+  // origem segue sendo `cliente_legado`: de onde a linha veio é uma coisa, como
+  // ela foi classificada é outra.
+  const naBase = await prisma.ncmBase.findMany({
+    where: { ncm: { in: parsed.linhas.map((l) => l.ncm) } },
+    select: { ncm: true, configuracaoId: true },
+  });
+  const baseByNcm = new Map(naBase.map((b) => [b.ncm, b.configuracaoId]));
+
   let incluidos = 0;
   let ignorados = 0;
+  let vinculadosNaBase = 0;
+  const ncmsParaEconet: string[] = [];
+
   for (const linha of parsed.linhas) {
     if (jaNaVigencia.has(linha.ncm)) {
       ignorados++;
       continue;
     }
+    const configuracaoId = baseByNcm.get(linha.ncm) ?? null;
     await prisma.ncmVigencia.create({
       data: {
         vigenciaId,
         ncm: linha.ncm,
-        configuracaoId: null,
+        configuracaoId,
         codigoCliente: linha.codigo,
         descricaoCliente: linha.descricao,
         origem: "cliente_legado",
       },
     });
+    if (configuracaoId) vinculadosNaBase++;
+    else ncmsParaEconet.push(linha.ncm);
     jaNaVigencia.add(linha.ncm);
     incluidos++;
   }
@@ -89,6 +110,9 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     ok: true,
     incluidos,
     ignorados,
+    vinculadosNaBase,
+    semCorrespondencia: ncmsParaEconet.length,
+    ncmsParaEconet,
     codigos: parsed.grupos.length,
     ncmsUnicos: parsed.ncmsUnicos.length,
     // A numeração dos NCMs novos continua daqui — não pode colidir com a do cliente.

@@ -46,6 +46,15 @@ model Escritorio {
   econetUsuario      String?
   econetSenha        String? // cifrada
   econetSessaoEm     DateTime? // quando o storage_state foi renovado pela última vez
+  //
+  // A SESSÃO em si (cookies do storage_state do Playwright), cifrada igual à
+  // senha. Antes vivia em `Z:\...\config\econet-storage.json`, gerado por um
+  // script Python de fora da plataforma: se o Z: não estivesse mapeado, ou o
+  // script sumisse, a consulta morria sem ninguém entender por quê.
+  //
+  // Cookie de sessão vale tanto quanto senha enquanto não expira — por isso é
+  // cifrado em repouso e nunca sai pra tela.
+  econetSessao       String? // cifrado — JSON do storage_state
 
   usuarios Usuario[]
   clientes Cliente[]
@@ -358,7 +367,7 @@ model ConfiguracaoNcm {
   cstEntrada   String // ex: "73"
   cstSaida     String // ex: "6"
   natureza     String // ex: "109" (ou "0" pra tributação normal)
-  origem       String        @default("seed_autmais") // seed_autmais | manual | econet
+  origem       String        @default("base_plataforma") // base_plataforma | manual | econet
   ncmsBase     NcmBase[]
   ncmsVigencia NcmVigencia[]
 
@@ -374,7 +383,11 @@ model NcmBase {
   ncm               String          @id // 8 dígitos numéricos, ex: "01051110"
   configuracao      ConfiguracaoNcm @relation(fields: [configuracaoId], references: [id])
   configuracaoId    String
-  origem            String          @default("seed_autmais") // seed_autmais | econet_cache | manual
+  // base_plataforma = veio do carregamento inicial da base
+  // econet_cache    = confirmado numa consulta à Econet (inclusive tributação
+  //                   normal, que NÃO existe em tabela de referência estática —
+  //                   é conhecimento que só a nossa base tem)
+  origem            String          @default("base_plataforma") // base_plataforma | econet_cache | manual
   atividadeContexto String? // varejo | atacado | fabricante — pra qual atividade essa classificação vale
   atualizadoEm      DateTime        @default(now())
 }
@@ -427,7 +440,7 @@ model NcmVigencia {
   codigoCliente    Int?
   descricaoCliente String?
 
-  origem     String // cliente_legado | seed_autmais | econet_auto | manual
+  origem     String // cliente_legado | base_plataforma | econet_auto | manual
   observacao String?
 
   createdAt DateTime @default(now())

@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { getSessao, PAPEIS_INTERNOS } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import { consultarNcmEconet, type AtividadeConsulta } from "@/lib/consulta-econet";
+import { consultarNcmEconet, type AtividadeConsulta, type DiagnosticoEconet } from "@/lib/consulta-econet";
+import { carregarSessaoEconet } from "@/lib/econet-sessao";
 import { atividadeTributariaFromCnae } from "@/lib/atividade-tributaria";
 
 /**
@@ -55,17 +56,112 @@ export async function POST(_req: Request, ctx: { params: Promise<{ id: string }>
     codigo?: number;
     descricao?: string;
     erro?: string;
+    diagnostico?: DiagnosticoEconet;
+    /** De onde saiu a classificação: nossa base local ou uma consulta agora. */
+    fonte?: "base" | "econet";
   }[] = [];
+
+  // -------------------------------------------------------------------------
+  // ETAPA 1 — resolver pela base local (ideia do Higor, 19/08/2026).
+  //
+  // A NcmBase é a base da plataforma: começou numa semente e cresce a cada
+  // NCM confirmado na Econet, inclusive os tributados normalmente. Consultar a Econet
+  // pra um NCM que já está lá é ida desnecessária a um serviço pago, lento e
+  // que depende de sessão viva. Na prática a maioria da lista resolve aqui, e
+  // sessão vencida deixa de bloquear o trabalho todo.
+  //
+  // Só a base entra nesta etapa. O CacheEconet fica de fora de propósito: ele
+  // guarda o resultado bruto de consultas passadas, e consulta passada foi
+  // exatamente o que saiu errado em julho.
+  // -------------------------------------------------------------------------
+  const naBase = await prisma.ncmBase.findMany({
+    where: { ncm: { in: ncmsSolicitados } },
+    include: { configuracao: true },
+  });
+  const baseByNcm = new Map(naBase.map((b) => [b.ncm, b]));
+
+  for (const ncm of ncmsSolicitados) {
+    const b = baseByNcm.get(ncm);
+    if (!b) continue;
+    await prisma.ncmVigencia.upsert({
+      where: { vigenciaId_ncm: { vigenciaId, ncm } },
+      update: {}, // nunca reclassifica o que já está na vigência
+      create: { vigenciaId, ncm, configuracaoId: b.configuracaoId, origem: "base_local" },
+    });
+    resultados.push({
+      ncm,
+      ok: true,
+      fonte: "base",
+      tipo: b.configuracao.tipo,
+      codigo: b.configuracao.codigo,
+      descricao: b.configuracao.descricao,
+    });
+  }
+
+  const faltantes = ncmsSolicitados.filter((n) => !baseByNcm.has(n));
+
+  // Tudo resolvido sem sair de casa — nem toca na Econet.
+  if (faltantes.length === 0) {
+    return NextResponse.json({
+      ok: true,
+      atividadeUsada: atividade,
+      resolvidosNaBase: resultados.length,
+      consultadosNaEconet: 0,
+      processados: resultados.length,
+      sucessos: resultados.length,
+      falhas: 0,
+      resultados,
+    });
+  }
+
+  // -------------------------------------------------------------------------
+  // ETAPA 2 — só o que sobrou vai pra Econet.
+  // -------------------------------------------------------------------------
+
+  // Sessão carregada uma vez pro lote (decifrar custa scrypt). Sem sessão,
+  // nem começa: martelar os faltantes pra colher o mesmo erro em cada um só
+  // esconde a causa real atrás de uma lista de falhas.
+  const sessaoEconet = await carregarSessaoEconet(sessao.escritorioId);
+  if (!sessaoEconet) {
+    return NextResponse.json(
+      {
+        ok: false,
+        diagnostico: "SESSAO_AUSENTE" satisfies DiagnosticoEconet,
+        erro:
+          "Nenhuma sessão da Econet cadastrada nesta instalação. " +
+          "Abra Administração > Configurações e use “Renovar sessão da Econet”.",
+        resolvidosNaBase: resultados.length,
+        naoTentados: faltantes.length,
+        resultados,
+      },
+      { status: 409 },
+    );
+  }
 
   // Descobre o próximo código livre pra novas configurações
   const maxCodigo = await prisma.configuracaoNcm.aggregate({ _max: { codigo: true } });
   let proximoCodigo = (maxCodigo._max.codigo ?? 0) + 1;
 
-  for (const ncm of ncmsSolicitados) {
+  /** Preenchido quando o lote é abortado por falha que afeta todos os NCMs. */
+  let abortadoPor: { diagnostico: DiagnosticoEconet; erro: string } | null = null;
+  let tentadosNaEconet = 0;
+
+  for (const ncm of faltantes) {
+    tentadosNaEconet++;
     try {
-      const r = await consultarNcmEconet(ncm, atividade);
+      const r = await consultarNcmEconet(ncm, atividade, sessaoEconet);
+
+      // Sessão vencida ou layout trocado não é problema DESTE NCM — é do lote
+      // inteiro. Parar aqui é o que transforma "70 consultas erradas" em
+      // "uma mensagem certa na primeira tentativa".
+      if (r.diagnostico === "SESSAO_EXPIRADA" || r.diagnostico === "ERRO_REDE") {
+        abortadoPor = { diagnostico: r.diagnostico, erro: r.erro ?? "" };
+        resultados.push({ ncm, ok: false, erro: r.erro, diagnostico: r.diagnostico });
+        break;
+      }
+
       if (r.erro) {
-        resultados.push({ ncm, ok: false, erro: r.erro });
+        resultados.push({ ncm, ok: false, erro: r.erro, diagnostico: r.diagnostico });
         continue;
       }
 
@@ -141,6 +237,7 @@ export async function POST(_req: Request, ctx: { params: Promise<{ id: string }>
       resultados.push({
         ncm,
         ok: true,
+        fonte: "econet",
         tipo: r.tipo,
         codigo: config.codigo,
         descricao: config.descricao,
@@ -154,12 +251,25 @@ export async function POST(_req: Request, ctx: { params: Promise<{ id: string }>
     }
   }
 
+  // Quantos faltantes sequer chegaram a ser tentados, quando o lote foi abortado.
+  const naoTentados = faltantes.length - tentadosNaEconet;
+
   return NextResponse.json({
-    ok: true,
+    ok: !abortadoPor,
     atividadeUsada: atividade,
+    sessaoRenovadaEm: sessaoEconet.renovadaEm,
+    resolvidosNaBase: resultados.filter((r) => r.fonte === "base").length,
+    consultadosNaEconet: resultados.filter((r) => r.fonte === "econet").length,
     processados: resultados.length,
     sucessos: resultados.filter((r) => r.ok).length,
     falhas: resultados.filter((r) => !r.ok).length,
+    ...(abortadoPor
+      ? {
+          diagnostico: abortadoPor.diagnostico,
+          erro: abortadoPor.erro,
+          naoTentados,
+        }
+      : {}),
     resultados,
   });
 }

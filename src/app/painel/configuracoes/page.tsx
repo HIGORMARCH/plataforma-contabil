@@ -2,6 +2,7 @@ import { requireSessao } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { redirect } from "next/navigation";
 import { salvarPapelTimbradoAction, salvarCredencialEconetAction } from "./actions";
+import { SessaoEconet } from "./_SessaoEconet";
 
 function Campo({ nome, label, valor, placeholder }: { nome: string; label: string; valor?: string | null; placeholder?: string }) {
   return (
@@ -105,7 +106,8 @@ export default async function ConfiguracoesPage({
 
           <div className="mb-4 rounded border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
             <b>O login da Econet exige CAPTCHA</b>, então não dá pra autenticar sozinho. Cadastrar
-            aqui faz o robô pré-preencher usuário e senha — resta a você só resolver o desafio.
+            aqui faz o robô pré-preencher usuário e senha — resta a você só resolver o desafio, no
+            botão <b>Renovar sessão da Econet</b> logo abaixo.
           </div>
 
           <div className="grid gap-4 md:grid-cols-2">
@@ -144,8 +146,9 @@ export default async function ConfiguracoesPage({
                 ? e.econetSessaoEm.toLocaleString("pt-BR")
                 : "nunca registrada nesta tela"}
             </b>
-            . Uma sessão vencida faz a Econet responder &quot;NCM não encontrado&quot; em toda
-            consulta — a mesma mensagem de NCM inexistente, por isso a falha passa despercebida.
+            . Sessão vencida agora é detectada e avisada como tal — não se confunde mais com
+            &quot;NCM não encontrado&quot;, que foi o que deixou 70 consultas erradas passarem
+            despercebidas em julho. Use &quot;Testar sessão agora&quot; antes de consultar em lote.
           </p>
 
           <div className="mt-4 flex justify-end">
@@ -153,6 +156,8 @@ export default async function ConfiguracoesPage({
           </div>
         </section>
       </form>
+
+      <SessaoEconet temCredencial={Boolean(e?.econetUsuario && e?.econetSenha)} />
     </div>
   );
 }

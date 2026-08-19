@@ -49,6 +49,12 @@ export default async function PainelLayout({ children }: { children: React.React
 
         {
           grupo: "Auditoria",
+          href: "/painel/dossie",
+          rotulo: "Dossiê do Cliente",
+          icone: "📚",
+        },
+        {
+          grupo: "Auditoria",
           href: "/painel/relatorios",
           rotulo: "Análise das Demonstrações Contábeis",
           icone: "📄",

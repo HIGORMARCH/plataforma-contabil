@@ -96,7 +96,7 @@ async function main() {
         cstEntrada: cfg.cstEntrada,
         cstSaida: cfg.cstSaida,
         natureza: cfg.natureza,
-        origem: "seed_autmais",
+        origem: "base_plataforma",
       },
     });
     contConfig++;
@@ -106,7 +106,7 @@ async function main() {
       await prisma.ncmBase.upsert({
         where: { ncm },
         update: { configuracaoId: conf.id },
-        create: { ncm, configuracaoId: conf.id, origem: "seed_autmais" },
+        create: { ncm, configuracaoId: conf.id, origem: "base_plataforma" },
       });
       contNcm++;
     }
