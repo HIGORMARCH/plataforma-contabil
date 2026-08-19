@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db";
 import { redirect } from "next/navigation";
 import { ROTULO_ATIVIDADE_TRIBUTARIA, type AtividadeTributaria } from "@/lib/atividade-tributaria";
 import { PainelBase } from "./_PainelBase";
+import { BuscaNcm } from "./_BuscaNcm";
 
 export default async function TributacaoNcmHome() {
   const sessao = await requireSessao();
@@ -51,6 +52,8 @@ export default async function TributacaoNcmHome() {
           </div>
         </div>
       </section>
+
+      <BuscaNcm />
 
       <PainelBase escritorioId={sessao.escritorioId} />
 
