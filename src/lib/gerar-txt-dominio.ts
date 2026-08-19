@@ -11,7 +11,20 @@
  *  - Ordenado por (código_config, NCM)
  *  - Uma linha por NCM único (deduplicado)
  *
- * Colunas: cod;descricao;ncm ;N;cst_entrada;;;cst_saida;natureza
+ * Colunas: cod;descricao;ncm ;N;cst_entrada;vinculo_credito;base_credito;cst_saida;natureza
+ *
+ * Os dois campos entre o CST de entrada e o de saída — que hoje saem VAZIOS —
+ * são "Vínculo do crédito" e "Base do crédito" da aba PIS/COFINS > Entradas do
+ * Domínio (tela "Configuração de Impostos para Produtos"). Confirmado com o
+ * Higor em 19/08/2026, conferindo a linha
+ *
+ *     1;ALIQUOTA ZERO - 109;01051110 ;N;73;;;6;109
+ *
+ * contra a tela: CST 73 preenchido, os dois combos logo abaixo em branco.
+ *
+ * Deixá-los vazios é o comportamento atual e o Domínio aceita a importação.
+ * Preenchê-los é decisão fiscal — depende do regime da empresa e do vínculo da
+ * aquisição —, então não é algo que o gerador deva inventar sozinho.
  */
 
 export interface LinhaNcmTxt {

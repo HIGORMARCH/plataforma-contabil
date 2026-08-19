@@ -150,8 +150,9 @@ export function BuscaNcm() {
               >
                 <p className="font-semibold">{r.entrada.vinculo}</p>
                 <p className="mt-1 text-xs">
-                  Vínculo lido do CST de entrada. O aproveitamento efetivo ainda depende do regime
-                  da empresa — o não cumulativo credita, o cumulativo não — e da destinação do item.
+                  Leitura do CST de entrada — não é o campo <b>Vínculo do crédito</b> do Domínio,
+                  que o nosso TXT hoje envia em branco. O aproveitamento efetivo depende do regime
+                  da empresa (o não cumulativo credita, o cumulativo não) e da destinação do item.
                 </p>
               </div>
             )}

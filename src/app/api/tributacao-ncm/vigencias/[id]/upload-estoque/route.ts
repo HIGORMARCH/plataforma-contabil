@@ -5,9 +5,6 @@ import { parseEstoqueDominio } from "@/lib/parse-estoque-dominio";
 import { parseEstoqueViaPython } from "@/lib/parse-estoque-python";
 import { garantirPastaVigencia, caminhoArquivoEstoque } from "@/lib/upload-path";
 import { writeFile } from "node:fs/promises";
-import { consultarNcmEconet, type AtividadeConsulta } from "@/lib/consulta-econet";
-import { carregarSessaoEconet } from "@/lib/econet-sessao";
-import { atividadeTributariaFromCnae } from "@/lib/atividade-tributaria";
 
 export async function POST(req: Request, ctx: { params: Promise<{ id: string }> }) {
   const sessao = await getSessao();
@@ -136,79 +133,17 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     cadastrados++;
   }
 
-  // 4) Consulta Econet automaticamente pros faltantes (Fase 3)
-  const econetSucessos: string[] = [];
-  const econetFalhas: { ncm: string; erro: string }[] = [];
-  if (faltantes.length > 0) {
-    const atividade: AtividadeConsulta =
-      (vigencia.cliente.atividadeTributaria as AtividadeConsulta | null) ??
-      (atividadeTributariaFromCnae(vigencia.cliente.cnaePrincipal) as AtividadeConsulta | null) ??
-      "varejo";
-
-    const maxCodigo = await prisma.configuracaoNcm.aggregate({ _max: { codigo: true } });
-    let proximoCodigo = (maxCodigo._max.codigo ?? 0) + 1;
-
-    // Sessão carregada UMA vez pro lote inteiro: decifrar custa scrypt.
-    // Sem sessão não adianta tentar NCM nenhum — todos falhariam igual.
-    const sessaoEconet = await carregarSessaoEconet(sessao.escritorioId);
-    if (!sessaoEconet) {
-      for (const ncm of faltantes) {
-        econetFalhas.push({
-          ncm,
-          erro: "Nenhuma sessão da Econet cadastrada. Renove em Administração > Configurações.",
-        });
-      }
-    }
-
-    for (const ncm of sessaoEconet ? faltantes : []) {
-      try {
-        const r = await consultarNcmEconet(ncm, atividade, sessaoEconet!);
-        if (r.erro) {
-          econetFalhas.push({ ncm, erro: r.erro });
-          continue;
-        }
-        const descricao = `${r.descricaoBase} - ${r.natureza || "0"}`;
-        let config = await prisma.configuracaoNcm.findFirst({
-          where: { descricao: { equals: descricao } },
-        });
-        if (!config) {
-          config = await prisma.configuracaoNcm.create({
-            data: {
-              codigo: proximoCodigo++,
-              descricao,
-              tipo: r.tipo,
-              cstEntrada: r.cstEntrada,
-              cstSaida: r.cstSaida,
-              natureza: r.natureza || "0",
-              origem: "econet",
-            },
-          });
-        }
-        await prisma.ncmVigencia.create({
-          data: {
-            vigenciaId,
-            ncm,
-            configuracaoId: config.id,
-            codigoCliente: proximoCodigoCliente++,
-            origem: "econet_auto",
-          },
-        });
-        await prisma.ncmBase.upsert({
-          where: { ncm },
-          update: { configuracaoId: config.id, atualizadoEm: new Date() },
-          create: {
-            ncm,
-            configuracaoId: config.id,
-            origem: "econet_cache",
-            atividadeContexto: atividade,
-          },
-        });
-        econetSucessos.push(ncm);
-      } catch (e) {
-        econetFalhas.push({ ncm, erro: e instanceof Error ? e.message : String(e) });
-      }
-    }
-  }
+  // 4) Os faltantes NÃO são consultados aqui.
+  //
+  // Regra do Higor (19/08/2026): "a questão da Econet tem que ser solicitado".
+  // Subir uma planilha não pode disparar consulta a serviço externo — é lento,
+  // depende de sessão viva e CAPTCHA, e o contador pode nem querer consultar
+  // agora. O upload devolve a lista de faltantes; a consulta é ato deliberado,
+  // no botão da tela da vigência.
+  //
+  // Antes daqui saíam consultas em lote automáticas. Foi assim que 69 NCMs
+  // entraram na base sem ninguém acompanhar, em julho, quando a sessão tinha
+  // vencido e o parser ainda lia a tela de busca como "tributação normal".
 
   // 5) Atualiza vigência com o path do arquivo salvo
   await prisma.vigenciaNcm.update({
@@ -218,8 +153,6 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
       arquivoEstoqueNome: arquivo.name,
     },
   });
-
-  const ncmsRealmenteFaltantes = faltantes.filter((n) => !econetSucessos.includes(n));
 
   return NextResponse.json({
     ok: true,
@@ -231,9 +164,9 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     // foram mantidos como estavam — não reclassificados.
     ncmsPreservados: preservados,
     ncmsCadastradosDaBase: cadastrados,
-    ncmsResolvidosViaEconet: econetSucessos.length,
-    ncmsFaltantes: ncmsRealmenteFaltantes,
-    econetFalhas,
+    // Ficam aguardando decisão: a tela oferece consultar na Econet ou
+    // classificar à mão.
+    ncmsFaltantes: faltantes,
     linhasIgnoradas: resultado.linhasIgnoradas,
   });
 }
