@@ -134,14 +134,40 @@ Schema alterado: `Escritorio.econetSessao` (novo) e `@default` das origens.
 
 ---
 
+## Desfecho da noite: sessão conectada e o NCM que faltava
+
+A sessão da Econet foi renovada de fato (7 cookies capturados, CAPTCHA
+resolvido pelo Higor na janela). O primeiro uso com sessão viva expôs **dois
+erros na detecção que eu tinha criado horas antes**:
+
+1. A âncora de "área logada" só olhava `form[tipo_busca]` e
+   `form[palavra_chave]`, que existem na tela DE BUSCA. A tela de RESULTADO não
+   tem esses campos — traz a hierarquia do NCM e o radio `form[ncm]`. Consulta
+   bem-sucedida era classificada como layout mudado, e o canário reprovava uma
+   sessão perfeitamente boa.
+2. NCM inexistente devolve "Nenhum Registro Encontrado!" numa página sem nenhum
+   campo `form[...]` — também caía em layout mudado, quando é resposta legítima.
+
+Os dois erros foram na direção segura: a consulta parou e avisou, em vez de
+gravar classificação errada. Corrigidos, com teste de regressão para as duas
+telas.
+
+Depois disso: canário aprovado (xampu volta monofásico) e o `62193000`
+respondeu **NCM_INEXISTENTE**. O código não existe na tabela NCM — o capítulo 62
+vai até a posição 62.17. Não é NCM a classificar: é cadastro errado no Domínio
+do cliente.
+
+**A Casa São Paulo está completa.** Nada pendente de classificação.
+
 ## O que ficou faltando
 
 | # | Item | Ação |
 |---|---|---|
-| 5 | `62193000` sem classificação | renovar sessão da Econet (CAPTCHA é humano) e consultar |
+| 9 | `62193000` é NCM inválido | conferir o código certo e corrigir no cadastro do cliente |
 | 6 | Importação cai na vigência aberta | fazer criar/usar a vigência da data corrente |
 | 7 | Dossiê só tem a seção de NCM | extrair dados dos demais módulos |
 | 8 | Vigência 2019 com 38 NCMs a mais | decidir se limpa |
+| — | Tela de classificação manual de NCM | alternativa à Econet quando o contador já sabe o regime |
 | — | `prisma db push` no 220 | junto com as 4 colunas de período de atendimento da sessão de 16/08 |
 
 **Nada foi verificado visualmente por mim** — não passo do login da plataforma.
