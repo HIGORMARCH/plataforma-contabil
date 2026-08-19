@@ -226,6 +226,33 @@ export function EditorVigencia({
   } | null>(null);
   const [deParando, setDeParando] = useState(false);
   const [dePara, setDePara] = useState<ResultadoDePara | null>(null);
+  const [conectando, setConectando] = useState(false);
+
+  /**
+   * Conecta à Econet e refaz a consulta.
+   *
+   * Se o usuário pediu a busca, pedir de volta que ele "vá em Configurações
+   * renovar a sessão" é empurrar trabalho. A plataforma abre o login aqui
+   * mesmo, espera o CAPTCHA ser resolvido, e retoma a consulta de onde parou.
+   */
+  async function conectarERetomar() {
+    setConectando(true);
+    setErro(null);
+    try {
+      const r = await fetch("/api/econet/renovar-sessao", { method: "POST" });
+      const j = await r.json();
+      if (!j.ok) {
+        setErro(j.erro ?? "Não foi possível conectar à Econet.");
+        return;
+      }
+      setAvisoEconet(null);
+      await consultarEconet();
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : String(e));
+    } finally {
+      setConectando(false);
+    }
+  }
 
   async function rodarDePara(aplicar: boolean) {
     setDeParando(true);
@@ -508,8 +535,29 @@ export function EditorVigencia({
                 <p className="mt-1 font-semibold">
                   A consulta parou aqui: {avisoEconet.naoTentados}{" "}
                   {avisoEconet.naoTentados === 1 ? "NCM não foi consultado" : "NCMs não foram consultados"}.
-                  Resolva o aviso acima e consulte de novo.
                 </p>
+              )}
+
+              {/* Sessão é problema que a própria tela resolve: abre o login,
+                  você passa o CAPTCHA, e a consulta continua sozinha. */}
+              {(avisoEconet.diagnostico === "SESSAO_AUSENTE" ||
+                avisoEconet.diagnostico === "SESSAO_EXPIRADA") && (
+                <div className="mt-3">
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    onClick={conectarERetomar}
+                    disabled={conectando || consultando}
+                  >
+                    {conectando ? "Aguardando o login na janela…" : "Conectar à Econet e continuar"}
+                  </button>
+                  {conectando && (
+                    <p className="mt-2 text-xs">
+                      Uma janela do navegador foi aberta com usuário e senha preenchidos. Resolva o
+                      CAPTCHA — assim que entrar, a consulta recomeça sozinha.
+                    </p>
+                  )}
+                </div>
               )}
             </div>
           )}
