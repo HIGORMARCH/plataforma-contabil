@@ -113,26 +113,49 @@ function falha(
 /**
  * Classifica o que veio na resposta, SEM depender do layout exato da Econet.
  *
- * As duas âncoras usadas são estruturais, não cosméticas:
- *  - a tela de busca sempre traz os campos `form[tipo_busca]` / `form[palavra_chave]`;
- *  - a tela de login sempre traz um `<input type="password">`.
+ * Âncoras estruturais, não cosméticas:
+ *  - área logada: os campos `form[...]` do módulo de PIS/COFINS;
+ *  - tela de login: um `<input type="password">`.
  *
- * Daí saem os três estados que antes se confundiam:
- *
- *  | tem senha | tem busca | significado                                  |
- *  |-----------|-----------|----------------------------------------------|
- *  | sim       | não       | caiu no login → SESSÃO EXPIRADA              |
- *  | não/sim   | sim       | estamos dentro do sistema, busca respondeu   |
- *  | não       | não       | nem login nem busca → LAYOUT MUDOU           |
+ *  | tem senha | tem campo form[...] | significado                          |
+ *  |-----------|---------------------|--------------------------------------|
+ *  | sim       | não                 | caiu no login → SESSÃO EXPIRADA      |
+ *  | não/sim   | sim                 | dentro do sistema                    |
+ *  | não       | não                 | nem um nem outro → LAYOUT MUDOU      |
  *
  * O campo de senha sozinho não basta pra concluir "login": se a página também
- * traz o formulário de busca, é uma tela interna com área de assinante no
- * cabeçalho, e continuamos logados.
+ * traz os campos do módulo, é tela interna com área de assinante no cabeçalho,
+ * e continuamos logados.
+ *
+ * ⚠️ CORRIGIDO em 19/08/2026, no primeiro teste com sessão viva.
+ *
+ * A versão anterior só olhava `form[tipo_busca]` e `form[palavra_chave]`, que
+ * existem na tela DE BUSCA. A tela de RESULTADO não tem esses campos — ela traz
+ * a hierarquia do NCM e o radio `form[ncm]`. Resultado: uma consulta que deu
+ * certo era classificada como LAYOUT_MUDOU, e o canário reprovava uma sessão
+ * perfeitamente boa.
+ *
+ * Incluir `form[ncm]` cobre as duas telas. O erro foi na direção segura — a
+ * consulta parou e avisou em vez de gravar classificação errada —, mas era
+ * erro.
  */
-export function diagnosticarPagina(html: string): "logado" | "login" | "desconhecido" {
-  const temBusca =
-    /name=["']form\[tipo_busca\]["']/i.test(html) || /name=["']form\[palavra_chave\]["']/i.test(html);
-  if (temBusca) return "logado";
+export function diagnosticarPagina(
+  html: string,
+): "logado" | "login" | "sem-registro" | "desconhecido" {
+  const dentroDoModulo =
+    /name=["']form\[tipo_busca\]["']/i.test(html) ||
+    /name=["']form\[palavra_chave\]["']/i.test(html) ||
+    /name=["']form\[ncm\]["']/i.test(html);
+  if (dentroDoModulo) return "logado";
+
+  // Busca que não achou nada. Resposta legítima, e sem os campos `form[...]`:
+  // a página traz só "Nenhum Registro Encontrado!" e um link de voltar.
+  //
+  // Esta âncora é TEXTUAL, ao contrário das outras — se a Econet mudar a frase,
+  // a deteção cai no "desconhecido" e vira LAYOUT_MUDOU, que é o lado seguro:
+  // avisa em vez de concluir.
+  if (/nenhum\s+registro\s+encontrado/i.test(html)) return "sem-registro";
+
   const temSenha = /<input[^>]*type=["']password["']/i.test(html);
   if (temSenha) return "login";
   return "desconhecido";
@@ -225,6 +248,14 @@ export async function consultarNcmEconet(
       ncm,
       "SESSAO_EXPIRADA",
       "A Econet devolveu a tela de login — a sessão venceu. Renove em Administração > Configurações.",
+    );
+  }
+  if (estado1 === "sem-registro") {
+    return falha(
+      ncm,
+      "NCM_INEXISTENTE",
+      "A Econet respondeu “Nenhum Registro Encontrado”: este NCM não existe na tabela dela. " +
+        "Confira o código no cadastro do cliente.",
     );
   }
   if (estado1 === "desconhecido") {
