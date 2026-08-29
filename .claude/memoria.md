@@ -49,7 +49,23 @@ Quando Higor sinalizar fim de sessão ("vamos fechar", "boa noite", equivalente)
 
 Detalhe completo em `~/.claude/CLAUDE.md` global do Higor.
 
-## Última sessão (16/08/2026 — noite)
+## Última sessão (29/08/2026)
+
+Conciliação de impostos: o razão contábil entrou na plataforma, e dois bugs que
+mostravam número errado na tela foram corrigidos.
+
+- **Conciliação de Impostos** (menu Contábil, era "Conciliação Estadual em construção") — nove tributos, razão × declarado × pago, por competência. A tela mostra números; divergência é botão à parte.
+- **Razão do Domínio** — pasta `RAZAO` no cliente, um PDF por tributo, o NOME do arquivo é o de-para. Parser por coordenadas: 1.768 lançamentos nos 6 razões da LUPO, saldo corrido conferindo com o impresso em todos.
+- **PGDAS-D via SERPRO** (CONSULTIMADECREC14) + guias do DAS + Comprovantes de Arrecadação da Receita lidos da pasta.
+- **Bug grave corrigido:** a tela mostrava a RECEITA BRUTA como total do DAS (R$ 5,9 mi na LUPO). O certo são R$ 466.934,18. Agora os oito tributos mandam e o total impresso é só conferência.
+- **Bug do e-CAC corrigido:** exigia o caminho legado do `.pfx` em disco quando o certificado já vive cifrado no banco — bloqueava os três clientes.
+- **Achado:** contas "a recolher" com saldo devedor (Simples 36k, INSS 16k, FGTS 12k), com o mesmo pagamento lançado duas vezes.
+- **Regra nova:** Simples não recolhe IRPJ/CSLL/PIS/COFINS à parte. Ver memória `reference_simples_tributos_dentro_do_das`.
+
+Manual de condução em `MANUAL_CONCILIACAO_IMPOSTOS.md` (formato do MarchERP).
+Ver `docs/RELATORIO-SESSAO-2026-08-29.md`.
+
+## Sessão anterior (16/08/2026 — noite)
 
 Primeira empresa do Simples na base (LUPO QUIOSQUE) revelou que a auditoria de ICMS não enxergava o regime:
 
