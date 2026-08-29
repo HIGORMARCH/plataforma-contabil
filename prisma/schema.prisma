@@ -43,9 +43,9 @@ model Escritorio {
   //
   // ⚠️ O login da Econet tem CAPTCHA. Isto NÃO automatiza a autenticação —
   // serve pra pré-preencher usuário e senha e deixar pro humano só o CAPTCHA.
-  econetUsuario      String?
-  econetSenha        String? // cifrada
-  econetSessaoEm     DateTime? // quando o storage_state foi renovado pela última vez
+  econetUsuario  String?
+  econetSenha    String? // cifrada
+  econetSessaoEm DateTime? // quando o storage_state foi renovado pela última vez
   //
   // A SESSÃO em si (cookies do storage_state do Playwright), cifrada igual à
   // senha. Antes vivia em `Z:\...\config\econet-storage.json`, gerado por um
@@ -54,7 +54,7 @@ model Escritorio {
   //
   // Cookie de sessão vale tanto quanto senha enquanto não expira — por isso é
   // cifrado em repouso e nunca sai pra tela.
-  econetSessao       String? // cifrado — JSON do storage_state
+  econetSessao   String? // cifrado — JSON do storage_state
 
   usuarios Usuario[]
   clientes Cliente[]
@@ -143,13 +143,13 @@ model Cliente {
   // servidor VoeCloud sem mapeamento de rede. Ver src/lib/crypto.ts::cifrarBytes.
   // PROCURACAO_MARCH: usa cert do escritório + procuração eletrônica.
   // CERTIFICADO_PROPRIO: sobe o .pfx aqui (campos certificadoArquivo/Nome/Validade).
-  metodoAcessoEcac        String  @default("PROCURACAO_MARCH") // PROCURACAO_MARCH | CERTIFICADO_PROPRIO
-  certificadoArquivo      Bytes?  // conteudo do .pfx cifrado (bytea)
-  certificadoNomeArquivo  String? // nome original — util pra UI ("PALMAS HALL... VENC 04.12.2026.pfx")
-  certificadoValidade     DateTime? // vencimento — pra alerta e ordenacao
-  certificadoSenha        String? // senha do .pfx, cifrada AES-256-GCM (formato v1:salt:iv:tag:cipher)
+  metodoAcessoEcac       String    @default("PROCURACAO_MARCH") // PROCURACAO_MARCH | CERTIFICADO_PROPRIO
+  certificadoArquivo     Bytes? // conteudo do .pfx cifrado (bytea)
+  certificadoNomeArquivo String? // nome original — util pra UI ("PALMAS HALL... VENC 04.12.2026.pfx")
+  certificadoValidade    DateTime? // vencimento — pra alerta e ordenacao
+  certificadoSenha       String? // senha do .pfx, cifrada AES-256-GCM (formato v1:salt:iv:tag:cipher)
   // Legacy: path do .pfx (antes do upload). Mantido pra migracao/reprocessamento.
-  certificadoCaminho      String?
+  certificadoCaminho     String?
 
   // ---- Acesso ao Portal da SEFAZ-TO (GIAM) ----
   // Login por Inscrição Estadual (campo já existe acima) + senha. NÃO é certificado digital.
@@ -178,6 +178,19 @@ model Cliente {
   // Ex.: Z:\MARCH - ARQUIVO DAS EMPRESAS\CLIENTE\FISCAL\DECLARAÇÕES
   pastaFiscal String?
 
+  // Pasta do cliente DENTRO da fonte única (C:\PlataformaContabil).
+  //
+  // Por padrão a plataforma compõe o nome pela razão social + CNPJ
+  // (PALMAS_QUIOSQUE_..._34351482000146). Só que as pastas reais foram criadas
+  // à mão, com o apelido que a equipe usa ("LUPO - PALMAS QUIOSQUE ..."), e o
+  // nome convencionado não existe em disco — o cliente aparecia com "pasta não
+  // criada" e nenhum módulo enxergava os arquivos.
+  //
+  // Este campo é o caminho REAL, escolhido no cadastro entre as pastas que
+  // existem na raiz. Vazio = usa a convenção. Nada de adivinhar por semelhança
+  // de nome: pasta errada é pior que pasta faltando.
+  pastaLocal String?
+
   // Pasta COMPARTILHADA onde ficam as GIAMs (o Domínio salva todas as GIAMs de
   // todos os clientes num diretório único, tipo Z:\HIGOR OBRIGAÇÕES MENSAIS\GIAM\).
   // Se vazio, usa pastaFiscal. A varredura filtra por IE dentro do arquivo pra
@@ -187,34 +200,41 @@ model Cliente {
   escritorio   Escritorio @relation(fields: [escritorioId], references: [id])
   escritorioId String
 
-  socios           Socio[]
-  exercicios       Exercicio[]
-  relatorios       Relatorio[]
-  usuarios         Usuario[]
-  vigenciasNcm     VigenciaNcm[]
-  pagamentosEcac   EcacPagamento[]
-  razaoLancamentos RazaoLancamento[]
-  razaoImportacoes RazaoImportacao[]
-  spedApuracoes    SpedApuracao[]
-  spedImportacoes  SpedImportacao[]
-  spedContribApuracoes   SpedContribApuracao[]
-  spedContribImportacoes SpedContribImportacao[]
-  dctfWebDeclaracoes     DctfWebDeclaracao[]
-  dctfWebSincronizacoes  DctfWebSincronizacao[]
-  giamApuracoes            GiamApuracao[]
-  giamImportacoes          GiamImportacao[]
-  giamSefazApuracoes       GiamSefazApuracao[]
-  giamSefazSincronizacoes  GiamSefazSincronizacao[]
-  ecfApuracoes             EcfApuracao[]
-  ecfImportacoes           EcfImportacao[]
+  socios                  Socio[]
+  exercicios              Exercicio[]
+  relatorios              Relatorio[]
+  usuarios                Usuario[]
+  vigenciasNcm            VigenciaNcm[]
+  pagamentosEcac          EcacPagamento[]
+  razaoLancamentos        RazaoLancamento[]
+  razaoImportacoes        RazaoImportacao[]
+  spedApuracoes           SpedApuracao[]
+  spedImportacoes         SpedImportacao[]
+  spedContribApuracoes    SpedContribApuracao[]
+  spedContribImportacoes  SpedContribImportacao[]
+  dctfWebDeclaracoes      DctfWebDeclaracao[]
+  dctfWebSincronizacoes   DctfWebSincronizacao[]
+  giamApuracoes           GiamApuracao[]
+  giamImportacoes         GiamImportacao[]
+  giamSefazApuracoes      GiamSefazApuracao[]
+  giamSefazSincronizacoes GiamSefazSincronizacao[]
+  ecfApuracoes            EcfApuracao[]
+  ecfImportacoes          EcfImportacao[]
 
   // Demonstrativo de Obrigações Acessórias — catálogo dos arquivos SPED/DCTF
   // detectados na pasta do cliente (independente de importação) e entregas
   // registradas manualmente pra PGDAS-D / DEFIS / MIT (enquanto não temos robô
   // ou integração SERPRO). Ver [[obrigacoes-acessorias-v1]].
-  arquivosObrigacoesDetectados ArquivoObrigacaoDetectado[]
-  entregasObrigacoesManuais    EntregaObrigacaoManual[]
+  arquivosObrigacoesDetectados  ArquivoObrigacaoDetectado[]
+  entregasObrigacoesManuais     EntregaObrigacaoManual[]
   simplesNacionalSincronizacoes SimplesNacionalSincronizacao[]
+
+  // PGDAS-D consultado no SERPRO (Integra Contador) — valores extraídos do PDF.
+  pgdasdDeclaracoes    PgdasdDeclaracao[]
+  pgdasdSincronizacoes PgdasdSincronizacao[]
+
+  // Guias DAS lidas dos PDFs da pasta do cliente.
+  dasSimplesGuias DasSimplesGuia[]
 
   // Flag que o gerador de relatório final lê pra decidir se anexa a seção
   // "Situação das Obrigações Acessórias" no relatório entregue ao cliente.
@@ -241,19 +261,19 @@ model Socio {
 
   // Codigo (05, 22, 49, 65…) e descricao ("Administrador", "Socio",
   // "Sócio-Administrador", "Titular Empresário Individual" etc.).
-  codigoQualificacao   Int?
-  qualificacao         String?
+  codigoQualificacao Int?
+  qualificacao       String?
 
   // A Receita devolve CPF mascarado ("***412821**") ou CNPJ completo pra socio
   // pessoa juridica. Guardamos como veio — nao dá pra reidentificar.
   cpfCnpjMascarado String?
 
-  faixaEtaria           String?  // "de 41 a 50 anos" (só p/ pessoa física)
-  dataEntradaSociedade  DateTime?
+  faixaEtaria          String? // "de 41 a 50 anos" (só p/ pessoa física)
+  dataEntradaSociedade DateTime?
 
   // Representante legal do sócio (quando o sócio é pessoa jurídica).
-  nomeRepresentanteLegal String?
-  cpfRepresentanteMascarado String?
+  nomeRepresentanteLegal          String?
+  cpfRepresentanteMascarado       String?
   codigoQualificacaoRepresentante Int?
 
   cliente   Cliente @relation(fields: [clienteId], references: [id], onDelete: Cascade)
@@ -300,9 +320,9 @@ model Relatorio {
 
   // Nota Técnica Contextual (anexa ao relatório) — gerada por IA a partir do
   // "contexto do exercício" informado pelo contador; texto em Markdown.
-  notaTecnicaContexto  String?
-  notaTecnicaTexto     String?
-  notaTecnicaOrigemIA  String? // ia | deterministico
+  notaTecnicaContexto String?
+  notaTecnicaTexto    String?
+  notaTecnicaOrigemIA String? // ia | deterministico
 
   cliente   Cliente @relation(fields: [clienteId], references: [id], onDelete: Cascade)
   clienteId String
@@ -480,6 +500,14 @@ model EcacPagamento {
   id        String @id @default(cuid())
   clienteId String
 
+  // De onde veio o pagamento:
+  //   "ECAC"            — consulta SERPRO PAGTOWEB (robô)
+  //   "COMPROVANTE_PDF" — Comprovante de Arrecadação lido da pasta do cliente
+  // Os dois descrevem o MESMO fato (documento pago) e por isso convivem na
+  // mesma tabela, com a mesma chave (cliente + número do documento): se o mesmo
+  // pagamento vier pelas duas fontes, ele é um só registro, não dois.
+  origem String @default("ECAC")
+
   numeroDocumento String // nº de autenticação bancária (único por cliente)
   tipoCodigo      String // ex.: "4" (DARF), "5" (DAS), ...
   tipoDescricao   String
@@ -647,12 +675,12 @@ model SpedApuracao {
   dataFinal       DateTime
 
   // Valores do E110 (todos em BRL). Decimal preserva a precisão do arquivo.
-  totalDebitos         Decimal // VL_TOT_DEBITOS (débito das saídas)
-  totalCreditos        Decimal // VL_TOT_CREDITOS (crédito das entradas)
-  saldoDevedorApurado  Decimal // VL_SLD_APURADO (0 quando cred > deb)
-  deducoes             Decimal // VL_TOT_DED
-  icmsARecolher        Decimal // VL_ICMS_RECOLHER (o valor efetivo a pagar)
-  saldoCredorTransp    Decimal // VL_SLD_CREDOR_TRANSPORTAR (quando cred > deb)
+  totalDebitos        Decimal // VL_TOT_DEBITOS (débito das saídas)
+  totalCreditos       Decimal // VL_TOT_CREDITOS (crédito das entradas)
+  saldoDevedorApurado Decimal // VL_SLD_APURADO (0 quando cred > deb)
+  deducoes            Decimal // VL_TOT_DED
+  icmsARecolher       Decimal // VL_ICMS_RECOLHER (o valor efetivo a pagar)
+  saldoCredorTransp   Decimal // VL_SLD_CREDOR_TRANSPORTAR (quando cred > deb)
 
   // Ajustes e estornos — guardados para auditoria mas não usados no confronto v1
   ajustesDebitos       Decimal @default(0) // VL_AJ_DEBITOS
@@ -666,10 +694,10 @@ model SpedApuracao {
 
   // Totais de operações extraídos do bloco C (registros C100 regulares — COD_SIT=00).
   // Compras = notas com IND_OPER=0 (entrada); Vendas = IND_OPER=1 (saída).
-  totalCompras     Decimal @default(0)
-  totalVendas      Decimal @default(0)
-  qtdNotasCompras  Int     @default(0)
-  qtdNotasVendas   Int     @default(0)
+  totalCompras    Decimal @default(0)
+  totalVendas     Decimal @default(0)
+  qtdNotasCompras Int     @default(0)
+  qtdNotasVendas  Int     @default(0)
 
   importacaoId String
 
@@ -687,17 +715,17 @@ model SpedImportacao {
   id        String @id @default(cuid())
   clienteId String
 
-  nomeArquivo         String
-  tamanhoBytes        Int     @default(0)
-  hashArquivo         String? // SHA-256 do conteúdo — permite deduplicar em varreduras futuras
-  origem              String  @default("UPLOAD") // UPLOAD | VARREDURA_PASTA
-  caminhoOrigem       String? // path absoluto (só quando VARREDURA_PASTA — pra rastrear de onde veio)
-  totalLinhas         Int     @default(0) // linhas totais do arquivo
-  registrosE110       Int     @default(0) // quantas apurações extraídas
-  apuracoesGravadas   Int     @default(0) // quantas efetivamente gravadas
-  apuracoesSubstituidas Int   @default(0) // quantas eram reimport (mesmo cliente+competência)
-  sucesso             Boolean @default(true)
-  mensagem            String? // erro ou nota
+  nomeArquivo           String
+  tamanhoBytes          Int     @default(0)
+  hashArquivo           String? // SHA-256 do conteúdo — permite deduplicar em varreduras futuras
+  origem                String  @default("UPLOAD") // UPLOAD | VARREDURA_PASTA
+  caminhoOrigem         String? // path absoluto (só quando VARREDURA_PASTA — pra rastrear de onde veio)
+  totalLinhas           Int     @default(0) // linhas totais do arquivo
+  registrosE110         Int     @default(0) // quantas apurações extraídas
+  apuracoesGravadas     Int     @default(0) // quantas efetivamente gravadas
+  apuracoesSubstituidas Int     @default(0) // quantas eram reimport (mesmo cliente+competência)
+  sucesso               Boolean @default(true)
+  mensagem              String? // erro ou nota
 
   // Metadados do arquivo (do registro 0000, se disponível)
   cnpjArquivo   String? // CNPJ do declarante conforme está no SPED
@@ -739,18 +767,18 @@ model DctfWebDeclaracao {
   cofinsConfessado Decimal @default(0)
 
   // Metadados
-  numeroRecibo  String?
-  situacao      String? // "TRANSMITIDA" | "ATIVA" | "RETIFICADA" | etc.
-  dataRecepcao  DateTime?
-  transmitida   Boolean @default(false)
+  numeroRecibo String?
+  situacao     String? // "TRANSMITIDA" | "ATIVA" | "RETIFICADA" | etc.
+  dataRecepcao DateTime?
+  transmitida  Boolean   @default(false)
 
   // Payload bruto da SERPRO (JSON) — pra auditoria e reprocessamento
   payloadBruto Json?
 
   sincronizacaoId String
 
-  cliente        Cliente                 @relation(fields: [clienteId], references: [id], onDelete: Cascade)
-  sincronizacao  DctfWebSincronizacao    @relation(fields: [sincronizacaoId], references: [id], onDelete: Cascade)
+  cliente       Cliente              @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+  sincronizacao DctfWebSincronizacao @relation(fields: [sincronizacaoId], references: [id], onDelete: Cascade)
 
   @@unique([clienteId, periodoApuracao, categoria])
   @@index([clienteId, periodoApuracao])
@@ -761,13 +789,13 @@ model DctfWebSincronizacao {
   id        String @id @default(cuid())
   clienteId String
 
-  periodoInicial DateTime // range consultado
-  periodoFinal   DateTime
-  declaracoesRetornadas Int @default(0)
-  sucesso    Boolean @default(true)
-  mensagem   String?
+  periodoInicial        DateTime // range consultado
+  periodoFinal          DateTime
+  declaracoesRetornadas Int      @default(0)
+  sucesso               Boolean  @default(true)
+  mensagem              String?
 
-  requisitadoEm DateTime @default(now())
+  requisitadoEm  DateTime @default(now())
   requisitadoPor String?
 
   cliente     Cliente             @relation(fields: [clienteId], references: [id], onDelete: Cascade)
@@ -794,15 +822,15 @@ model SpedContribApuracao {
   indAtividade   String?
 
   // PIS (M200) — todos os valores em BRL, Decimal preserva precisão
-  pisNaoCumulativaPeriodo   Decimal @default(0) // VL_TOT_CONT_NC_PER
-  pisCreditosDescontados    Decimal @default(0) // VL_TOT_CRED_DESC
-  pisNaoCumulativaDevida    Decimal @default(0) // VL_TOT_CONT_NC_DEV
-  pisCumulativaPeriodo      Decimal @default(0) // VL_TOT_CONT_CUM_PER
-  pisApuradaPeriodo         Decimal @default(0) // VL_TOT_CONT_APU_PER
-  pisCreditoAnterior        Decimal @default(0) // VL_CRED_DESC_ANT_NC
-  pisAjustesAcrescimo       Decimal @default(0) // VL_AJUS_ACRES_NC
-  pisAjustesReducao         Decimal @default(0) // VL_AJUS_REDUC_NC
-  pisContribuicaoDevida     Decimal @default(0) // VL_CONT_DEV — o que efetivamente vai pra guia
+  pisNaoCumulativaPeriodo Decimal @default(0) // VL_TOT_CONT_NC_PER
+  pisCreditosDescontados  Decimal @default(0) // VL_TOT_CRED_DESC
+  pisNaoCumulativaDevida  Decimal @default(0) // VL_TOT_CONT_NC_DEV
+  pisCumulativaPeriodo    Decimal @default(0) // VL_TOT_CONT_CUM_PER
+  pisApuradaPeriodo       Decimal @default(0) // VL_TOT_CONT_APU_PER
+  pisCreditoAnterior      Decimal @default(0) // VL_CRED_DESC_ANT_NC
+  pisAjustesAcrescimo     Decimal @default(0) // VL_AJUS_ACRES_NC
+  pisAjustesReducao       Decimal @default(0) // VL_AJUS_REDUC_NC
+  pisContribuicaoDevida   Decimal @default(0) // VL_CONT_DEV — o que efetivamente vai pra guia
 
   // COFINS (M600) — mesma estrutura
   cofinsNaoCumulativaPeriodo Decimal @default(0)
@@ -817,8 +845,8 @@ model SpedContribApuracao {
 
   importacaoId String
 
-  cliente    Cliente                @relation(fields: [clienteId], references: [id], onDelete: Cascade)
-  importacao SpedContribImportacao  @relation(fields: [importacaoId], references: [id], onDelete: Cascade)
+  cliente    Cliente               @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+  importacao SpedContribImportacao @relation(fields: [importacaoId], references: [id], onDelete: Cascade)
 
   @@unique([clienteId, periodoApuracao]) // uma apuração por cliente/competência
   @@index([clienteId, periodoApuracao])
@@ -830,15 +858,15 @@ model SpedContribImportacao {
   id        String @id @default(cuid())
   clienteId String
 
-  nomeArquivo         String
-  tamanhoBytes        Int     @default(0)
-  hashArquivo         String? // SHA-256 pra deduplicar
-  origem              String  @default("UPLOAD") // UPLOAD | VARREDURA_PASTA
-  caminhoOrigem       String?
-  totalLinhas         Int     @default(0)
-  apuracoesGravadas   Int     @default(0)
-  sucesso             Boolean @default(true)
-  mensagem            String?
+  nomeArquivo       String
+  tamanhoBytes      Int     @default(0)
+  hashArquivo       String? // SHA-256 pra deduplicar
+  origem            String  @default("UPLOAD") // UPLOAD | VARREDURA_PASTA
+  caminhoOrigem     String?
+  totalLinhas       Int     @default(0)
+  apuracoesGravadas Int     @default(0)
+  sucesso           Boolean @default(true)
+  mensagem          String?
 
   // Metadados do arquivo (do 0000)
   cnpjArquivo   String?
@@ -849,7 +877,7 @@ model SpedContribImportacao {
   importadoEm  DateTime @default(now())
   importadoPor String?
 
-  cliente   Cliente                @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+  cliente   Cliente               @relation(fields: [clienteId], references: [id], onDelete: Cascade)
   apuracoes SpedContribApuracao[]
 
   @@index([clienteId, importadoEm])
@@ -891,19 +919,19 @@ model GiamApuracao {
   // O detalhamento CFOP a CFOP fica em GiamLinhaSegmentoB.
   //
   // Entradas
-  totalEntradasBaseCalculo      Decimal @default(0) // Σ B7 onde B5=0
-  totalEntradasIsentas          Decimal @default(0) // Σ B8 onde B5=0
-  totalEntradasOutras           Decimal @default(0) // Σ B9 onde B5=0
-  totalEntradasST               Decimal @default(0) // Σ B10 onde B5=0
-  totalEntradasValorContabil    Decimal @default(0) // Σ B11 onde B5=0 (= totalCompras, mantido pra compat)
-  totalEntradasCredito          Decimal @default(0) // Σ B12 onde B5=0
+  totalEntradasBaseCalculo   Decimal @default(0) // Σ B7 onde B5=0
+  totalEntradasIsentas       Decimal @default(0) // Σ B8 onde B5=0
+  totalEntradasOutras        Decimal @default(0) // Σ B9 onde B5=0
+  totalEntradasST            Decimal @default(0) // Σ B10 onde B5=0
+  totalEntradasValorContabil Decimal @default(0) // Σ B11 onde B5=0 (= totalCompras, mantido pra compat)
+  totalEntradasCredito       Decimal @default(0) // Σ B12 onde B5=0
   // Saídas
-  totalSaidasBaseCalculo        Decimal @default(0) // Σ B7 onde B5=1
-  totalSaidasIsentas            Decimal @default(0) // Σ B8 onde B5=1
-  totalSaidasOutras             Decimal @default(0) // Σ B9 onde B5=1
-  totalSaidasST                 Decimal @default(0) // Σ B10 onde B5=1
-  totalSaidasValorContabil      Decimal @default(0) // Σ B11 onde B5=1 (= totalVendas, mantido pra compat)
-  totalSaidasDebito             Decimal @default(0) // Σ B12 onde B5=1
+  totalSaidasBaseCalculo     Decimal @default(0) // Σ B7 onde B5=1
+  totalSaidasIsentas         Decimal @default(0) // Σ B8 onde B5=1
+  totalSaidasOutras          Decimal @default(0) // Σ B9 onde B5=1
+  totalSaidasST              Decimal @default(0) // Σ B10 onde B5=1
+  totalSaidasValorContabil   Decimal @default(0) // Σ B11 onde B5=1 (= totalVendas, mantido pra compat)
+  totalSaidasDebito          Decimal @default(0) // Σ B12 onde B5=1
 
   // Compat: preserva o campo antigo (mesmo valor de totalEntradasValorContabil / totalSaidasValorContabil).
   totalCompras Decimal @default(0)
@@ -918,10 +946,10 @@ model GiamApuracao {
 
   importacaoId String
 
-  cliente          Cliente              @relation(fields: [clienteId], references: [id], onDelete: Cascade)
-  importacao       GiamImportacao       @relation(fields: [importacaoId], references: [id], onDelete: Cascade)
-  icmsARecolher    GiamIcmsARecolher[]
-  linhasSegmentoB  GiamLinhaSegmentoB[]
+  cliente         Cliente              @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+  importacao      GiamImportacao       @relation(fields: [importacaoId], references: [id], onDelete: Cascade)
+  icmsARecolher   GiamIcmsARecolher[]
+  linhasSegmentoB GiamLinhaSegmentoB[]
 
   @@unique([clienteId, periodoApuracao, retificacao])
   @@index([clienteId, periodoApuracao])
@@ -946,7 +974,7 @@ model GiamSefazApuracao {
   retificacao     String   @default("00")
 
   // Cabeçalho do Espelho — metadados do que a SEFAZ recepcionou
-  numeroControle String  // Item 19 do Espelho da GIAM — identifica a transmissão oficial
+  numeroControle String // Item 19 do Espelho da GIAM — identifica a transmissão oficial
   dataRecepcao   DateTime? // Item 19 — quando a SEFAZ recebeu
 
   // Totais consolidados do Quadro 4 (mesmo formato da GiamApuracao)
@@ -968,17 +996,17 @@ model GiamSefazApuracao {
   totalVendas  Decimal @default(0)
 
   // Apuração ICMS (do item 7 do Espelho)
-  debitoSaidas         Decimal @default(0)
-  creditoEntradas      Decimal @default(0)
-  saldoCredorAnterior  Decimal @default(0)
-  deducoes             Decimal @default(0)
-  icmsARecolherNormal  Decimal @default(0) // tipo N — o comparável com o E110
+  debitoSaidas        Decimal @default(0)
+  creditoEntradas     Decimal @default(0)
+  saldoCredorAnterior Decimal @default(0)
+  deducoes            Decimal @default(0)
+  icmsARecolherNormal Decimal @default(0) // tipo N — o comparável com o E110
 
-  sincronizadoEm DateTime @default(now())
+  sincronizadoEm  DateTime @default(now())
   sincronizacaoId String
 
-  cliente         Cliente                    @relation(fields: [clienteId], references: [id], onDelete: Cascade)
-  sincronizacao   GiamSefazSincronizacao     @relation(fields: [sincronizacaoId], references: [id], onDelete: Cascade)
+  cliente         Cliente                   @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+  sincronizacao   GiamSefazSincronizacao    @relation(fields: [sincronizacaoId], references: [id], onDelete: Cascade)
   linhasSegmentoB GiamSefazLinhaSegmentoB[]
 
   @@unique([clienteId, periodoApuracao, retificacao])
@@ -990,14 +1018,14 @@ model GiamSefazLinhaSegmentoB {
   id         String @id @default(cuid())
   apuracaoId String
 
-  natureza             String
-  cfop                 String
-  baseCalculo          Decimal @default(0)
-  isentasNaoTributadas Decimal @default(0)
-  outras               Decimal @default(0)
+  natureza               String
+  cfop                   String
+  baseCalculo            Decimal @default(0)
+  isentasNaoTributadas   Decimal @default(0)
+  outras                 Decimal @default(0)
   substituicaoTributaria Decimal @default(0)
-  valorContabil        Decimal @default(0)
-  creditoDebitoImposto Decimal @default(0)
+  valorContabil          Decimal @default(0)
+  creditoDebitoImposto   Decimal @default(0)
 
   apuracao GiamSefazApuracao @relation(fields: [apuracaoId], references: [id], onDelete: Cascade)
 
@@ -1010,20 +1038,20 @@ model GiamSefazSincronizacao {
   id        String @id @default(cuid())
   clienteId String
 
-  ano           Int
-  mesInicial    Int // 1-12
-  mesFinal      Int // 1-12
-  competenciasSolicitadas Int @default(0)
-  competenciasImportadas  Int @default(0)
-  competenciasSubstituidas Int @default(0)
-  sucesso       Boolean @default(true)
-  mensagem      String?
+  ano                      Int
+  mesInicial               Int // 1-12
+  mesFinal                 Int // 1-12
+  competenciasSolicitadas  Int     @default(0)
+  competenciasImportadas   Int     @default(0)
+  competenciasSubstituidas Int     @default(0)
+  sucesso                  Boolean @default(true)
+  mensagem                 String?
 
   executadoEm  DateTime @default(now())
   executadoPor String?
 
-  cliente    Cliente             @relation(fields: [clienteId], references: [id], onDelete: Cascade)
-  apuracoes  GiamSefazApuracao[]
+  cliente   Cliente             @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+  apuracoes GiamSefazApuracao[]
 
   @@index([clienteId, executadoEm])
   @@index([clienteId, ano])
@@ -1037,15 +1065,15 @@ model GiamLinhaSegmentoB {
   id         String @id @default(cuid())
   apuracaoId String
 
-  natureza             String  // "0" = entrada, "1" = saída
-  cfop                 String  // 4 dígitos (B6)
-  baseCalculo          Decimal @default(0)
-  isentasNaoTributadas Decimal @default(0)
-  outras               Decimal @default(0)
+  natureza               String // "0" = entrada, "1" = saída
+  cfop                   String // 4 dígitos (B6)
+  baseCalculo            Decimal @default(0)
+  isentasNaoTributadas   Decimal @default(0)
+  outras                 Decimal @default(0)
   substituicaoTributaria Decimal @default(0)
-  valorContabil        Decimal @default(0)
-  creditoDebitoImposto Decimal @default(0) // crédito se entrada, débito se saída
-  domicilioFiscal      String  // "A" ou "B"
+  valorContabil          Decimal @default(0)
+  creditoDebitoImposto   Decimal @default(0) // crédito se entrada, débito se saída
+  domicilioFiscal        String // "A" ou "B"
 
   apuracao GiamApuracao @relation(fields: [apuracaoId], references: [id], onDelete: Cascade)
 
@@ -1055,12 +1083,12 @@ model GiamLinhaSegmentoB {
 
 // Segmento E do GIAM — pode ter múltiplas linhas (uma por tipo de ICMS).
 model GiamIcmsARecolher {
-  id           String @id @default(cuid())
-  apuracaoId   String
+  id         String @id @default(cuid())
+  apuracaoId String
 
-  tipo         String   // N=Normal, D=Dif.Alíq.Entradas, S=ST, C=Complementação, F=Dif.Alíq.Saídas, P=FundoPobreza
+  tipo           String // N=Normal, D=Dif.Alíq.Entradas, S=ST, C=Complementação, F=Dif.Alíq.Saídas, P=FundoPobreza
   dataVencimento DateTime?
-  valor        Decimal
+  valor          Decimal
 
   apuracao GiamApuracao @relation(fields: [apuracaoId], references: [id], onDelete: Cascade)
 
@@ -1072,21 +1100,21 @@ model GiamImportacao {
   id        String @id @default(cuid())
   clienteId String
 
-  nomeArquivo       String
-  tamanhoBytes      Int     @default(0)
-  hashArquivo       String? // SHA-256
-  origem            String  @default("UPLOAD") // UPLOAD | VARREDURA_PASTA
-  caminhoOrigem     String?
-  sucesso           Boolean @default(true)
-  mensagem          String?
+  nomeArquivo   String
+  tamanhoBytes  Int     @default(0)
+  hashArquivo   String? // SHA-256
+  origem        String  @default("UPLOAD") // UPLOAD | VARREDURA_PASTA
+  caminhoOrigem String?
+  sucesso       Boolean @default(true)
+  mensagem      String?
 
   // Metadados extraídos do Segmento A
-  ieArquivo         String? // IE dentro do arquivo (pra sanity check com Cliente.inscricaoEstadual)
-  periodoArquivo    String? // MMAAAA
+  ieArquivo          String? // IE dentro do arquivo (pra sanity check com Cliente.inscricaoEstadual)
+  periodoArquivo     String? // MMAAAA
   retificacaoArquivo String? // do campo A4
-  versaoArquivo     String? // A33 (=10.00)
-  nomeContabilista  String? // A16
-  crcContabilista   String? // A14 + A15
+  versaoArquivo      String? // A33 (=10.00)
+  nomeContabilista   String? // A16
+  crcContabilista    String? // A14 + A15
 
   importadoEm  DateTime @default(now())
   importadoPor String?
@@ -1133,8 +1161,8 @@ model EcfApuracao {
 
   importacaoId String
 
-  cliente    Cliente        @relation(fields: [clienteId], references: [id], onDelete: Cascade)
-  importacao EcfImportacao  @relation(fields: [importacaoId], references: [id], onDelete: Cascade)
+  cliente    Cliente       @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+  importacao EcfImportacao @relation(fields: [importacaoId], references: [id], onDelete: Cascade)
 
   @@unique([clienteId, ano, trimestre]) // uma apuração por trimestre por cliente
   @@index([clienteId, ano])
@@ -1157,11 +1185,11 @@ model EcfImportacao {
   mensagem          String?
 
   // Metadados do arquivo (do 0000/0010)
-  cnpjArquivo    String?
-  dataInicioArq  DateTime?
-  dataFimArq     DateTime?
-  ano            Int?
-  regimeAno      String? // ex.: "PPPP" (4 chars, 1 por trimestre)
+  cnpjArquivo   String?
+  dataInicioArq DateTime?
+  dataFimArq    DateTime?
+  ano           Int?
+  regimeAno     String? // ex.: "PPPP" (4 chars, 1 por trimestre)
 
   importadoEm  DateTime @default(now())
   importadoPor String?
@@ -1210,7 +1238,7 @@ model ArquivoObrigacaoDetectado {
   ano Int
   mes Int? // null = obrigação anual
 
-  caminho      String  // path absoluto onde o arquivo foi encontrado
+  caminho      String // path absoluto onde o arquivo foi encontrado
   nomeArquivo  String
   tamanhoBytes Int     @default(0)
   hashArquivo  String? // SHA-256 — permite detectar quando o arquivo mudou
@@ -1267,11 +1295,11 @@ model SimplesNacionalSincronizacao {
   id        String @id @default(cuid())
   clienteId String
 
-  anoInicial Int
-  anoFinal   Int
+  anoInicial       Int
+  anoFinal         Int
   tiposConsultados String // CSV: "PGDAS_D,DEFIS"
 
-  entregasEncontradas Int @default(0)
+  entregasEncontradas  Int @default(0)
   entregasSubstituidas Int @default(0) // já existia (MANUAL) e foi atualizada
 
   sucesso  Boolean @default(true)
@@ -1283,4 +1311,138 @@ model SimplesNacionalSincronizacao {
   cliente Cliente @relation(fields: [clienteId], references: [id], onDelete: Cascade)
 
   @@index([clienteId, executadoEm])
+}
+
+// ---------------------------------------------------------------------------
+// PGDAS-D (Simples Nacional) — declaração consultada no SERPRO Integra Contador
+// (idSistema PGDASD, idServico CONSULTIMADECREC14).
+//
+// O serviço NÃO devolve JSON com valores: entrega a declaração e o recibo como
+// PDF em base64. O PDF é texto puro, então a plataforma parseia em memória,
+// grava só os VALORES aqui e descarta o binário — nenhum PDF vai pra disco nem
+// pro banco (regra "não armazenar arquivos originais").
+//
+// Uma linha por competência: o CONSULTIMADECREC14 devolve a ÚLTIMA declaração
+// do período, então retificadora sobrescreve a original (o campo `situacao`
+// diz qual é, e `numeroDeclaracao` muda).
+// ---------------------------------------------------------------------------
+model PgdasdDeclaracao {
+  id        String @id @default(cuid())
+  clienteId String
+
+  periodoApuracao DateTime // primeiro dia do mês (UTC)
+
+  numeroDeclaracao String? // 17 dígitos: <CNPJ8><AAAA><MM><seq>
+  numeroRecibo     String?
+  dataTransmissao  DateTime?
+  situacao         String? // "ORIGINAL" | "RETIFICADORA" | "DESCONHECIDA"
+  optanteSimples   Boolean?
+  regimeApuracao   String? // "COMPETENCIA" | "CAIXA" — é o REGIMEAPURACAO do Integra Contador
+
+  // --- Seção 2.1 Discriminativo de Receitas ---
+  // RPA = Receita Bruta do Período de Apuração. É o campo do confronto
+  // PGDAS × GIAM (saídas) que o Higor pediu.
+  rpaInterno Decimal @default(0)
+  rpaExterno Decimal @default(0)
+  rpaTotal   Decimal @default(0)
+  rbt12      Decimal @default(0)
+  rba        Decimal @default(0)
+
+  // --- Seção 2.8 Total Geral da Empresa (débito exigível por tributo) ---
+  irpj        Decimal @default(0)
+  csll        Decimal @default(0)
+  cofins      Decimal @default(0)
+  pis         Decimal @default(0)
+  inss        Decimal @default(0)
+  icms        Decimal @default(0)
+  ipi         Decimal @default(0)
+  iss         Decimal @default(0)
+  /// Total do débito declarado, como o PDF diz. NÃO é recalculado — se não
+  /// bater com a soma dos tributos, vira alerta em `alertas`, não correção.
+  totalDebito Decimal @default(0)
+
+  /// Incoerências encontradas na leitura (soma ≠ total, campo ausente, rótulo
+  /// desconhecido). Regra da casa: importa fiel, aponta, não conserta.
+  alertas String[] @default([])
+
+  /// Valores extraídos + texto de diagnóstico do parser (nunca o PDF).
+  payloadBruto Json?
+
+  sincronizacaoId String
+
+  cliente       Cliente             @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+  sincronizacao PgdasdSincronizacao @relation(fields: [sincronizacaoId], references: [id], onDelete: Cascade)
+
+  @@unique([clienteId, periodoApuracao])
+  @@index([clienteId, periodoApuracao])
+}
+
+/// Log de consulta ao PGDAS-D — 1 por acionamento do botão. Cada competência
+/// consultada é UMA chamada paga ao SERPRO; o log guarda o resumo mês a mês.
+model PgdasdSincronizacao {
+  id        String @id @default(cuid())
+  clienteId String
+
+  periodoInicial DateTime
+  periodoFinal   DateTime
+
+  declaracoesRetornadas     Int @default(0)
+  competenciasSemDeclaracao Int @default(0)
+  competenciasComErro       Int @default(0)
+
+  sucesso  Boolean @default(true)
+  mensagem String?
+
+  requisitadoEm  DateTime @default(now())
+  requisitadoPor String?
+
+  cliente     Cliente            @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+  declaracoes PgdasdDeclaracao[]
+
+  @@index([clienteId, requisitadoEm])
+}
+
+// ---------------------------------------------------------------------------
+// DAS do Simples Nacional — a GUIA (Documento de Arrecadação), lida dos PDFs
+// que ficam na pasta do cliente (FISCAL\IMPOSTOS\SIMPLES NACIONAL\...).
+//
+// É o outro lado do PGDAS-D: a declaração diz o que foi APURADO, a guia diz o
+// que foi COBRADO (com multa e juros quando emitida em atraso). Ficam em
+// tabelas separadas de propósito — uma competência pode ter mais de uma guia
+// (original, em cobrança, avulsa) e os dois números não se somam.
+// ---------------------------------------------------------------------------
+model DasSimplesGuia {
+  id        String @id @default(cuid())
+  clienteId String
+
+  periodoApuracao DateTime // primeiro dia do mês de apuração (UTC)
+
+  /// Número do documento impresso na guia ("07.20.26019.4202197-9").
+  numeroDocumento String
+  dataVencimento  DateTime?
+
+  /// Valor total do documento — principal + multa + juros, como a guia diz.
+  valorTotal Decimal @default(0)
+  principal  Decimal @default(0)
+  multa      Decimal @default(0)
+  juros      Decimal @default(0)
+
+  /// Composição por código de receita (1001 IRPJ, 1002 CSLL, 1004 COFINS,
+  /// 1005 PIS, 1006 INSS, 1007 ICMS...) — [{codigo, denominacao, principal, total}].
+  composicao Json?
+
+  /// Nome do PDF de origem e hash do conteúdo — pra saber de onde veio e
+  /// detectar troca do arquivo. O PDF em si NÃO é copiado nem guardado.
+  arquivoNome String?
+  arquivoHash String?
+
+  /// Incoerências da leitura (soma ≠ total, competência ausente).
+  alertas String[] @default([])
+
+  lidoEm DateTime @default(now())
+
+  cliente Cliente @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+
+  @@unique([clienteId, numeroDocumento])
+  @@index([clienteId, periodoApuracao])
 }

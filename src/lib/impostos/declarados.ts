@@ -25,7 +25,7 @@
 import { prisma } from "@/lib/db";
 import { tributoDeCodigo } from "@/lib/serpro/mapeamento-tributos";
 
-export type OrigemDeclaracao = "GIAM" | "SPED_FISCAL" | "DCTFWEB" | "ECF";
+export type OrigemDeclaracao = "GIAM" | "SPED_FISCAL" | "DCTFWEB" | "ECF" | "PGDASD";
 export type Esfera = "ESTADUAL" | "FEDERAL";
 
 export interface ItemAPagar {
@@ -42,6 +42,12 @@ export interface ItemAPagar {
   valor: number;
   /** Só a GIAM traz vencimento por linha (Segmento E). */
   vencimento: Date | null;
+  /**
+   * Quebra interna de uma obrigação que se PAGA unificada — hoje só o DAS do
+   * Simples. A soma da composição é o próprio `valor`; ela existe pra tela
+   * abrir sob clique, nunca pra virar linha própria no relatório.
+   */
+  composicao?: Array<{ tributo: string; valor: number }>;
 }
 
 export const ROTULO_ORIGEM: Record<OrigemDeclaracao, string> = {
@@ -49,6 +55,7 @@ export const ROTULO_ORIGEM: Record<OrigemDeclaracao, string> = {
   SPED_FISCAL: "SPED-Fiscal (E110)",
   DCTFWEB: "DCTFWeb",
   ECF: "SPED-ECF",
+  PGDASD: "PGDAS-D (Simples Nacional)",
 };
 
 /** Legenda dos tipos do Segmento E da GIAM. */
@@ -88,7 +95,7 @@ export async function levantarImpostosDeclarados(params: {
   const de = new Date(Date.UTC(anoInicial, 0, 1));
   const ate = new Date(Date.UTC(anoFinal, 11, 31));
 
-  const [giams, speds, dctfs, ecfs] = await Promise.all([
+  const [giams, speds, dctfs, ecfs, pgdas] = await Promise.all([
     prisma.giamApuracao.findMany({
       where: { clienteId, retificacao: "00", periodoApuracao: { gte: de, lte: ate } },
       include: { icmsARecolher: true },
@@ -106,6 +113,10 @@ export async function levantarImpostosDeclarados(params: {
     prisma.ecfApuracao.findMany({
       where: { clienteId, ano: { gte: anoInicial, lte: anoFinal } },
       orderBy: [{ ano: "asc" }, { trimestre: "asc" }],
+    }),
+    prisma.pgdasdDeclaracao.findMany({
+      where: { clienteId, periodoApuracao: { gte: de, lte: ate } },
+      orderBy: { periodoApuracao: "asc" },
     }),
   ]);
 
@@ -233,6 +244,45 @@ export async function levantarImpostosDeclarados(params: {
         vencimento: null,
       });
     }
+  }
+
+  // --- Simples Nacional pelo PGDAS-D ---
+  //
+  // UMA LINHA POR COMPETÊNCIA, com o valor unificado. O Simples é recolhido numa
+  // guia só (o DAS): quebrar em oito linhas (IRPJ, CSLL, COFINS, PIS, INSS,
+  // ICMS, IPI, ISS) daria oito obrigações onde existe uma, e ninguém paga
+  // separado. A composição fica em `composicao`, pra tela abrir sob clique.
+  //
+  // Esfera FEDERAL mesmo na parcela de ICMS/ISS — a guia é federal. E o ICMS de
+  // dentro do DAS não é o mesmo tributo da complementação de alíquota / difal
+  // declarada na GIAM: por isso o tributo aqui se chama "DAS", e não "ICMS" —
+  // senão o relatório acusaria conflito com a GIAM onde não há.
+  for (const p of pgdas) {
+    const total = Number(p.totalDebito);
+    if (total === 0) continue;
+    const composicao: Array<{ tributo: string; valor: number }> = [
+      { tributo: "IRPJ", valor: Number(p.irpj) },
+      { tributo: "CSLL", valor: Number(p.csll) },
+      { tributo: "COFINS", valor: Number(p.cofins) },
+      { tributo: "PIS", valor: Number(p.pis) },
+      { tributo: "INSS/CPP", valor: Number(p.inss) },
+      { tributo: "ICMS", valor: Number(p.icms) },
+      { tributo: "IPI", valor: Number(p.ipi) },
+      { tributo: "ISS", valor: Number(p.iss) },
+    ].filter((c) => c.valor !== 0);
+
+    const situacao = p.situacao === "RETIFICADORA" ? "retificadora" : "original";
+    itens.push({
+      competencia: p.periodoApuracao,
+      competenciaLabel: labelMes(p.periodoApuracao),
+      origem: "PGDASD",
+      esfera: "FEDERAL",
+      tributo: "DAS",
+      detalhe: `Simples Nacional — declaração ${situacao}${p.numeroRecibo ? ` (recibo ${p.numeroRecibo})` : ""}`,
+      valor: total,
+      vencimento: null,
+      composicao,
+    });
   }
 
   itens.sort((a, b) => {

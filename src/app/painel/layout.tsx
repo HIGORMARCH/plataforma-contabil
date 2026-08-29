@@ -23,6 +23,7 @@ export default async function PainelLayout({ children }: { children: React.React
         { grupo: "Fiscal", href: "/painel/sped-fiscal", rotulo: "SPED-Fiscal", icone: "🧾" },
         { grupo: "Fiscal", href: "/painel/pis-cofins", rotulo: "PIS/COFINS", icone: "💰" },
         { grupo: "Fiscal", href: "/painel/irpj-csll", rotulo: "IRPJ/CSLL", icone: "🧮" },
+        { grupo: "Fiscal", href: "/painel/pgdasd", rotulo: "PGDAS-D (Simples Nacional)", icone: "🇧🇷" },
 
         {
           grupo: "Contábil",
@@ -33,8 +34,8 @@ export default async function PainelLayout({ children }: { children: React.React
         {
           grupo: "Contábil",
           href: "/painel/conciliacao-estadual",
-          rotulo: "Conciliação — Pagamentos de Impostos Estaduais",
-          icone: "🏛️",
+          rotulo: "Conciliação de Impostos (razão × pago)",
+          icone: "⚖️",
         },
         {
           grupo: "Contábil",

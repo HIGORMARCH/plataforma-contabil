@@ -39,6 +39,13 @@ export type TipoDocumento =
 export interface ClienteRef {
   razaoSocial: string;
   cnpj: string;
+  /**
+   * Caminho REAL da pasta do cliente, escolhido no cadastro. Quando presente,
+   * manda — a convenção `<RAZAO>_<CNPJ>` é só o palpite para quem ainda não
+   * escolheu. As pastas de verdade foram criadas à mão, com o apelido da equipe
+   * ("LUPO - PALMAS QUIOSQUE ..."), e nenhum nome derivado acerta isso.
+   */
+  pastaLocal?: string | null;
 }
 
 /** Raiz da pasta única — configurável via env, default no C:\. */
@@ -62,9 +69,60 @@ export function nomearCliente(cliente: ClienteRef): string {
   return `${razao}_${cnpjDigits}`;
 }
 
-/** Path da pasta raiz do cliente (não cria — só compõe). */
+/**
+ * Path da pasta raiz do cliente (não cria — só compõe).
+ *
+ * `pastaLocal` do cadastro tem precedência: é o caminho que o contador apontou.
+ * Aceita tanto caminho absoluto quanto só o nome da pasta dentro da raiz.
+ */
 export function pastaCliente(cliente: ClienteRef): string {
+  const escolhida = cliente.pastaLocal?.trim();
+  if (escolhida) {
+    return path.isAbsolute(escolhida) ? escolhida : path.join(pastaRaiz(), escolhida);
+  }
   return path.join(pastaRaiz(), nomearCliente(cliente));
+}
+
+/**
+ * Pasta do razão dos impostos do cliente — `<pasta do cliente>\RAZAO`.
+ * Um arquivo por tributo, com o nome dizendo qual é (ver src/lib/razao/tributos.ts).
+ */
+export function pastaRazaoDoCliente(cliente: ClienteRef): string {
+  return path.join(pastaCliente(cliente), "RAZAO");
+}
+
+/**
+ * Cria a pasta do razão se ela ainda não existir. Chamado ao salvar o cadastro:
+ * o contador precisa ter onde largar os PDFs, e a pasta some do caminho de
+ * ninguém — é criada dentro da própria pasta do cliente.
+ */
+export async function garantirPastaRazao(cliente: ClienteRef): Promise<string | null> {
+  const destino = pastaRazaoDoCliente(cliente);
+  try {
+    // Só cria o RAZAO quando a pasta do cliente já existe: criar a árvore
+    // inteira a partir de um caminho convencionado inventaria pasta de cliente.
+    if (!existsSync(pastaCliente(cliente))) return null;
+    await mkdir(destino, { recursive: true });
+    return destino;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Pastas que existem hoje na raiz — alimenta o seletor do cadastro para o
+ * contador escolher a do cliente em vez de digitar caminho. Ordenadas por nome.
+ */
+export function listarPastasDaRaiz(): string[] {
+  try {
+    const { readdirSync } = require("node:fs") as typeof import("node:fs");
+    return readdirSync(pastaRaiz(), { withFileTypes: true })
+      .filter((e) => e.isDirectory())
+      .map((e) => e.name)
+      .sort((a, b) => a.localeCompare(b, "pt-BR"));
+  } catch {
+    return [];
+  }
 }
 
 /** Path da pasta de um tipo de documento pra um ano específico. */

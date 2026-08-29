@@ -258,7 +258,19 @@ function LinhaItem({ item }: { item: ItemAPagar }) {
       </td>
       <td className="px-4 py-2.5 text-slate-600">{ROTULO_ORIGEM[item.origem]}</td>
       <td className="px-4 py-2.5 font-semibold text-slate-800">{item.tributo}</td>
-      <td className="px-4 py-2.5 text-slate-500">{item.detalhe}</td>
+      <td className="px-4 py-2.5 text-slate-500">
+        {item.detalhe}
+        {/* Obrigação paga unificada (DAS): a composição aparece como nota da
+            linha, nunca como linhas próprias — somar as partes e o total
+            contaria o mesmo tributo duas vezes. */}
+        {item.composicao && item.composicao.length > 0 && (
+          <span className="mt-0.5 block text-[10px] text-slate-400">
+            {item.composicao
+              .map((c) => `${c.tributo} ${fmtBrl.format(c.valor)}`)
+              .join(" · ")}
+          </span>
+        )}
+      </td>
       <td className="px-4 py-2.5 text-slate-600">
         {item.vencimento
           ? item.vencimento.toLocaleDateString("pt-BR", { timeZone: "UTC" })

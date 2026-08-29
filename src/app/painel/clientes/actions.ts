@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import { requireSessao, PAPEIS_INTERNOS } from "@/lib/auth";
 import { cifrar } from "@/lib/crypto";
+import { garantirPastaRazao } from "@/lib/storage/filesystem";
 
 function campo(fd: FormData, nome: string): string | null {
   const v = fd.get(nome);
@@ -47,6 +48,9 @@ export async function criarClienteAction(fd: FormData) {
   const senhaSefaz = senhaSefazClara ? cifrar(senhaSefazClara) : null;
   const pastaFiscal = campo(fd, "pastaFiscal");
   const pastaGiam = campo(fd, "pastaGiam");
+  // Pasta REAL do cliente dentro de C:\PlataformaContabil, escolhida na lista
+  // das que existem. Vazio = plataforma volta a compor o nome pela convenção.
+  const pastaLocal = campo(fd, "pastaLocal");
 
   const cliente = await prisma.cliente.create({
     data: {
@@ -77,6 +81,7 @@ export async function criarClienteAction(fd: FormData) {
       senhaSefaz,
       pastaFiscal,
       pastaGiam,
+      pastaLocal,
       escritorioId: sessao.escritorioId,
     },
   });
@@ -157,6 +162,9 @@ export async function editarClienteAction(id: string, fd: FormData) {
   const senhaSefaz = senhaSefazClara ? cifrar(senhaSefazClara) : clienteExistente.senhaSefaz;
   const pastaFiscal = campo(fd, "pastaFiscal");
   const pastaGiam = campo(fd, "pastaGiam");
+  // Pasta REAL do cliente dentro de C:\PlataformaContabil, escolhida na lista
+  // das que existem. Vazio = plataforma volta a compor o nome pela convenção.
+  const pastaLocal = campo(fd, "pastaLocal");
 
   await prisma.cliente.update({
     where: { id },
@@ -188,8 +196,14 @@ export async function editarClienteAction(id: string, fd: FormData) {
       senhaSefaz,
       pastaFiscal,
       pastaGiam,
+      pastaLocal,
     },
   });
+
+  // Garante a pasta RAZAO dentro da pasta do cliente — é onde vão os PDFs de
+  // razão por tributo. Criar aqui evita que o contador tenha que lembrar de
+  // criar à mão antes de usar a conciliação.
+  await garantirPastaRazao({ razaoSocial: razaoSocial!, cnpj: cnpj!, pastaLocal });
 
   await prisma.logAcesso.create({
     data: { acao: "CLIENTE_EDITADO", detalhe: `${razaoSocial}`, usuarioId: sessao.userId },

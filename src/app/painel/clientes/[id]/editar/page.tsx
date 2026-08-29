@@ -3,6 +3,15 @@ import { notFound } from "next/navigation";
 import { requirePapel, PAPEIS_INTERNOS } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { editarClienteAction } from "../../actions";
+import {
+  existe,
+  listarPastasDaRaiz,
+  nomearCliente,
+  pastaCliente,
+  pastaRaiz,
+  pastaRazaoDoCliente,
+} from "@/lib/storage/filesystem";
+import { NOMES_RAZAO_ESPERADOS } from "@/lib/razao/tributos";
 import { AcessoEcacFields } from "../../_components/AcessoEcacFields";
 import { AcessoSefazFields } from "../../_components/AcessoSefazFields";
 import { PeriodoAtendimentoFields } from "../../_components/PeriodoAtendimentoFields";
@@ -53,6 +62,16 @@ export default async function EditarClientePage({
     where: { id, escritorioId: sessao.escritorioId },
   });
   if (!cliente) notFound();
+
+  // Pasta do cliente na fonte única: a lista do que existe em disco, o nome que
+  // a convenção geraria e o caminho que está valendo agora.
+  const raizArquivos = pastaRaiz();
+  const pastasDisponiveis = listarPastasDaRaiz();
+  const nomeConvencionado = nomearCliente(cliente);
+  const pastaEmUso = pastaCliente(cliente);
+  const pastaExiste = existe(pastaEmUso);
+  const pastaRazaoCliente = pastaRazaoDoCliente(cliente);
+  const pastaRazaoExiste = existe(pastaRazaoCliente);
 
   return (
     <div>
@@ -154,6 +173,65 @@ export default async function EditarClientePage({
           pastaGiamInicial={cliente.pastaGiam ?? ""}
           jaCadastrada={!!cliente.senhaSefaz}
         />
+
+        <section className="card p-5">
+          <h2 className="mb-1 text-sm font-bold uppercase tracking-wide text-slate-500">
+            Pasta do cliente (fonte única)
+          </h2>
+          <p className="mb-4 text-xs text-slate-500">
+            Onde a plataforma procura os arquivos deste cliente dentro de{" "}
+            <code className="font-mono">{raizArquivos}</code>. As pastas foram criadas à mão, com o
+            apelido da equipe, então escolha a certa na lista — sem isso a plataforma procura por um
+            nome derivado da razão social, que não existe em disco, e não acha nada.
+          </p>
+          <label className="label" htmlFor="pastaLocal">
+            Pasta
+          </label>
+          <select
+            id="pastaLocal"
+            name="pastaLocal"
+            className="input"
+            defaultValue={cliente.pastaLocal ?? ""}
+          >
+            <option value="">
+              (usar a convenção: {nomeConvencionado})
+            </option>
+            {pastasDisponiveis.map((nome) => (
+              <option key={nome} value={nome}>
+                {nome}
+              </option>
+            ))}
+          </select>
+          <p className="mt-2 text-xs text-slate-500">
+            Hoje a plataforma lê de: <code className="font-mono">{pastaEmUso}</code>{" "}
+            {pastaExiste ? (
+              <span className="text-emerald-700">— pasta encontrada</span>
+            ) : (
+              <span className="text-amber-700">— pasta não existe em disco</span>
+            )}
+          </p>
+
+          <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+              Razão dos impostos
+            </p>
+            <p className="mt-1 text-xs text-slate-600">
+              <code className="font-mono">{pastaRazaoCliente}</code>{" "}
+              {pastaRazaoExiste ? (
+                <span className="text-emerald-700">— criada</span>
+              ) : (
+                <span className="text-slate-500">— será criada ao salvar</span>
+              )}
+            </p>
+            <p className="mt-2 text-xs text-slate-500">
+              Um arquivo por tributo, com o nome dizendo qual é — o nome é o de-para, não há tabela
+              de contas pra preencher:
+            </p>
+            <p className="mt-1 font-mono text-[11px] leading-relaxed text-slate-500">
+              {NOMES_RAZAO_ESPERADOS.join(" · ")}
+            </p>
+          </div>
+        </section>
 
         {/* AcessoEcacFields aqui em cima ja usa o cliente existente pra upload */}
 

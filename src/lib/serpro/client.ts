@@ -397,4 +397,145 @@ export class SerproClient {
       bruto: j,
     };
   }
+
+  /**
+   * Consulta a ÚLTIMA declaração PGDAS-D transmitida de uma competência
+   * (idSistema PGDASD, idServico CONSULTIMADECREC14).
+   *
+   * Diferente da DCTFWeb, o PGDASD não tem serviço que devolva valores em JSON
+   * — todos entregam PDF em base64 (ver reference_integra_contador_catalogo).
+   * Este método devolve os PDFs crus EM MEMÓRIA; quem chama parseia e descarta.
+   *
+   * Regra de autor/procurador idêntica aos outros serviços:
+   *   - cnpj === cnpjMarch → autoconsulta, sem procurador_token
+   *   - signingCert informado → autor = próprio contribuinte (CERTIFICADO_PROPRIO)
+   *   - senão → autor = MARCH, com procuração eletrônica ativa (PROCURACAO_MARCH)
+   */
+  async consultarPgdasd(params: {
+    cnpjContribuinte: string;
+    ano: number;
+    mes: number; // 1..12
+    signingCert?: CertificadoCarregado;
+  }): Promise<{
+    status: number;
+    mensagens: Array<{ codigo: string; texto: string }>;
+    numeroDeclaracao: string | null;
+    declaracaoPdf: Buffer | null;
+    reciboPdf: Buffer | null;
+    dados: unknown;
+  }> {
+    const cnpj = params.cnpjContribuinte.replace(/\D/g, "");
+    const isAutoconsulta = cnpj === this.config.cnpjMarch;
+    const tokens = await this.getTokens();
+
+    let procuradorToken: string | null = null;
+    let autorCnpj = this.config.cnpjMarch;
+    if (params.signingCert) {
+      const tok = await this.getProcuradorToken({
+        signingCert: params.signingCert,
+        signerCnpj: cnpj,
+      });
+      procuradorToken = tok.token;
+      autorCnpj = cnpj;
+    } else if (!isAutoconsulta) {
+      procuradorToken = (await this.getProcuradorToken()).token;
+    }
+
+    // periodoApuracao no formato AAAAMM (string) — igual à doc do Integra SN.
+    const periodoApuracao = `${params.ano}${String(params.mes).padStart(2, "0")}`;
+
+    const body = {
+      contratante: { numero: this.config.cnpjMarch, tipo: 2 },
+      autorPedidoDados: { numero: autorCnpj, tipo: 2 },
+      contribuinte: { numero: cnpj, tipo: 2 },
+      pedidoDados: {
+        idSistema: "PGDASD",
+        idServico: "CONSULTIMADECREC14",
+        versaoSistema: "1.0",
+        dados: JSON.stringify({ periodoApuracao }),
+      },
+    };
+
+    const headers: OutgoingHttpHeaders = {
+      Authorization: `Bearer ${tokens.accessToken}`,
+      jwt_token: tokens.jwtToken,
+      "Content-Type": "application/json",
+    };
+    if (procuradorToken) headers.autenticar_procurador_token = procuradorToken;
+
+    const res = await fetchWithMtls(`${this.config.gatewayUrl}/Consultar`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(body),
+      timeoutMs: 60_000,
+    });
+    if (res.status !== 200) {
+      throw new Error(`PGDASD CONSULTIMADECREC14 falhou ${res.status}: ${res.body.slice(0, 2000)}`);
+    }
+
+    const j = JSON.parse(res.body);
+    const dados = j.dados ? (typeof j.dados === "string" ? JSON.parse(j.dados) : j.dados) : null;
+
+    return {
+      status: Number(j.status) || 0,
+      mensagens: (j.mensagens ?? []) as Array<{ codigo: string; texto: string }>,
+      numeroDeclaracao: extrairNumeroDeclaracao(dados),
+      declaracaoPdf: extrairPdf(dados, /declara/i),
+      reciboPdf: extrairPdf(dados, /recibo/i),
+      dados,
+    };
+  }
+}
+
+/**
+ * O envelope do PGDASD aninha os PDFs em chaves que variam entre serviços
+ * (`declaracao.pdf`, `pdfDeclaracao`, `ConsultaUltimaDeclaracao.declaracao.pdf`).
+ * Em vez de fixar um caminho, varre a árvore procurando string base64 que
+ * comece com o magic number do PDF (`%PDF` → "JVBERi") sob uma chave que case
+ * com `alvo`. Se o SERPRO renomear o campo, continua achando.
+ */
+function extrairPdf(dados: unknown, alvo: RegExp): Buffer | null {
+  let achado: Buffer | null = null;
+  const visitar = (no: unknown, caminho: string) => {
+    if (achado || no == null) return;
+    if (typeof no === "string") {
+      if (alvo.test(caminho) && no.startsWith("JVBERi")) {
+        achado = Buffer.from(no, "base64");
+      }
+      return;
+    }
+    if (Array.isArray(no)) {
+      no.forEach((item, i) => visitar(item, `${caminho}[${i}]`));
+      return;
+    }
+    if (typeof no === "object") {
+      for (const [k, v] of Object.entries(no as Record<string, unknown>)) {
+        visitar(v, `${caminho}.${k}`);
+      }
+    }
+  };
+  visitar(dados, "");
+  return achado;
+}
+
+function extrairNumeroDeclaracao(dados: unknown): string | null {
+  let achado: string | null = null;
+  const visitar = (no: unknown, caminho: string) => {
+    if (achado || no == null) return;
+    if (typeof no === "string" || typeof no === "number") {
+      if (/numeroDeclaracao/i.test(caminho)) achado = String(no);
+      return;
+    }
+    if (Array.isArray(no)) {
+      no.forEach((item, i) => visitar(item, `${caminho}[${i}]`));
+      return;
+    }
+    if (typeof no === "object") {
+      for (const [k, v] of Object.entries(no as Record<string, unknown>)) {
+        visitar(v, `${caminho}.${k}`);
+      }
+    }
+  };
+  visitar(dados, "");
+  return achado;
 }
