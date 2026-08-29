@@ -1,8 +1,8 @@
 import { prisma } from "@/lib/db";
 import { SerproClient } from "./client";
 import { getSerproConfig } from "./config";
-import { carregarPfx, type CertificadoCarregado } from "./pkcs12";
-import { decifrar } from "@/lib/crypto";
+import { carregarPfx, carregarPfxDeBuffer, type CertificadoCarregado } from "./pkcs12";
+import { decifrar, decifrarBytes } from "@/lib/crypto";
 import type { PagtowebDocumento } from "./types";
 
 /**
@@ -217,8 +217,16 @@ export async function sincronizarCliente(params: {
       });
       return { clienteId, clienteNome, sucesso: false, quantidade: 0, mensagem: msg, puladoIdempotencia: false };
     };
-    if (!clienteRegistro.certificadoCaminho || !clienteRegistro.certificadoSenha) {
-      return falhar("Certificado próprio não configurado — cadastre o caminho do .pfx e a senha.");
+    // O .pfx do cliente vive CIFRADO NO BANCO (certificadoArquivo) desde que o
+    // upload passou a ser pela tela de edição. `certificadoCaminho` é o modo
+    // antigo (arquivo em disco) e continua aceito como fallback — mas exigir o
+    // caminho, como este trecho fazia antes, bloqueava justamente os clientes
+    // configurados do jeito certo.
+    const temCertificado = !!clienteRegistro.certificadoArquivo || !!clienteRegistro.certificadoCaminho;
+    if (!temCertificado || !clienteRegistro.certificadoSenha) {
+      return falhar(
+        "Certificado próprio não configurado — suba o .pfx do cliente e informe a senha na tela de edição do cadastro.",
+      );
     }
     let senhaClara: string;
     try {
@@ -226,10 +234,19 @@ export async function sincronizarCliente(params: {
     } catch (e) {
       return falhar(`Falha ao decifrar a senha do certificado (ENCRYPTION_KEY diferente?): ${e instanceof Error ? e.message : String(e)}`);
     }
+    const origemCert = clienteRegistro.certificadoArquivo
+      ? (clienteRegistro.certificadoNomeArquivo ?? "certificado armazenado no banco")
+      : clienteRegistro.certificadoCaminho!;
     try {
-      signingCert = await carregarPfx(clienteRegistro.certificadoCaminho, senhaClara);
+      signingCert = clienteRegistro.certificadoArquivo
+        ? carregarPfxDeBuffer(
+            decifrarBytes(Buffer.from(clienteRegistro.certificadoArquivo)),
+            senhaClara,
+            origemCert,
+          )
+        : await carregarPfx(clienteRegistro.certificadoCaminho!, senhaClara);
     } catch (e) {
-      return falhar(`Não foi possível abrir o certificado em ${clienteRegistro.certificadoCaminho}: ${e instanceof Error ? e.message : String(e)}`);
+      return falhar(`Não foi possível abrir o certificado (${origemCert}): ${e instanceof Error ? e.message : String(e)}`);
     }
     if (signingCert.notAfter.getTime() < Date.now()) {
       return falhar(`Certificado do cliente expirou em ${signingCert.notAfter.toLocaleDateString("pt-BR", { timeZone: "UTC" })} — renove antes de sincronizar.`);

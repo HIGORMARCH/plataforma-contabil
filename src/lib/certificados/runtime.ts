@@ -11,6 +11,11 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { prisma } from "@/lib/db";
 import { decifrar, decifrarBytes } from "@/lib/crypto";
+import {
+  carregarPfx,
+  carregarPfxDeBuffer,
+  type CertificadoCarregado,
+} from "@/lib/serpro/pkcs12";
 
 export interface CertificadoUso {
   caminhoTemp: string; // path do .pfx temporário — some após o callback
@@ -65,4 +70,46 @@ export async function comCertificadoDoCliente<T>(
       /* ignora */
     }
   }
+}
+
+/**
+ * Carrega o certificado do cliente EM MEMÓRIA, sem passar por arquivo temporário.
+ *
+ * Preferência pelo .pfx cifrado no banco (`certificadoArquivo`); o caminho em
+ * disco (`certificadoCaminho`) é o modo antigo e fica como fallback. Devolve
+ * `null` quando o cliente não usa certificado próprio ou não tem certificado
+ * cadastrado — quem chama decide se isso é erro.
+ *
+ * Use esta função quando o certificado só precisa assinar um termo (SERPRO).
+ * `comCertificadoDoCliente` continua sendo o caminho pra libs que exigem um
+ * arquivo de verdade no disco.
+ */
+export async function carregarCertificadoDoCliente(
+  clienteId: string,
+): Promise<CertificadoCarregado | null> {
+  const cliente = await prisma.cliente.findUnique({
+    where: { id: clienteId },
+    select: {
+      metodoAcessoEcac: true,
+      certificadoArquivo: true,
+      certificadoCaminho: true,
+      certificadoNomeArquivo: true,
+      certificadoSenha: true,
+    },
+  });
+  if (!cliente || cliente.metodoAcessoEcac !== "CERTIFICADO_PROPRIO") return null;
+  if (!cliente.certificadoSenha) return null;
+  const senha = decifrar(cliente.certificadoSenha);
+
+  if (cliente.certificadoArquivo) {
+    return carregarPfxDeBuffer(
+      decifrarBytes(Buffer.from(cliente.certificadoArquivo)),
+      senha,
+      cliente.certificadoNomeArquivo ?? "certificado armazenado no banco",
+    );
+  }
+  if (cliente.certificadoCaminho) {
+    return carregarPfx(cliente.certificadoCaminho, senha);
+  }
+  return null;
 }

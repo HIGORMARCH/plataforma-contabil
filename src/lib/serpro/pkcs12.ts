@@ -42,7 +42,26 @@ export type CertificadoCarregado = {
 };
 
 export async function carregarPfx(path: string, senha: string): Promise<CertificadoCarregado> {
-  const pfxBuffer = await readFile(path);
+  return carregarPfxDeBuffer(await readFile(path), senha, path);
+}
+
+/**
+ * Mesma extração, a partir do .pfx já em memória.
+ *
+ * Existe porque o certificado do cliente hoje mora CIFRADO NO BANCO
+ * (`Cliente.certificadoArquivo`), não mais num caminho de disco: depois de
+ * `decifrarBytes` o que se tem é um Buffer, e escrever ele em arquivo temporário
+ * só pra reler seria trabalho (e exposição) à toa.
+ *
+ * `rotulo` aparece nas mensagens de erro — passe o caminho quando vier de
+ * arquivo, ou o nome do arquivo original quando vier do banco.
+ */
+export function carregarPfxDeBuffer(
+  pfxBuffer: Buffer,
+  senha: string,
+  rotulo = "certificado do cliente",
+): CertificadoCarregado {
+  const path = rotulo;
   const p12Asn1 = forge.asn1.fromDer(forge.util.createBuffer(pfxBuffer.toString("binary")));
   const p12 = forge.pkcs12.pkcs12FromAsn1(p12Asn1, senha);
 
