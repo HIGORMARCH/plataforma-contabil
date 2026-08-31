@@ -80,6 +80,25 @@ export const FONTE_PAGAMENTO: Record<TributoRazao, string> = {
 export const PASTA_RAZAO = "RAZAO";
 
 /**
+ * Como o tributo entra no NOME DO ARQUIVO do razão.
+ *
+ * Separado de ROTULO_TRIBUTO_RAZAO de propósito: o rótulo é de tela e tem
+ * parêntese ("Simples Nacional (DAS)"), que em nome de arquivo é feio e ainda
+ * atrapalha a releitura.
+ */
+export const NOME_ARQUIVO_TRIBUTO: Record<TributoRazao, string> = {
+  SIMPLES_NACIONAL: "SIMPLES NACIONAL",
+  INSS: "INSS",
+  FGTS: "FGTS",
+  IRRF: "IRRF",
+  PIS: "PIS",
+  COFINS: "COFINS",
+  ICMS: "ICMS",
+  IRPJ: "IRPJ",
+  CSLL: "CSLL",
+};
+
+/**
  * Tributos que a empresa do SIMPLES NACIONAL não recolhe à parte — estão
  * dentro do DAS (regra lembrada pelo Higor em 29/08/2026).
  *

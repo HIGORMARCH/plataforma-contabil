@@ -59,6 +59,10 @@ model Escritorio {
   usuarios Usuario[]
   clientes Cliente[]
 
+  // Organizador de documentos
+  origensArquivos    OrigemArquivo[]
+  arquivosOrganizados ArquivoOrganizado[]
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
@@ -235,6 +239,10 @@ model Cliente {
 
   // Guias DAS lidas dos PDFs da pasta do cliente.
   dasSimplesGuias DasSimplesGuia[]
+
+  // Organizador de documentos
+  origensArquivos     OrigemArquivo[]
+  arquivosOrganizados ArquivoOrganizado[]
 
   // Flag que o gerador de relatório final lê pra decidir se anexa a seção
   // "Situação das Obrigações Acessórias" no relatório entregue ao cliente.
@@ -1445,4 +1453,71 @@ model DasSimplesGuia {
 
   @@unique([clienteId, numeroDocumento])
   @@index([clienteId, periodoApuracao])
+}
+
+// ---------------------------------------------------------------------------
+// ORGANIZADOR DE DOCUMENTOS
+//
+// Endereços onde o robô procura arquivos soltos (servidor do escritório, pasta
+// de downloads, pen drive mapeado...). Ele LÊ dessas pastas e ARQUIVA na pasta
+// do cliente — nunca escreve na origem, nunca move o original.
+// ---------------------------------------------------------------------------
+model OrigemArquivo {
+  id           String @id @default(cuid())
+  escritorioId String
+
+  /// Como a equipe chama esse lugar ("Servidor Z: — declarações").
+  nome    String
+  /// Caminho de verdade. Pode ser rede (Z:\...) ou local.
+  caminho String
+
+  /// Desce nas subpastas? Quase sempre sim.
+  recursivo Boolean @default(true)
+  ativo     Boolean @default(true)
+
+  /// Quando preenchido, tudo que vier daqui é desse cliente e o robô não
+  /// precisa descobrir pelo CNPJ. Útil pra pasta que já é "por empresa".
+  clienteId String?
+
+  ultimaVarreduraEm DateTime?
+  criadoEm          DateTime @default(now())
+
+  escritorio Escritorio @relation(fields: [escritorioId], references: [id], onDelete: Cascade)
+  cliente    Cliente?   @relation(fields: [clienteId], references: [id], onDelete: SetNull)
+
+  @@unique([escritorioId, caminho])
+  @@index([escritorioId, ativo])
+}
+
+/// Índice do que já foi arquivado. É o que torna o robô repetível: o mesmo
+/// conteúdo (mesmo SHA-256) nunca é arquivado duas vezes, mesmo que apareça em
+/// dois endereços de origem diferentes ou com outro nome.
+model ArquivoOrganizado {
+  id           String @id @default(cuid())
+  escritorioId String
+
+  /// SHA-256 do CONTEÚDO. A chave de tudo — nome de arquivo não identifica nada.
+  hash String
+
+  origemCaminho  String
+  destinoCaminho String?
+
+  /// "SPED_ECD" | "DAS_GUIA" | "COMPROVANTE" | "RAZAO" | ... (ver classificar.ts)
+  tipoDocumento String
+  clienteId     String?
+  ano           Int?
+  mes           Int?
+
+  /// "ARQUIVADO" | "JA_EXISTIA" | "QUARENTENA" | "CONFLITO" | "ERRO"
+  status String
+  motivo String?
+
+  organizadoEm DateTime @default(now())
+
+  escritorio Escritorio @relation(fields: [escritorioId], references: [id], onDelete: Cascade)
+  cliente    Cliente?   @relation(fields: [clienteId], references: [id], onDelete: SetNull)
+
+  @@unique([escritorioId, hash])
+  @@index([escritorioId, organizadoEm])
+  @@index([clienteId, tipoDocumento])
 }

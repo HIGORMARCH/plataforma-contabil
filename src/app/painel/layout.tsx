@@ -64,6 +64,7 @@ export default async function PainelLayout({ children }: { children: React.React
 
         ...(sessao.papel === "ADMIN"
           ? [
+              { grupo: "Administração", href: "/painel/organizador", rotulo: "Organizador de documentos", icone: "🗂️" },
               { grupo: "Administração", href: "/painel/usuarios", rotulo: "Usuários", icone: "🔑" },
               {
                 grupo: "Administração",
