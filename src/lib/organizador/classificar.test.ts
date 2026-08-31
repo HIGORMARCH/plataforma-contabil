@@ -118,6 +118,19 @@ describe("classificarPdf", () => {
     expect(r.motivo).toMatch(/tributo n[ãa]o foi identificado/i);
   });
 
+  it("notificação de multa não é declaração do PGDAS-D", () => {
+    // Caso real: uma NOTIFICAÇÃO DE LANÇAMENTO de multa da EFD-Contribuições da
+    // Casa São Paulo (Lucro Real, que nem PGDAS tem) foi arquivada como
+    // declaração do Simples porque o classificador aceitava qualquer PDF com
+    // "Período de Apuração". A competência ainda saiu errada: pegou 05/2024, que
+    // era o prazo de entrega, não a apuração de 03/2024.
+    const r = classificarPdf(
+      `MINISTÉRIO DA ECONOMIA\nNOTIFICAÇÃO DE LANÇAMENTO\nMULTA POR ATRASO NA ENTREGA DA ESCRITURAÇÃO FISCAL DIGITAL DAS CONTRIBUIÇÕES\nCNPJ: 37.417.896/0001-19\nPeríodo de Apuração (PA) Prazo Final Entrega\n03/2024 15/05/2024`,
+      "RECIBO DE ENTREGA 03.2024.pdf",
+    );
+    expect(r.ok).toBe(false);
+  });
+
   it("PDF desconhecido é recusado", () => {
     const r = classificarPdf("Contrato de prestação de serviços", "contrato.pdf");
     expect(r.ok).toBe(false);

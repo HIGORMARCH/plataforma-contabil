@@ -310,8 +310,16 @@ export function classificarPdf(texto: string, nomeArquivo: string): ResultadoCla
     };
   }
 
-  // --- Declaração PGDAS-D (tem "Declaratório"; a guia não tem) ---
-  if (/Declaratorio/i.test(t) || /Periodo de Apuracao:\s*\d{2}\/\d{2}\/\d{4}/i.test(t)) {
+  // --- Declaração PGDAS-D ---
+  //
+  // A marca é "Declaratório" no título do PGDAS-D, e SÓ ela. A condição antiga
+  // aceitava qualquer PDF com "Período de Apuração", e isso arquivou uma
+  // NOTIFICAÇÃO DE MULTA da EFD-Contribuições da Casa São Paulo como se fosse
+  // declaração do Simples — de uma empresa do Lucro Real, que nem PGDAS tem.
+  // Frase genérica não identifica documento.
+  if (/Declaratorio/i.test(t)) {
+    // A competência é a data INICIAL do período; "15/05/2024" naquele PDF era
+    // prazo de entrega, não competência.
     const m = /Periodo de Apuracao:?\s*(\d{2})\/(\d{2})\/(\d{4})/i.exec(t);
     return {
       ok: true,
