@@ -158,6 +158,40 @@ describe("classificarPdf", () => {
     expect(r.ok).toBe(false);
   });
 
+  it("recibo de entrega de SPED vira RECIBO_SPED, com a competência do período", () => {
+    // Texto real do recibo da SR SPORTS (03/2026), com a ordem embaralhada que
+    // o pdf-parse produz — o rótulo "Período de apuração:" sai DEPOIS do valor.
+    const r = classificarPdf(
+      `MINISTÉRIO DA FAZENDA\nRECIBO DE ENTREGA DE ESCRITURAÇÃO FISCAL DIGITAL - CONTRIBUIÇÕES\n` +
+        `APURAÇÃO DAS CONTRIBUIÇÕES SOCIAS PIS/PASEP COFINS\n` +
+        `SR SPORTS COMERCIO DE ARTIGOS ESPORTIVOS LTDA.\n11.170.630/0001-20\n` +
+        `01/03/2026 a 31/03/2026\nOriginal\nPeríodo de apuração:\nContribuinte:\nCNPJ:`,
+      "03.2026.pdf",
+    );
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.classificacao.tipo).toBe("RECIBO_SPED");
+    expect(r.classificacao.reciboDe).toBe("CONTRIBUICOES");
+    expect(r.classificacao.ano).toBe(2026);
+    expect(r.classificacao.mes).toBe(3);
+    expect(r.classificacao.cnpj).toBe("11170630000120");
+  });
+
+  it("recibo de ECD não vira Balanço do Domínio", () => {
+    // O recibo transcreve o conteúdo da escrituração e fala em "balanço"; se a
+    // regra do balanço viesse antes, o recibo seria arquivado como demonstração.
+    const r = classificarPdf(
+      `SISTEMA PÚBLICO DE ESCRITURAÇÃO DIGITAL\nRECIBO DE ENTREGA DE ESCRITURAÇÃO CONTÁBIL DIGITAL\n` +
+        `BALANÇO PATRIMONIAL\n44.172.449/0001-02\n01/01/2025 a 31/12/2025`,
+      "RECIBO BALANÇO E DRE SPED 2025.pdf",
+    );
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.classificacao.tipo).toBe("RECIBO_SPED");
+    expect(r.classificacao.reciboDe).toBe("ECD");
+    expect(r.classificacao.mes).toBeNull(); // ECD é anual
+  });
+
   it("PDF desconhecido é recusado", () => {
     const r = classificarPdf("Contrato de prestação de serviços", "contrato.pdf");
     expect(r.ok).toBe(false);
@@ -172,6 +206,7 @@ describe("destinoDoDocumento", () => {
     nomeEmpresa: null,
     inscricaoEstadual: null,
     tributo: null,
+    reciboDe: null,
     contaCodigo: null,
     documentos: 1,
     evidencia: "",

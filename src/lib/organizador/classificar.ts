@@ -30,7 +30,8 @@ export type TipoDocumento =
   | "BALANCO_DOMINIO"
   | "DRE_DOMINIO"
   | "GIAM_ARQUIVO"
-  | "GIAM_ESPELHO";
+  | "GIAM_ESPELHO"
+  | "RECIBO_SPED";
 
 export const ROTULO_TIPO: Record<TipoDocumento, string> = {
   SPED_ECD: "SPED-ECD",
@@ -47,6 +48,7 @@ export const ROTULO_TIPO: Record<TipoDocumento, string> = {
   DRE_DOMINIO: "DRE (Domínio)",
   GIAM_ARQUIVO: "GIAM (arquivo do Domínio)",
   GIAM_ESPELHO: "Espelho da GIAM",
+  RECIBO_SPED: "Recibo de entrega de SPED",
 };
 
 export interface Classificacao {
@@ -70,6 +72,8 @@ export interface Classificacao {
   inscricaoEstadual: string | null;
   /** Tributo, só para o razão. */
   tributo: TributoRazao | null;
+  /** Qual SPED o recibo comprova — só para RECIBO_SPED. */
+  reciboDe: "CONTRIBUICOES" | "FISCAL" | "ECD" | "ECF" | null;
   /** Código da conta contábil (razão) — desempata dois razões do mesmo tributo. */
   contaCodigo: string | null;
   /** Quantos documentos o arquivo contém (o comprovante traz o ano inteiro). */
@@ -220,6 +224,7 @@ export function classificarTexto(
         nomeEmpresa: null,
         inscricaoEstadual: null,
         tributo: null,
+        reciboDe: null,
         contaCodigo: null,
         documentos: 1,
         evidencia: "cabeçalho DCTFM + registro R10",
@@ -240,6 +245,7 @@ export function classificarTexto(
         nomeEmpresa: null,
         inscricaoEstadual: null,
         tributo: null,
+        reciboDe: null,
         contaCodigo: null,
         documentos: 1,
         evidencia: "XML com namespace DCTFWeb",
@@ -270,6 +276,7 @@ export function classificarTexto(
           nomeEmpresa: nomeNoSped(campos, 5),
           inscricaoEstadual: null,
           tributo: null,
+          reciboDe: null,
           contaCodigo: null,
           documentos: 1,
           evidencia: "|0000|LECD|",
@@ -289,6 +296,7 @@ export function classificarTexto(
           nomeEmpresa: nomeNoSped(campos, 5),
           inscricaoEstadual: null,
           tributo: null,
+          reciboDe: null,
           contaCodigo: null,
           documentos: 1,
           evidencia: "|0000|LECF|",
@@ -318,6 +326,7 @@ export function classificarTexto(
           nomeEmpresa: nomeNoSped(campos, 8),
           inscricaoEstadual: null,
           tributo: null,
+          reciboDe: null,
           contaCodigo: null,
           documentos: 1,
           evidencia: "|0000| com bloco M (PIS/COFINS)",
@@ -346,6 +355,7 @@ export function classificarTexto(
           nomeEmpresa: nomeNoSped(campos, 6),
           inscricaoEstadual: ie && /^\d+$/.test(ie) ? ie : null,
           tributo: null,
+          reciboDe: null,
           contaCodigo: null,
           documentos: 1,
           evidencia: "|0000| com bloco C100/E110 (ICMS)",
@@ -372,6 +382,7 @@ export function classificarTexto(
         nomeEmpresa: null,
         inscricaoEstadual: ie,
         tributo: null,
+        reciboDe: null,
         contaCodigo: null,
         documentos: 1,
         evidencia: "arquivo posicional com segmentos A/B/E (GIAM 10.0)",
@@ -430,9 +441,54 @@ export function classificarPdf(texto: string, nomeArquivo: string): ResultadoCla
         nomeEmpresa,
         inscricaoEstadual: null,
         tributo: null,
+        reciboDe: null,
         contaCodigo: null,
         documentos: paginas,
         evidencia: `"registro de arrecadação" em ${paginas} página(s)`,
+      },
+    };
+  }
+
+  // --- Recibo de entrega de SPED ---
+  //
+  // Vem ANTES das demais regras de propósito: o recibo transcreve o conteúdo da
+  // escrituração, então fala em "balanço", "contribuições", "apuração". Testado
+  // depois, um recibo de ECD viraria "Balanço do Domínio" — foi o que aconteceu
+  // com o "RECIBO BALANÇO E DRE SPED 2025.pdf" da Rovani.
+  if (/RECIBO DE ENTREGA DE ESCRITURACAO|recibo de entrega contem a transcricao/i.test(t)) {
+    const reciboDe: Classificacao["reciboDe"] = /CONTRIBUI/i.test(t)
+      ? "CONTRIBUICOES"
+      : /ICMS|IPI/i.test(t)
+        ? "FISCAL"
+        : /CONTABIL FISCAL|ECF\b/i.test(t)
+          ? "ECF"
+          : /CONTABIL DIGITAL|ECD\b/i.test(t)
+            ? "ECD"
+            : null;
+
+    if (!reciboDe) {
+      return { ok: false, motivo: "recibo de entrega, mas não deu pra saber de qual SPED" };
+    }
+
+    // "Período de apuração: 01/03/2026 a 31/03/2026" — a data INICIAL é a
+    // competência. O rótulo sai depois do valor no texto extraído, então a
+    // âncora é o próprio intervalo.
+    const periodo = /(\d{2})\/(\d{2})\/(\d{4})\s*a\s*(\d{2})\/(\d{2})\/(\d{4})/.exec(t);
+    const anual = reciboDe === "ECD" || reciboDe === "ECF";
+    return {
+      ok: true,
+      classificacao: {
+        tipo: "RECIBO_SPED",
+        ano: periodo ? Number(periodo[3]) : null,
+        mes: anual ? null : periodo ? Number(periodo[2]) : null,
+        cnpj,
+        nomeEmpresa,
+        inscricaoEstadual: null,
+        tributo: null,
+        reciboDe,
+        contaCodigo: null,
+        documentos: 1,
+        evidencia: `recibo de entrega (${reciboDe})`,
       },
     };
   }
@@ -458,6 +514,7 @@ export function classificarPdf(texto: string, nomeArquivo: string): ResultadoCla
         nomeEmpresa,
         inscricaoEstadual: null,
         tributo: null,
+        reciboDe: null,
         contaCodigo: null,
         documentos: 1,
         evidencia: "PGDAS-D Declaratório",
@@ -490,6 +547,7 @@ export function classificarPdf(texto: string, nomeArquivo: string): ResultadoCla
         nomeEmpresa,
         inscricaoEstadual: null,
         tributo: null,
+        reciboDe: null,
         contaCodigo: null,
         documentos: 1,
         evidencia: "guia do DAS (sem 'Declaratório')",
@@ -530,6 +588,7 @@ export function classificarPdf(texto: string, nomeArquivo: string): ResultadoCla
         nomeEmpresa,
         inscricaoEstadual: null,
         tributo,
+        reciboDe: null,
         contaCodigo,
         documentos: 1,
         evidencia: `razão da conta ${contaCodigo ?? "(sem código)"}`,
@@ -550,6 +609,7 @@ export function classificarPdf(texto: string, nomeArquivo: string): ResultadoCla
         nomeEmpresa,
         inscricaoEstadual: null,
         tributo: null,
+        reciboDe: null,
         contaCodigo: null,
         documentos: 1,
         evidencia: "título BALANÇO PATRIMONIAL",
@@ -568,6 +628,7 @@ export function classificarPdf(texto: string, nomeArquivo: string): ResultadoCla
         nomeEmpresa,
         inscricaoEstadual: null,
         tributo: null,
+        reciboDe: null,
         contaCodigo: null,
         documentos: 1,
         evidencia: "título DEMONSTRAÇÃO DO RESULTADO",
@@ -589,6 +650,7 @@ export function classificarPdf(texto: string, nomeArquivo: string): ResultadoCla
         nomeEmpresa,
         inscricaoEstadual: ie ? soDigitos(ie) : null,
         tributo: null,
+        reciboDe: null,
         contaCodigo: null,
         documentos: 1,
         evidencia: "espelho da GIAM (SEFAZ)",
