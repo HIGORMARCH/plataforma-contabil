@@ -1,31 +1,43 @@
 /**
  * O robô organizador: varre os endereços cadastrados, identifica cada arquivo
- * pelo conteúdo e o arquiva na pasta do cliente, com nome padronizado.
+ * pelo conteúdo e o arquiva na pasta da empresa, com nome padronizado.
+ *
+ * DUAS FASES, e a ordem importa:
+ *
+ *   1. IDENTIFICA tudo — lê e classifica cada arquivo, sem mexer em nada.
+ *   2. DECIDE e age — só depois de conhecer o conjunto inteiro.
+ *
+ * A separação existe por um motivo concreto: empresa muda de nome. O CNPJ
+ * 43.211.383/0001-50 assina "PONTO FORTE DISTRIBUIDORA" em 2022 e "CRS
+ * ATACADISTA DE MATERIAL DE CONSTRUÇÃO" em 2023 — mesma inscrição estadual,
+ * mesma empresa. Decidindo arquivo a arquivo, o robô criaria duas pastas para
+ * ela. Vendo o conjunto, ele escolhe UM nome por CNPJ: o mais recente.
  *
  * DUAS AÇÕES, CONFORME A ORIGEM:
  *
  *   origem DENTRO de C:\PlataformaContabil  → MOVE (organiza no lugar)
  *   origem FORA (Z:, Downloads, pen drive)  → COPIA (nunca toca no original)
  *
- * A distinção não é capricho: copiar de dentro da própria pasta criaria a
- * segunda cópia do mesmo documento — exatamente o que o organizador existe pra
- * evitar. E mover de um servidor de terceiro violaria a regra da casa.
- *
  * MODO SIMULAÇÃO É O PADRÃO. `simular: true` percorre tudo, decide tudo, e não
- * escreve um byte. É assim que se confere um robô que mexe em arquivo.
+ * escreve um byte.
  *
  * IDEMPOTENTE POR CONTEÚDO: a chave é o SHA-256. O mesmo documento chegando por
  * dois endereços, com dois nomes, é arquivado uma vez só.
  */
 
 import { createHash } from "node:crypto";
-import { existsSync } from "node:fs";
+import { existsSync, readdirSync } from "node:fs";
 import { copyFile, mkdir, readdir, readFile, rename, stat } from "node:fs/promises";
 import path from "node:path";
 import { prisma } from "@/lib/db";
 import { pastaCliente, pastaRaiz } from "@/lib/storage/filesystem";
-import { classificarPdf, classificarTexto, type Classificacao } from "./classificar";
-import { destinoDoDocumento, pastaQuarentena } from "./destino";
+import {
+  classificarPdf,
+  classificarTexto,
+  pareceRazaoSocial,
+  type Classificacao,
+} from "./classificar";
+import { destinoDoDocumento } from "./destino";
 
 /** Quanto do arquivo basta ler pra identificar (o registro 0000 está no topo). */
 const AMOSTRA_BYTES = 8 * 1024;
@@ -132,7 +144,10 @@ async function classificarArquivo(
       }
       return classificarPdf(text, nome);
     } catch (e) {
-      return { ok: false, motivo: `falha ao ler o PDF: ${e instanceof Error ? e.message : String(e)}` };
+      return {
+        ok: false,
+        motivo: `falha ao ler o PDF: ${e instanceof Error ? e.message : String(e)}`,
+      };
     }
   }
 
@@ -143,6 +158,36 @@ async function classificarArquivo(
 function dentroDaRaiz(caminho: string, raiz: string): boolean {
   const rel = path.relative(raiz, caminho);
   return !rel.startsWith("..") && !path.isAbsolute(rel);
+}
+
+/** Nome de pasta no padrão da plataforma: RAZAO_SOCIAL_CNPJ, sem acento. */
+function nomearPasta(razaoSocial: string, cnpj: string): string {
+  const razao = razaoSocial
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^A-Za-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .toUpperCase();
+  return `${razao}_${cnpj}`;
+}
+
+/** Pasta que já existe na raiz terminando neste CNPJ, se houver. */
+function pastaExistenteDoCnpj(raiz: string, cnpj: string): string | null {
+  try {
+    const achada = readdirSync(raiz, { withFileTypes: true }).find(
+      (e) => e.isDirectory() && e.name.endsWith(`_${cnpj}`),
+    );
+    return achada ? path.join(raiz, achada.name) : null;
+  } catch {
+    return null;
+  }
+}
+
+/** O que a fase 1 apurou de cada arquivo, para a fase 2 decidir. */
+interface Pendente {
+  arquivo: string;
+  hash: string;
+  classificacao: Classificacao;
 }
 
 export async function organizarDocumentos(params: {
@@ -178,20 +223,15 @@ export async function organizarDocumentos(params: {
 
   if (origens.length === 0) return relatorio;
 
-  // Clientes do escritório, indexados pelos dois identificadores naturais.
   const clientes = await prisma.cliente.findMany({
     where: { escritorioId: params.escritorioId },
-    select: {
-      id: true,
-      razaoSocial: true,
-      cnpj: true,
-      inscricaoEstadual: true,
-      pastaLocal: true,
-    },
+    select: { id: true, razaoSocial: true, cnpj: true, inscricaoEstadual: true, pastaLocal: true },
   });
   const porCnpj = new Map(clientes.map((c) => [c.cnpj.replace(/\D/g, ""), c]));
   const porIe = new Map(
-    clientes.filter((c) => c.inscricaoEstadual).map((c) => [c.inscricaoEstadual!.replace(/\D/g, ""), c]),
+    clientes
+      .filter((c) => c.inscricaoEstadual)
+      .map((c) => [c.inscricaoEstadual!.replace(/\D/g, ""), c]),
   );
 
   // Hashes já arquivados — não se arquiva o mesmo conteúdo duas vezes.
@@ -204,13 +244,16 @@ export async function organizarDocumentos(params: {
     ).map((a) => a.hash),
   );
 
-  const registrar = async (item: ItemOrganizado, dados: {
-    hash: string;
-    tipo: string;
-    clienteId: string | null;
-    ano: number | null;
-    mes: number | null;
-  }) => {
+  const registrar = async (
+    item: ItemOrganizado,
+    dados: {
+      hash: string;
+      tipo: string;
+      clienteId: string | null;
+      ano: number | null;
+      mes: number | null;
+    },
+  ) => {
     relatorio.itens.push(item);
     if (simular) return;
     await prisma.arquivoOrganizado.upsert({
@@ -227,13 +270,26 @@ export async function organizarDocumentos(params: {
         status: item.status,
         motivo: item.detalhe,
       },
-      update: {
-        destinoCaminho: item.destino,
-        status: item.status,
-        motivo: item.detalhe,
-      },
+      update: { destinoCaminho: item.destino, status: item.status, motivo: item.detalhe },
     });
   };
+
+  const itemBase = (arquivo: string): ItemOrganizado => ({
+    origem: arquivo,
+    nomeArquivo: path.basename(arquivo),
+    status: "ERRO",
+    tipo: null,
+    cliente: null,
+    destino: null,
+    acao: null,
+    detalhe: "",
+  });
+
+  // =========================================================================
+  // FASE 1 — identificar, sem decidir nada
+  // =========================================================================
+  const pendentes: Pendente[] = [];
+  const vistosNestaExecucao = new Set<string>();
 
   for (const origem of origens) {
     let arquivos: string[];
@@ -242,13 +298,8 @@ export async function organizarDocumentos(params: {
       if (!st.isDirectory()) {
         relatorio.erros++;
         relatorio.itens.push({
-          origem: origem.caminho,
+          ...itemBase(origem.caminho),
           nomeArquivo: origem.nome,
-          status: "ERRO",
-          tipo: null,
-          cliente: null,
-          destino: null,
-          acao: null,
           detalhe: "o caminho cadastrado não é uma pasta",
         });
         continue;
@@ -257,13 +308,8 @@ export async function organizarDocumentos(params: {
     } catch (e) {
       relatorio.erros++;
       relatorio.itens.push({
-        origem: origem.caminho,
+        ...itemBase(origem.caminho),
         nomeArquivo: origem.nome,
-        status: "ERRO",
-        tipo: null,
-        cliente: null,
-        destino: null,
-        acao: null,
         detalhe: `não consegui ler a pasta: ${e instanceof Error ? e.message : String(e)}`,
       });
       continue;
@@ -271,25 +317,19 @@ export async function organizarDocumentos(params: {
 
     for (const arquivo of arquivos) {
       relatorio.arquivosVistos++;
-      const nomeArquivo = path.basename(arquivo);
-      const base: ItemOrganizado = {
-        origem: arquivo,
-        nomeArquivo,
-        status: "ERRO",
-        tipo: null,
-        cliente: null,
-        destino: null,
-        acao: null,
-        detalhe: "",
-      };
-
+      const base = itemBase(arquivo);
       try {
         const hash = await hashDoArquivo(arquivo);
-        if (jaArquivados.has(hash)) {
+        if (jaArquivados.has(hash) || vistosNestaExecucao.has(hash)) {
           relatorio.jaExistia++;
-          relatorio.itens.push({ ...base, status: "JA_EXISTIA", detalhe: "conteúdo já arquivado antes" });
+          relatorio.itens.push({
+            ...base,
+            status: "JA_EXISTIA",
+            detalhe: "conteúdo já arquivado antes",
+          });
           continue;
         }
+        vistosNestaExecucao.add(hash);
 
         const cls = await classificarArquivo(arquivo);
         if (!cls.ok) {
@@ -300,93 +340,11 @@ export async function organizarDocumentos(params: {
           );
           continue;
         }
-        const c = cls.classificacao;
-        base.tipo = c.tipo;
-
-        // --- De quem é? ---
-        const cliente =
-          (origem.clienteId ? clientes.find((x) => x.id === origem.clienteId) : undefined) ??
-          (c.cnpj ? porCnpj.get(c.cnpj) : undefined) ??
-          (c.inscricaoEstadual ? porIe.get(c.inscricaoEstadual) : undefined);
-
-        if (!cliente) {
-          relatorio.quarentena++;
-          const quem = c.cnpj ? `CNPJ ${c.cnpj}` : c.inscricaoEstadual ? `IE ${c.inscricaoEstadual}` : "sem CNPJ no arquivo";
-          await registrar(
-            { ...base, status: "QUARENTENA", detalhe: `cliente não encontrado (${quem})` },
-            { hash, tipo: c.tipo, clienteId: null, ano: c.ano, mes: c.mes },
-          );
-          continue;
-        }
-        base.cliente = cliente.razaoSocial;
-
-        // --- Para onde vai? ---
-        const dest = destinoDoDocumento(c, path.extname(arquivo));
-        if (!dest.ok) {
-          relatorio.quarentena++;
-          await registrar(
-            { ...base, status: "QUARENTENA", detalhe: dest.motivo },
-            { hash, tipo: c.tipo, clienteId: cliente.id, ano: c.ano, mes: c.mes },
-          );
-          continue;
-        }
-
-        const destinoAbs = path.join(pastaCliente(cliente), dest.destino.relativo);
-        base.destino = destinoAbs;
-
-        if (path.resolve(destinoAbs) === path.resolve(arquivo)) {
-          relatorio.jaNoLugar++;
-          await registrar(
-            { ...base, status: "JA_NO_LUGAR", detalhe: "já está no lugar certo, com o nome certo" },
-            { hash, tipo: c.tipo, clienteId: cliente.id, ano: c.ano, mes: c.mes },
-          );
-          continue;
-        }
-
-        // Destino ocupado: só é conflito se o conteúdo for diferente.
-        if (existsSync(destinoAbs)) {
-          const hashDestino = await hashDoArquivo(destinoAbs);
-          if (hashDestino === hash) {
-            relatorio.jaExistia++;
-            await registrar(
-              { ...base, status: "JA_EXISTIA", detalhe: "o destino já tem este mesmo conteúdo" },
-              { hash, tipo: c.tipo, clienteId: cliente.id, ano: c.ano, mes: c.mes },
-            );
-            continue;
-          }
-          relatorio.conflitos++;
-          await registrar(
-            {
-              ...base,
-              status: "CONFLITO",
-              detalhe: "já existe outro arquivo neste destino — nada foi sobrescrito",
-            },
-            { hash, tipo: c.tipo, clienteId: cliente.id, ano: c.ano, mes: c.mes },
-          );
-          continue;
-        }
-
-        const acao: "mover" | "copiar" = dentroDaRaiz(arquivo, raiz) ? "mover" : "copiar";
-        base.acao = acao;
-        const detalhe = `${acao === "mover" ? "movido" : "copiado"} — ${dest.destino.explicacao}`;
-
-        if (!simular) {
-          await mkdir(path.dirname(destinoAbs), { recursive: true });
-          if (acao === "mover") await rename(arquivo, destinoAbs);
-          else await copyFile(arquivo, destinoAbs);
-        }
-
-        relatorio.arquivados++;
-        jaArquivados.add(hash);
-        await registrar(
-          { ...base, status: "ARQUIVADO", detalhe: simular ? `seria ${detalhe}` : detalhe },
-          { hash, tipo: c.tipo, clienteId: cliente.id, ano: c.ano, mes: c.mes },
-        );
+        pendentes.push({ arquivo, hash, classificacao: cls.classificacao });
       } catch (e) {
         relatorio.erros++;
         relatorio.itens.push({
           ...base,
-          status: "ERRO",
           detalhe: e instanceof Error ? e.message : String(e),
         });
       }
@@ -400,10 +358,138 @@ export async function organizarDocumentos(params: {
     }
   }
 
-  return relatorio;
-}
+  // -------------------------------------------------------------------------
+  // Um CNPJ, um nome: o mais recente que apareceu nos documentos.
+  // -------------------------------------------------------------------------
+  // "Mais recente" tem que ser por COMPETÊNCIA, não por ano: a CRS Atacadista
+  // passou a assinar no meio de 2023, e no mesmo ano existem documentos com os
+  // dois nomes. Comparando só o ano, dava empate e vencia o antigo.
+  const nomePorCnpj = new Map<string, { nome: string; competencia: number }>();
+  for (const { classificacao: c } of pendentes) {
+    if (!c.cnpj || !pareceRazaoSocial(c.nomeEmpresa)) continue;
+    const competencia = (c.ano ?? 0) * 12 + (c.mes ?? 0);
+    const atual = nomePorCnpj.get(c.cnpj);
+    if (!atual || competencia > atual.competencia) {
+      nomePorCnpj.set(c.cnpj, { nome: c.nomeEmpresa!, competencia });
+    }
+  }
 
-/** Caminho da quarentena, exposto pra tela mostrar onde procurar. */
-export function caminhoQuarentena(): string {
-  return pastaQuarentena(pastaRaiz(), new Date());
+  // =========================================================================
+  // FASE 2 — decidir e agir
+  // =========================================================================
+  for (const { arquivo, hash, classificacao: c } of pendentes) {
+    const base = itemBase(arquivo);
+    base.tipo = c.tipo;
+
+    try {
+      // --- De quem é? ---
+      //
+      // Cliente cadastrado é o caso feliz. Mas o documento diz de quem ele é
+      // (CNPJ e razão social estão dentro dele), e o Higor decidiu em
+      // 31/08/2026: se dá pra saber, arquiva na empresa certa mesmo sem
+      // cadastro. Foi o caso dos SPED da CRS/Ponto Forte que uma cópia em lote
+      // largou dentro da pasta da Construtora Rodrigues Almeida.
+      const cliente =
+        (c.cnpj ? porCnpj.get(c.cnpj) : undefined) ??
+        (c.inscricaoEstadual ? porIe.get(c.inscricaoEstadual) : undefined);
+
+      let pastaDaEmpresa: string | null = null;
+      if (cliente) {
+        pastaDaEmpresa = pastaCliente(cliente);
+      } else if (c.cnpj) {
+        const escolhido = nomePorCnpj.get(c.cnpj)?.nome ?? null;
+        pastaDaEmpresa =
+          pastaExistenteDoCnpj(raiz, c.cnpj) ??
+          (escolhido ? path.join(raiz, nomearPasta(escolhido, c.cnpj)) : null);
+      }
+
+      if (!pastaDaEmpresa) {
+        relatorio.quarentena++;
+        const quem = c.cnpj
+          ? `CNPJ ${c.cnpj}, sem razão social confiável no arquivo`
+          : c.inscricaoEstadual
+            ? `IE ${c.inscricaoEstadual}`
+            : "sem CNPJ válido no arquivo";
+        await registrar(
+          { ...base, status: "QUARENTENA", detalhe: `não deu pra saber de quem é (${quem})` },
+          { hash, tipo: c.tipo, clienteId: null, ano: c.ano, mes: c.mes },
+        );
+        continue;
+      }
+      base.cliente = cliente
+        ? cliente.razaoSocial
+        : `${nomePorCnpj.get(c.cnpj!)?.nome ?? c.cnpj} (sem cadastro)`;
+
+      // --- Para onde vai? ---
+      const dest = destinoDoDocumento(c, path.extname(arquivo));
+      if (!dest.ok) {
+        relatorio.quarentena++;
+        await registrar(
+          { ...base, status: "QUARENTENA", detalhe: dest.motivo },
+          { hash, tipo: c.tipo, clienteId: cliente?.id ?? null, ano: c.ano, mes: c.mes },
+        );
+        continue;
+      }
+
+      const destinoAbs = path.join(pastaDaEmpresa, dest.destino.relativo);
+      base.destino = destinoAbs;
+
+      if (path.resolve(destinoAbs) === path.resolve(arquivo)) {
+        relatorio.jaNoLugar++;
+        await registrar(
+          { ...base, status: "JA_NO_LUGAR", detalhe: "já está no lugar certo, com o nome certo" },
+          { hash, tipo: c.tipo, clienteId: cliente?.id ?? null, ano: c.ano, mes: c.mes },
+        );
+        continue;
+      }
+
+      // Destino ocupado: só é conflito se o conteúdo for diferente.
+      if (existsSync(destinoAbs)) {
+        const hashDestino = await hashDoArquivo(destinoAbs);
+        if (hashDestino === hash) {
+          relatorio.jaExistia++;
+          await registrar(
+            { ...base, status: "JA_EXISTIA", detalhe: "o destino já tem este mesmo conteúdo" },
+            { hash, tipo: c.tipo, clienteId: cliente?.id ?? null, ano: c.ano, mes: c.mes },
+          );
+          continue;
+        }
+        relatorio.conflitos++;
+        await registrar(
+          {
+            ...base,
+            status: "CONFLITO",
+            detalhe: "já existe outro arquivo neste destino — nada foi sobrescrito",
+          },
+          { hash, tipo: c.tipo, clienteId: cliente?.id ?? null, ano: c.ano, mes: c.mes },
+        );
+        continue;
+      }
+
+      const acao: "mover" | "copiar" = dentroDaRaiz(arquivo, raiz) ? "mover" : "copiar";
+      base.acao = acao;
+      const detalhe = `${acao === "mover" ? "movido" : "copiado"} — ${dest.destino.explicacao}`;
+
+      if (!simular) {
+        await mkdir(path.dirname(destinoAbs), { recursive: true });
+        if (acao === "mover") await rename(arquivo, destinoAbs);
+        else await copyFile(arquivo, destinoAbs);
+      }
+
+      relatorio.arquivados++;
+      await registrar(
+        { ...base, status: "ARQUIVADO", detalhe: simular ? `seria ${detalhe}` : detalhe },
+        { hash, tipo: c.tipo, clienteId: cliente?.id ?? null, ano: c.ano, mes: c.mes },
+      );
+    } catch (e) {
+      relatorio.erros++;
+      relatorio.itens.push({
+        ...base,
+        status: "ERRO",
+        detalhe: e instanceof Error ? e.message : String(e),
+      });
+    }
+  }
+
+  return relatorio;
 }

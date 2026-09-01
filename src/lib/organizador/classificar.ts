@@ -57,6 +57,15 @@ export interface Classificacao {
   mes: number | null;
   /** CNPJ (14 dígitos) encontrado no conteúdo — é assim que se acha o cliente. */
   cnpj: string | null;
+  /**
+   * Razão social escrita DENTRO do documento.
+   *
+   * É o que permite arquivar na empresa certa mesmo quando ela não é cliente
+   * cadastrado: com nome + CNPJ dá pra compor a pasta dela. Sem isso, um SPED
+   * da Ponto Forte guardado por engano na pasta da Construtora ficaria lá para
+   * sempre, porque ninguém tem como saber de quem ele é sem abrir.
+   */
+  nomeEmpresa: string | null;
   /** Inscrição estadual, quando é o identificador (GIAM). */
   inscricaoEstadual: string | null;
   /** Tributo, só para o razão. */
@@ -81,12 +90,76 @@ function soDigitos(s: string): string {
   return s.replace(/\D/g, "");
 }
 
-/** Primeiro CNPJ formatado ou de 14 dígitos que aparecer no texto. */
+/**
+ * CNPJ válido? Confere os dois dígitos verificadores.
+ *
+ * Não é preciosismo: sem isso, qualquer sequência de 14 dígitos de um
+ * formulário vira "CNPJ". Um espelho da GIAM chegou a produzir
+ * `54736810721319`, e o robô ia criar uma pasta para essa empresa inexistente.
+ */
+export function validarCnpj(cnpj: string): boolean {
+  const d = cnpj.replace(/\D/g, "");
+  if (d.length !== 14) return false;
+  if (/^(\d)\1{13}$/.test(d)) return false; // 00000000000000 e afins
+  const dv = (base: string, pesos: number[]) => {
+    const soma = base.split("").reduce((s, n, i) => s + Number(n) * pesos[i], 0);
+    const resto = soma % 11;
+    return resto < 2 ? 0 : 11 - resto;
+  };
+  const p1 = [5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2];
+  const p2 = [6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2];
+  return dv(d.slice(0, 12), p1) === Number(d[12]) && dv(d.slice(0, 13), p2) === Number(d[13]);
+}
+
+/**
+ * Primeiro CNPJ VÁLIDO que aparecer no texto — formatado ou cru.
+ *
+ * Testa todos os candidatos e devolve o primeiro que passa no dígito
+ * verificador; número que só parece CNPJ é descartado em silêncio.
+ */
 export function acharCnpj(texto: string): string | null {
-  const formatado = /(\d{2}\.\d{3}\.\d{3}\/\d{4}-\d{2})/.exec(texto);
-  if (formatado) return soDigitos(formatado[1]);
-  const cru = /\b(\d{14})\b/.exec(texto);
-  return cru ? cru[1] : null;
+  for (const m of texto.matchAll(/(\d{2}\.\d{3}\.\d{3}\/\d{4}-\d{2})/g)) {
+    const c = soDigitos(m[1]);
+    if (validarCnpj(c)) return c;
+  }
+  for (const m of texto.matchAll(/\b(\d{14})\b/g)) {
+    if (validarCnpj(m[1])) return m[1];
+  }
+  return null;
+}
+
+/**
+ * O texto parece uma razão social, ou é rótulo de formulário?
+ *
+ * O extrator de PDF devolve os rótulos do formulário junto com o conteúdo, e
+ * sem esse filtro viram "empresa": um espelho da GIAM produziu
+ * "16.3 NOTA FISCAL VALOR 16.4 MUNICIPIOS", e um recibo de ECD produziu "CNPJ".
+ */
+export function pareceRazaoSocial(nome: string | null): boolean {
+  if (!nome) return false;
+  const limpo = nome.trim();
+  if (limpo.length < 5 || limpo.length > 70) return false;
+  const letras = (limpo.match(/[A-Za-zÀ-Ú]/g) ?? []).length;
+  const digitos = (limpo.match(/\d/g) ?? []).length;
+  if (letras < 5 || digitos > letras) return false;
+  const t = semAcento(limpo).toUpperCase();
+  const rotulos = [
+    "NOTA FISCAL",
+    "RAZAO SOCIAL",
+    "INSCRICAO",
+    "IDENTIFICACAO",
+    "PERIODO",
+    "MUNICIPIO",
+    "VENCIMENTO",
+    "ESTABELECIMENTO",
+    "MINISTERIO",
+    "SECRETARIA",
+    "RECIBO",
+    "DECLARACAO",
+  ];
+  if (rotulos.some((r) => t.includes(r))) return false;
+  if (/^CNPJ\b/.test(t) || t === "CNPJ") return false;
+  return true;
 }
 
 function dataSped(campo: string): { ano: number; mes: number } | null {
@@ -96,6 +169,26 @@ function dataSped(campo: string): { ano: number; mes: number } | null {
   const ano = Number(campo.slice(4, 8));
   if (!ano || mes < 1 || mes > 12) return null;
   return { ano, mes };
+}
+
+
+/**
+ * Razão social no registro |0000|, que muda de posição conforme o layout:
+ *   EFD ICMS/IPI  |0000|COD_VER|COD_FIN|DT_INI|DT_FIN|NOME|CNPJ|
+ *   ECD / ECF     |0000|LECD|DT_INI|DT_FIN|NOME|CNPJ|
+ *   Contribuições |0000|VER|TIPO|||DT_INI|DT_FIN|NOME|CNPJ|
+ */
+function nomeNoSped(campos: string[], posicao: number): string | null {
+  const temLetras = (s: string) => (s.match(/[A-Za-zÀ-Ú]/g) ?? []).length >= 3;
+  const candidato = (campos[posicao] ?? "").trim();
+  if (candidato.length >= 3 && temLetras(candidato)) return candidato;
+  // Último recurso: o primeiro campo que pareça nome de empresa. Exigir LETRAS
+  // aqui não é detalhe: sem isso "01102025" (a data inicial do EFD) virava razão
+  // social, e o robô criaria uma pasta chamada `01102025_<CNPJ>`.
+  const outro = campos.find(
+    (c) => c.trim().length >= 5 && temLetras(c) && /^[A-Za-zÀ-Ú0-9 .,&'/-]+$/.test(c.trim()),
+  );
+  return outro?.trim() ?? null;
 }
 
 /**
@@ -124,6 +217,7 @@ export function classificarTexto(
         ano,
         mes,
         cnpj: acharCnpj(amostra),
+        nomeEmpresa: null,
         inscricaoEstadual: null,
         tributo: null,
         contaCodigo: null,
@@ -143,6 +237,7 @@ export function classificarTexto(
         ano: per ? Number(per[2]) : null,
         mes: per ? Number(per[1]) : null,
         cnpj: acharCnpj(amostra),
+        nomeEmpresa: null,
         inscricaoEstadual: null,
         tributo: null,
         contaCodigo: null,
@@ -172,6 +267,7 @@ export function classificarTexto(
           ano: d?.ano ?? null,
           mes: null,
           cnpj,
+          nomeEmpresa: nomeNoSped(campos, 5),
           inscricaoEstadual: null,
           tributo: null,
           contaCodigo: null,
@@ -190,6 +286,7 @@ export function classificarTexto(
           ano: d?.ano ?? null,
           mes: null,
           cnpj,
+          nomeEmpresa: nomeNoSped(campos, 5),
           inscricaoEstadual: null,
           tributo: null,
           contaCodigo: null,
@@ -209,6 +306,7 @@ export function classificarTexto(
           ano: d?.ano ?? null,
           mes: d?.mes ?? null,
           cnpj,
+          nomeEmpresa: nomeNoSped(campos, 8),
           inscricaoEstadual: null,
           tributo: null,
           contaCodigo: null,
@@ -236,6 +334,7 @@ export function classificarTexto(
           ano: d?.ano ?? null,
           mes: d?.mes ?? null,
           cnpj,
+          nomeEmpresa: nomeNoSped(campos, 6),
           inscricaoEstadual: ie && /^\d+$/.test(ie) ? ie : null,
           tributo: null,
           contaCodigo: null,
@@ -261,6 +360,7 @@ export function classificarTexto(
         ano: comp ? Number(comp[2]) : null,
         mes: comp ? Number(comp[1]) : null,
         cnpj: null,
+        nomeEmpresa: null,
         inscricaoEstadual: ie,
         tributo: null,
         contaCodigo: null,
@@ -286,9 +386,26 @@ const MESES_EXTENSO: Record<string, number> = {
  * um pelo outro:
  *   comprovante → declaração → guia → razão → balanço/DRE → espelho da GIAM
  */
+/**
+ * Razão social num PDF. Cada documento a escreve de um jeito:
+ *   PGDAS-D     "Nome empresarial: X"
+ *   razão       "Empresa: X"
+ *   DAS/comprov. o nome vem logo depois do CNPJ, na mesma linha
+ */
+function nomeNoPdf(texto: string): string | null {
+  const rotulado =
+    /Nome empresarial:?\s*([^\n]{3,80})/i.exec(texto)?.[1] ??
+    /Empresa:?\s*([^\n]{3,80})/i.exec(texto)?.[1] ??
+    /Raz[ãa]o Social:?\s*([^\n]{3,80})/i.exec(texto)?.[1];
+  if (rotulado) return rotulado.trim();
+  const depoisDoCnpj = /\d{2}\.\d{3}\.\d{3}\/\d{4}-\d{2}\s+([A-ZÀ-Ú][A-ZÀ-Ú0-9 .,&'-]{4,70})/.exec(texto);
+  return depoisDoCnpj?.[1]?.trim() ?? null;
+}
+
 export function classificarPdf(texto: string, nomeArquivo: string): ResultadoClassificacao {
   const t = semAcento(texto);
   const cnpj = acharCnpj(texto);
+  const nomeEmpresa = nomeNoPdf(texto);
 
   // --- Comprovante de Arrecadação (o ano inteiro num PDF, uma página por doc) ---
   if (/registro de arrecadacao de (DAS|DARF)/i.test(t) || /Comprovante de Arrecadacao/i.test(t)) {
@@ -301,6 +418,7 @@ export function classificarPdf(texto: string, nomeArquivo: string): ResultadoCla
         ano: anos[0] ?? null,
         mes: null,
         cnpj,
+        nomeEmpresa,
         inscricaoEstadual: null,
         tributo: null,
         contaCodigo: null,
@@ -328,6 +446,7 @@ export function classificarPdf(texto: string, nomeArquivo: string): ResultadoCla
         ano: m ? Number(m[3]) : null,
         mes: m ? Number(m[2]) : null,
         cnpj,
+        nomeEmpresa,
         inscricaoEstadual: null,
         tributo: null,
         contaCodigo: null,
@@ -359,6 +478,7 @@ export function classificarPdf(texto: string, nomeArquivo: string): ResultadoCla
         ano,
         mes,
         cnpj,
+        nomeEmpresa,
         inscricaoEstadual: null,
         tributo: null,
         contaCodigo: null,
@@ -398,6 +518,7 @@ export function classificarPdf(texto: string, nomeArquivo: string): ResultadoCla
         ano: periodo ? Number(periodo[1]) : null,
         mes: null,
         cnpj,
+        nomeEmpresa,
         inscricaoEstadual: null,
         tributo,
         contaCodigo,
@@ -417,6 +538,7 @@ export function classificarPdf(texto: string, nomeArquivo: string): ResultadoCla
         ano: ano ? Number(ano[1]) : null,
         mes: null,
         cnpj,
+        nomeEmpresa,
         inscricaoEstadual: null,
         tributo: null,
         contaCodigo: null,
@@ -434,6 +556,7 @@ export function classificarPdf(texto: string, nomeArquivo: string): ResultadoCla
         ano: ano ? Number(ano[1]) : null,
         mes: null,
         cnpj,
+        nomeEmpresa,
         inscricaoEstadual: null,
         tributo: null,
         contaCodigo: null,
@@ -454,6 +577,7 @@ export function classificarPdf(texto: string, nomeArquivo: string): ResultadoCla
         ano: comp ? Number(comp[2]) : null,
         mes: comp ? Number(comp[1]) : null,
         cnpj,
+        nomeEmpresa,
         inscricaoEstadual: ie ? soDigitos(ie) : null,
         tributo: null,
         contaCodigo: null,

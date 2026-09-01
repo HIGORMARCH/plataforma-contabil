@@ -142,6 +142,7 @@ describe("destinoDoDocumento", () => {
     ano: 2025,
     mes: 12,
     cnpj: "34351482000146",
+    nomeEmpresa: null,
     inscricaoEstadual: null,
     tributo: null,
     contaCodigo: null,
