@@ -296,8 +296,17 @@ export function classificarTexto(
       };
     }
 
-    // EFD-Contribuições: os blocos M são o marcador definitivo.
-    if (/\|M100\||\|M200\||\|M400\||\|M600\|/.test(amostra)) {
+    // EFD-Contribuições.
+    //
+    // Os blocos M seriam o marcador ideal, mas em arquivo grande o primeiro
+    // |M200| está muito além dos 8 KB que lemos — e aí 100+ PISCOFINS caíam
+    // como "layout não reconhecido". O formato do próprio 0000 resolve:
+    //   |0000|VERSAO|TIPO|||DT_INI|DT_FIN|NOME|CNPJ|
+    // as datas nos campos 6 e 7 são o que distingue do EFD ICMS, onde elas
+    // estão nos campos 4 e 5.
+    const pareceContribuicoes =
+      dataSped(campos[6] ?? "") !== null && dataSped(campos[7] ?? "") !== null;
+    if (/\|M100\||\|M200\||\|M400\||\|M600\|/.test(amostra) || pareceContribuicoes) {
       const d = dataSped(campos[6] ?? "");
       return {
         ok: true,

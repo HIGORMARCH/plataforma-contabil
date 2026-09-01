@@ -46,6 +46,33 @@ describe("classificarTexto", () => {
     expect(fiscal.ok && fiscal.classificacao.tipo).toBe("SPED_FISCAL");
   });
 
+  it("reconhece SPED grande sem depender de bloco na amostra", () => {
+    // Em arquivo de centenas de MB, nem |M200| (Contribuições) nem |C100|
+    // (Fiscal) aparecem nos primeiros 8 KB que o robô lê. Só o formato do 0000
+    // resolve — e foi por isso que 100+ PISCOFINS ficaram parados na quarentena.
+    const contribSemBlocoM = classificarTexto(
+      ".txt",
+      "|0000|006|0|||01032024|31032024|CASA SAO PAULO CALCADOS LTDA|37417896000119|\n|0001|0|\n",
+      "PISCOFINS_20240301.txt",
+    );
+    expect(contribSemBlocoM.ok).toBe(true);
+    if (!contribSemBlocoM.ok) return;
+    expect(contribSemBlocoM.classificacao.tipo).toBe("SPED_CONTRIBUICOES");
+    expect(contribSemBlocoM.classificacao.ano).toBe(2024);
+    expect(contribSemBlocoM.classificacao.mes).toBe(3);
+    expect(contribSemBlocoM.classificacao.nomeEmpresa).toBe("CASA SAO PAULO CALCADOS LTDA");
+
+    const fiscalSemC100 = classificarTexto(
+      ".txt",
+      "|0000|017|0|01082023|31082023|CRS ATACADISTA LTDA|43211383000150||TO|295155671|\n|0001|0|\n",
+      "sped.txt",
+    );
+    expect(fiscalSemC100.ok).toBe(true);
+    if (!fiscalSemC100.ok) return;
+    expect(fiscalSemC100.classificacao.tipo).toBe("SPED_FISCAL");
+    expect(fiscalSemC100.classificacao.mes).toBe(8);
+  });
+
   it("reconhece DCTF antiga pelo cabeçalho DCTFM", () => {
     const r = classificarTexto(".dec", "DCTFM2.5" + "R10" + "1".repeat(14) + "202203", "x.dec");
     expect(r.ok).toBe(true);

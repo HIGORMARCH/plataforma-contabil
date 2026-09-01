@@ -55,12 +55,21 @@ const EXTENSOES = new Set([".pdf", ".txt", ".dec", ".xml"]);
  */
 const PASTAS_IGNORADAS = new Set([
   "_A CLASSIFICAR",
+  // `_QUARENTENA` NÃO entra aqui de propósito: o robô precisa reexaminá-la a
+  // cada passagem. Quando o classificador aprende um formato novo, o que estava
+  // parado sai sozinho — foi o que aconteceu com 100+ PISCOFINS. Ignorar a
+  // quarentena a transformaria em cemitério.
   "DOCUMENTOS FISCAIS",
   "node_modules",
   ".git",
   "$RECYCLE.BIN",
   "System Volume Information",
 ]);
+
+/** Onde fica o que o robô não soube arquivar. */
+const PASTA_QUARENTENA = "_QUARENTENA";
+/** Subpasta de quem o robô não conseguiu identificar. */
+const SEM_IDENTIFICACAO = "_SEM IDENTIFICACAO";
 
 export type StatusItem =
   | "ARQUIVADO"
@@ -188,6 +197,72 @@ interface Pendente {
   arquivo: string;
   hash: string;
   classificacao: Classificacao;
+}
+
+/**
+ * Move para a quarentena o que não deu pra arquivar, agrupado por empresa.
+ *
+ * Só mexe em arquivo que está DENTRO da raiz da plataforma: documento que veio
+ * do servidor do escritório fica onde está, sempre.
+ *
+ * O nome original é preservado — na quarentena o que importa é reconhecer o
+ * arquivo, não padronizar. Colisão de nome ganha sufixo em vez de sobrescrever.
+ */
+async function mandarPraQuarentena(params: {
+  arquivo: string;
+  raiz: string;
+  empresa: string | null;
+  simular: boolean;
+}): Promise<string | null> {
+  const { arquivo, raiz, empresa, simular } = params;
+  if (!dentroDaRaiz(arquivo, raiz)) return null;
+
+  const grupo = empresa ? nomeSeguroDePasta(empresa) : SEM_IDENTIFICACAO;
+  const pasta = path.join(raiz, PASTA_QUARENTENA, grupo);
+  let destino = path.join(pasta, path.basename(arquivo));
+
+  if (path.resolve(destino) === path.resolve(arquivo)) return destino;
+
+  if (existsSync(destino)) {
+    const ext = path.extname(destino);
+    const base = path.basename(destino, ext);
+    let n = 2;
+    while (existsSync(path.join(pasta, `${base} (${n})${ext}`)) && n < 100) n++;
+    destino = path.join(pasta, `${base} (${n})${ext}`);
+  }
+
+  if (!simular) {
+    await mkdir(pasta, { recursive: true });
+    await rename(arquivo, destino);
+  }
+  return destino;
+}
+
+/**
+ * Grupo da quarentena quando não se sabe a empresa: a pasta de onde o arquivo
+ * veio. Preserva o contexto — "estava na pasta da LUPO" já é meia resposta pra
+ * quem vai analisar.
+ */
+function grupoDaOrigem(arquivo: string, raiz: string): string | null {
+  const rel = path.relative(raiz, arquivo);
+  if (rel.startsWith("..") || path.isAbsolute(rel)) return null;
+  // Arquivo que JÁ está na quarentena mantém o grupo que recebeu — sem isto,
+  // cada passagem do robô o enfiaria um nível mais fundo:
+  // `_QUARENTENA\_QUARENTENA\_QUARENTENA\...`
+  const partes = rel.split(path.sep).filter((p) => p !== PASTA_QUARENTENA);
+  const primeiro = partes[0];
+  return primeiro && primeiro !== path.basename(arquivo) ? primeiro : null;
+}
+
+/** Nome de pasta legível e seguro no Windows. */
+function nomeSeguroDePasta(nome: string): string {
+  return nome
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .replace(/[<>:"/\\|?*]/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 70);
 }
 
 export async function organizarDocumentos(params: {
@@ -334,8 +409,14 @@ export async function organizarDocumentos(params: {
         const cls = await classificarArquivo(arquivo);
         if (!cls.ok) {
           relatorio.quarentena++;
+          const destino = await mandarPraQuarentena({
+            arquivo,
+            raiz,
+            empresa: grupoDaOrigem(arquivo, raiz),
+            simular,
+          });
           await registrar(
-            { ...base, status: "QUARENTENA", detalhe: cls.motivo },
+            { ...base, status: "QUARENTENA", destino, detalhe: cls.motivo },
             { hash, tipo: "DESCONHECIDO", clienteId: null, ano: null, mes: null },
           );
           continue;
@@ -410,8 +491,19 @@ export async function organizarDocumentos(params: {
           : c.inscricaoEstadual
             ? `IE ${c.inscricaoEstadual}`
             : "sem CNPJ válido no arquivo";
+        const destino = await mandarPraQuarentena({
+          arquivo,
+          raiz,
+          empresa: c.cnpj ? `CNPJ ${c.cnpj}` : grupoDaOrigem(arquivo, raiz),
+          simular,
+        });
         await registrar(
-          { ...base, status: "QUARENTENA", detalhe: `não deu pra saber de quem é (${quem})` },
+          {
+            ...base,
+            status: "QUARENTENA",
+            destino,
+            detalhe: `não deu pra saber de quem é (${quem})`,
+          },
           { hash, tipo: c.tipo, clienteId: null, ano: c.ano, mes: c.mes },
         );
         continue;
@@ -424,8 +516,16 @@ export async function organizarDocumentos(params: {
       const dest = destinoDoDocumento(c, path.extname(arquivo));
       if (!dest.ok) {
         relatorio.quarentena++;
+        // Aqui a empresa é conhecida — o que falta é a competência. Vai pra
+        // quarentena DELA, não pro monte dos sem identificação.
+        const destino = await mandarPraQuarentena({
+          arquivo,
+          raiz,
+          empresa: path.basename(pastaDaEmpresa),
+          simular,
+        });
         await registrar(
-          { ...base, status: "QUARENTENA", detalhe: dest.motivo },
+          { ...base, status: "QUARENTENA", destino, detalhe: dest.motivo },
           { hash, tipo: c.tipo, clienteId: cliente?.id ?? null, ano: c.ano, mes: c.mes },
         );
         continue;
@@ -491,5 +591,60 @@ export async function organizarDocumentos(params: {
     }
   }
 
+  if (!simular) await escreverResumoQuarentena(raiz, relatorio);
+
   return relatorio;
+}
+
+/**
+ * Escreve `_QUARENTENA\_LEIA-ME.md` com o motivo de cada arquivo parado.
+ *
+ * Sem isso a quarentena é um monte de PDF sem explicação: quem for analisar
+ * teria que abrir um por um pra descobrir por que o robô não soube arquivar.
+ */
+async function escreverResumoQuarentena(
+  raiz: string,
+  relatorio: RelatorioOrganizacao,
+): Promise<void> {
+  const emQuarentena = relatorio.itens.filter((i) => i.status === "QUARENTENA" && i.destino);
+  if (emQuarentena.length === 0) return;
+
+  const porGrupo = new Map<string, ItemOrganizado[]>();
+  for (const i of emQuarentena) {
+    const rel = path.relative(path.join(raiz, PASTA_QUARENTENA), i.destino!);
+    const grupo = rel.split(path.sep)[0] ?? SEM_IDENTIFICACAO;
+    if (!porGrupo.has(grupo)) porGrupo.set(grupo, []);
+    porGrupo.get(grupo)!.push(i);
+  }
+
+  const linhas: string[] = [
+    "# Quarentena do organizador",
+    "",
+    `Gerado em ${new Date().toLocaleString("pt-BR")} · ${emQuarentena.length} arquivo(s)`,
+    "",
+    "Documentos que o robô **não soube arquivar**, agrupados por empresa (ou pela",
+    "pasta de onde vieram, quando não deu pra identificar). Cada um traz o motivo.",
+    "",
+    "Arquivo daqui não foi apagado nem alterado — só movido para cá. Resolvido o",
+    "motivo, ele volta a ser arquivado na próxima passagem do robô.",
+    "",
+  ];
+
+  for (const [grupo, itens] of [...porGrupo.entries()].sort((a, b) => b[1].length - a[1].length)) {
+    linhas.push(`## ${grupo} — ${itens.length} arquivo(s)`);
+    linhas.push("");
+    linhas.push("| Arquivo | Tipo | Motivo |");
+    linhas.push("|---|---|---|");
+    for (const i of itens.slice(0, 200)) {
+      const nome = path.basename(i.destino!);
+      linhas.push(`| ${nome} | ${i.tipo ?? "não identificado"} | ${i.detalhe} |`);
+    }
+    if (itens.length > 200) linhas.push(`| … | | mais ${itens.length - 200} arquivo(s) |`);
+    linhas.push("");
+  }
+
+  const destino = path.join(raiz, PASTA_QUARENTENA, "_LEIA-ME.md");
+  await mkdir(path.dirname(destino), { recursive: true });
+  const { writeFile } = await import("node:fs/promises");
+  await writeFile(destino, linhas.join("\n"), "utf8");
 }
