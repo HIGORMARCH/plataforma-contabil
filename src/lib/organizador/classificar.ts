@@ -184,7 +184,29 @@ export function acharCnpjEmbutido(texto: string, nomeArquivo?: string): string |
     const confirmado = candidatos.find((c) => digitos.includes(c));
     if (confirmado) return confirmado;
   }
-  return candidatos[0];
+  // Com vários candidatos e nada que confirme, é chute. Um `.dec` da Palmas
+  // Hall produz cinco CNPJ válidos — inclusive `01132022050000`, que é um
+  // pedaço de data — e nenhum deles é o titular. Melhor não saber: quem não
+  // sabe cai na regra da pasta, que ao menos é rastreável.
+  return candidatos.length === 1 ? candidatos[0] : null;
+}
+
+/**
+ * O CNPJ do titular do SPED — lido da POSIÇÃO dele no registro |0000|.
+ *
+ * Varrer o arquivo atrás de "um CNPJ" não serve: o corpo do SPED está cheio de
+ * CNPJ de terceiro. Um EFD da BLC Center Modas trazia, num registro |0460| de
+ * observação, o CNPJ da transportadora escrito com pontuação — e como a busca
+ * genérica testa o formato pontuado primeiro, o arquivo foi parar numa pasta
+ * com o CNPJ da transportadora.
+ *
+ * Quando a posição não entrega um CNPJ válido, a busca é limitada à PRIMEIRA
+ * LINHA: ali só existe o titular. Fora dela, prefere-se não saber.
+ */
+export function cnpjNoSped(campos: string[], posicao: number, primeiraLinha: string): string | null {
+  const naPosicao = soDigitos(campos[posicao] ?? "");
+  if (validarCnpj(naPosicao)) return naPosicao;
+  return acharCnpj(primeiraLinha);
 }
 
 /**
@@ -355,7 +377,9 @@ export function classificarTexto(
     const primeiraLinha = amostra.split("\n", 1)[0] ?? "";
     const campos = primeiraLinha.split("|");
     const layout = campos[2] ?? "";
-    const cnpj = acharCnpj(amostra);
+    // O CNPJ do titular sai da posição no |0000|, nunca de varredura: o
+    // corpo do SPED cita CNPJ de terceiro (transportadora, fornecedor).
+    const cnpjEm = (pos: number) => cnpjNoSped(campos, pos, primeiraLinha);
 
     if (layout === "LECD") {
       const d = dataSped(campos[3] ?? "");
@@ -365,7 +389,7 @@ export function classificarTexto(
           tipo: "SPED_ECD",
           ano: d?.ano ?? null,
           mes: null,
-          cnpj,
+          cnpj: cnpjEm(6),
           nomeEmpresa: nomeNoSped(campos, 5),
           inscricaoEstadual: null,
           tributo: null,
@@ -394,7 +418,7 @@ export function classificarTexto(
           tipo: "SPED_ECF",
           ano: d?.ano ?? null,
           mes: null,
-          cnpj,
+          cnpj: cnpjEm(4),
           nomeEmpresa: nomeNoSped(campos, 5),
           inscricaoEstadual: null,
           tributo: null,
@@ -425,11 +449,11 @@ export function classificarTexto(
           tipo: "SPED_CONTRIBUICOES",
           ano: d?.ano ?? null,
           mes: d?.mes ?? null,
-          cnpj,
+          cnpj: cnpjEm(9),
           nomeEmpresa: nomeNoSped(campos, 8),
           inscricaoEstadual: null,
           tributo: null,
-          variante: null,
+          variante: campos[3] === "1" ? "RETIFICADORA" : null,
           reciboDe: null,
           contaCodigo: null,
           documentos: 1,
@@ -448,18 +472,18 @@ export function classificarTexto(
       dataSped(campos[4] ?? "") !== null;
     if (/\|C100\||\|E110\||\|E100\|/.test(amostra) || pareceEfdIcms) {
       const d = dataSped(campos[4] ?? "") ?? dataSped(campos[3] ?? "");
-      const ie = campos[9] ?? null;
+      const ie = campos[10] ?? null; // campos[9] e a UF, nao a inscricao
       return {
         ok: true,
         classificacao: {
           tipo: "SPED_FISCAL",
           ano: d?.ano ?? null,
           mes: d?.mes ?? null,
-          cnpj,
+          cnpj: cnpjEm(7),
           nomeEmpresa: nomeNoSped(campos, 6),
           inscricaoEstadual: ie && /^\d+$/.test(ie) ? ie : null,
           tributo: null,
-          variante: null,
+          variante: campos[3] === "1" ? "SUBSTITUTO" : null,
           reciboDe: null,
           contaCodigo: null,
           documentos: 1,
