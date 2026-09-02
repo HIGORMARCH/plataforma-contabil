@@ -188,6 +188,18 @@ export function acharCnpjEmbutido(texto: string, nomeArquivo?: string): string |
 }
 
 /**
+ * Competência escrita no NOME do arquivo — "012026", "01.2026", "01-2026".
+ *
+ * Último recurso, para documento cujo conteúdo realmente não traz o período.
+ * Quem usa isto avisa na evidência: nome de arquivo é palpite de quem salvou.
+ */
+export function competenciaPeloNome(nome: string): { ano: number; mes: number } | null {
+  const m = /(0[1-9]|1[0-2])[.\-_ ]?(20\d{2})/.exec(nome);
+  if (!m) return null;
+  return { ano: Number(m[2]), mes: Number(m[1]) };
+}
+
+/**
  * Competência a partir de um par de datas DDMMAAAA coladas — o jeito que os
  * arquivos posicionais escrevem o período de apuração ("0101202231012022").
  * Só aceita quando as duas datas são do MESMO mês, que é o que caracteriza o
@@ -631,15 +643,47 @@ export function classificarPdf(texto: string, nomeArquivo: string): ResultadoCla
     const ano = /Ano Calend[aá]rio:?\s*(20\d{2})/i.exec(t)?.[1];
     return simples("DEFIS", { ano: ano ? Number(ano) : soAno(), mes: null }, "DEFIS");
   }
-  if (/LIVRO REGISTRO DE (ENTRADAS|SAIDAS|APURACAO|INVENTARIO)|REGISTRO DE APURACAO DO ICMS/i.test(t)) {
-    const c = competenciaCurta();
-    const qual = /ENTRADAS/i.test(t) ? "ENTRADAS" : /SAIDAS/i.test(t) ? "SAIDAS" : /INVENTARIO/i.test(t) ? "INVENTARIO" : "APURACAO";
-    return simples("LIVRO_FISCAL", { ano: c?.ano ?? null, mes: c?.mes ?? null }, "livro fiscal", qual);
+  // Livros fiscais e o resumo por CFOP: o cliente que não escritura no Domínio
+  // imprime esse conjunto todo mês, e ele é a apuração do ICMS dele.
+  //
+  // Qual livro é tem que sair do TÍTULO, não do texto: o livro de apuração traz
+  // "ENTRADAS" e "SAÍDAS" como cabeçalho de coluna, e uma busca solta fazia a
+  // apuração ser arquivada como livro de entradas.
+  const tituloLivro = /LIVRO REGISTRO DE (ENTRADAS|SAIDAS|INVENTARIO)|REGISTRO DE APURACAO DO ICMS|Resumo da apuracao do ICMS por CFOP/i.exec(t);
+  if (tituloLivro) {
+    const titulo = tituloLivro[0].toUpperCase();
+    const qual = titulo.includes("CFOP")
+      ? "RESUMO POR CFOP"
+      : titulo.includes("APURACAO")
+        ? "APURACAO"
+        : titulo.includes("ENTRADAS")
+          ? "ENTRADAS"
+          : titulo.includes("SAIDAS")
+            ? "SAIDAS"
+            : "INVENTARIO";
+    // A competência tem que sair do PERÍODO impresso ("01/01/2026 a
+    // 31/01/2026"). Estes documentos também carimbam a data de emissão, e o
+    // resumo por CFOP só tem ela: sem essa ordem, o resumo de janeiro impresso
+    // em março era arquivado como março.
+    const impresso = /(\d{2})\/(\d{2})\/(\d{4})\s*a\s*\d{2}\/(\d{2})\/(\d{4})/.exec(t);
+    const periodo =
+      impresso && impresso[2] === impresso[4] && impresso[3] === impresso[5]
+        ? { ano: Number(impresso[3]), mes: Number(impresso[2]) }
+        : null;
+    const peloNome = periodo ? null : competenciaPeloNome(nomeArquivo);
+    const c = periodo ?? peloNome;
+    const porNome = peloNome !== null;
+    return simples(
+      "LIVRO_FISCAL",
+      { ano: c?.ano ?? null, mes: c?.mes ?? null },
+      porNome ? "livro fiscal (competência pelo nome do arquivo)" : "livro fiscal",
+      qual,
+    );
   }
   if (/TERMO DE CREDENCIAMENTO|CREDENCIAMENTO DE USO DA ESCRITURACAO/i.test(t)) {
     return simples("TERMO_CREDENCIAMENTO", { ano: soAno(), mes: null }, "termo de credenciamento");
   }
-  if (/GUIA DA PREVIDENCIA SOCIAL|GPS/i.test(t)) {
+  if (/GUIA DA PREVIDENCIA SOCIAL|\bGPS\b/i.test(t)) {
     const c = competenciaCurta();
     return simples("GPS", { ano: c?.ano ?? null, mes: c?.mes ?? null }, "guia da previdência (GPS)", analitico);
   }

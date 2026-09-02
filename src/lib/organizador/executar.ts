@@ -35,6 +35,7 @@ import {
   classificarPdf,
   classificarTexto,
   pareceRazaoSocial,
+  validarCnpj,
   type Classificacao,
 } from "./classificar";
 import { destinoDoDocumento } from "./destino";
@@ -190,6 +191,27 @@ function pastaExistenteDoCnpj(raiz: string, cnpj: string): string | null {
   } catch {
     return null;
   }
+}
+
+/**
+ * A pasta de empresa mais próxima acima do arquivo — a que termina em `_CNPJ`.
+ *
+ * Serve de último recurso para documento cujo conteúdo não identifica ninguém.
+ * Também atende a quarentena, cujos grupos são nomeados com o CNPJ apurado.
+ */
+function pastaAncestralComCnpj(arquivo: string, raiz: string): string | null {
+  let atual = path.dirname(arquivo);
+  while (atual.startsWith(raiz) && atual !== raiz) {
+    const nome = path.basename(atual);
+    const cnpj = /_(\d{14})$/.exec(nome)?.[1];
+    if (cnpj && validarCnpj(cnpj)) {
+      // Na quarentena o grupo é uma cópia do nome da empresa: a pasta de
+      // verdade é a da raiz, não a da quarentena.
+      return pastaExistenteDoCnpj(raiz, cnpj) ?? path.join(raiz, nome);
+    }
+    atual = path.dirname(atual);
+  }
+  return null;
 }
 
 /** O que a fase 1 apurou de cada arquivo, para a fase 2 decidir. */
@@ -495,6 +517,21 @@ export async function organizarDocumentos(params: {
           (escolhido ? path.join(raiz, nomearPasta(escolhido, c.cnpj)) : null);
       }
 
+      // Quando o CONTEÚDO é mudo sobre o dono, a pasta onde o arquivo está é a
+      // única prova que existe. Isto NÃO afrouxa a regra de content-over-path:
+      // documento que diz de quem é continua mandando na localização (foi assim
+      // que os SPED da CRS saíram da pasta da Construtora). Aqui é o inverso —
+      // o resumo por CFOP não imprime CNPJ nenhum, e sem isso ele ficaria em
+      // quarentena para sempre. Fica registrado que a origem foi o caminho.
+      let donoPelaPasta = false;
+      if (!pastaDaEmpresa && !c.cnpj && !c.inscricaoEstadual) {
+        const herdada = pastaAncestralComCnpj(arquivo, raiz);
+        if (herdada) {
+          pastaDaEmpresa = herdada;
+          donoPelaPasta = true;
+        }
+      }
+
       if (!pastaDaEmpresa) {
         relatorio.quarentena++;
         const quem = c.cnpj
@@ -579,7 +616,9 @@ export async function organizarDocumentos(params: {
 
       const acao: "mover" | "copiar" = dentroDaRaiz(arquivo, raiz) ? "mover" : "copiar";
       base.acao = acao;
-      const detalhe = `${acao === "mover" ? "movido" : "copiado"} — ${dest.destino.explicacao}`;
+      const detalhe =
+        `${acao === "mover" ? "movido" : "copiado"} — ${dest.destino.explicacao}` +
+        (donoPelaPasta ? " (dono deduzido da pasta: o arquivo não se identifica)" : "");
 
       if (!simular) {
         await mkdir(path.dirname(destinoAbs), { recursive: true });
