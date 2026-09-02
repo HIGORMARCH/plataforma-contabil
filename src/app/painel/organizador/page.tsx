@@ -168,6 +168,10 @@ export default async function OrganizadorPage({
             <label className="label" htmlFor="clienteId">
               Cliente fixo (opcional)
             </label>
+            <p className="mb-1 text-[11px] leading-snug text-slate-500">
+              Só vale para o arquivo que <b>não se identifica</b>. Documento com CNPJ dentro vai
+              para a empresa dele, mesmo estando nesta pasta.
+            </p>
             <select id="clienteId" name="clienteId" className="input">
               <option value="">Descobrir pelo CNPJ</option>
               {clientes.map((c) => (
@@ -200,17 +204,19 @@ export default async function OrganizadorPage({
         <section className="mb-6 rounded-xl border border-slate-200 bg-white p-5">
           <div className="mb-3 flex flex-wrap items-baseline justify-between gap-3">
             <h2 className="text-sm font-bold uppercase tracking-wide text-slate-500">
-              Conferência da apuração do ICMS
+              Conferência da apuração do ICMS —{" "}
+              <span className="text-slate-400">todas as empresas do escritório</span>
             </h2>
             <span className="text-xs text-slate-500">
               {comFalta.length} de {apuracoes.length} competência(s) incompleta(s)
             </span>
           </div>
           <p className="mb-3 max-w-[80ch] text-xs leading-relaxed text-slate-600">
-            Vale para quem apura em sistema próprio, fora do Domínio. Nesses sistemas{" "}
-            <b>o fechamento do inventário do mês é o que libera a apuração do ICMS</b> — se ele não
-            está na pasta, ou o fechamento não foi feito (e a apuração ao lado não vale), ou foi
-            feito e ninguém guardou.
+            Esta lista <b>não é do cliente que você está analisando</b>: ela varre o escritório
+            inteiro. Só aparece aqui quem apura em sistema próprio, fora do Domínio — nesses
+            sistemas <b>o fechamento do inventário do mês é o que libera a apuração do ICMS</b>. Se
+            o inventário não está na pasta, ou o fechamento não foi feito (e a apuração ao lado não
+            vale), ou foi feito e ninguém guardou.
           </p>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">

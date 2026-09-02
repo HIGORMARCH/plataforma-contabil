@@ -219,6 +219,13 @@ interface Pendente {
   arquivo: string;
   hash: string;
   classificacao: Classificacao;
+  /**
+   * Cliente fixo do endereço de onde o arquivo veio.
+   *
+   * Vale só quando o documento não se identifica — pasta de cliente no servidor
+   * é palpite de quem salvou, e documento que diz de quem é continua mandando.
+   */
+  clienteDaOrigem: string | null;
 }
 
 /**
@@ -325,6 +332,7 @@ export async function organizarDocumentos(params: {
     select: { id: true, razaoSocial: true, cnpj: true, inscricaoEstadual: true, pastaLocal: true },
   });
   const porCnpj = new Map(clientes.map((c) => [c.cnpj.replace(/\D/g, ""), c]));
+  const porId = new Map(clientes.map((c) => [c.id, c]));
   const porIe = new Map(
     clientes
       .filter((c) => c.inscricaoEstadual)
@@ -452,7 +460,12 @@ export async function organizarDocumentos(params: {
           );
           continue;
         }
-        pendentes.push({ arquivo, hash, classificacao: cls.classificacao });
+        pendentes.push({
+          arquivo,
+          hash,
+          classificacao: cls.classificacao,
+          clienteDaOrigem: origem.clienteId,
+        });
       } catch (e) {
         relatorio.erros++;
         relatorio.itens.push({
@@ -489,7 +502,7 @@ export async function organizarDocumentos(params: {
   // =========================================================================
   // FASE 2 — decidir e agir
   // =========================================================================
-  for (const { arquivo, hash, classificacao: c } of pendentes) {
+  for (const { arquivo, hash, classificacao: c, clienteDaOrigem } of pendentes) {
     const base = itemBase(arquivo);
     base.tipo = c.tipo;
 
@@ -525,7 +538,10 @@ export async function organizarDocumentos(params: {
       // quarentena para sempre. Fica registrado que a origem foi o caminho.
       let donoPelaPasta = false;
       if (!pastaDaEmpresa && !c.cnpj && !c.inscricaoEstadual) {
-        const herdada = pastaAncestralComCnpj(arquivo, raiz);
+        // Primeiro o cliente fixo do endereço: quem cadastrou a pasta afirmou
+        // de quem ela é, e essa afirmação vale mais que o palpite do caminho.
+        const fixo = clienteDaOrigem ? porId.get(clienteDaOrigem) : undefined;
+        const herdada = fixo ? pastaCliente(fixo) : pastaAncestralComCnpj(arquivo, raiz);
         if (herdada) {
           pastaDaEmpresa = herdada;
           donoPelaPasta = true;
@@ -618,7 +634,11 @@ export async function organizarDocumentos(params: {
       base.acao = acao;
       const detalhe =
         `${acao === "mover" ? "movido" : "copiado"} — ${dest.destino.explicacao}` +
-        (donoPelaPasta ? " (dono deduzido da pasta: o arquivo não se identifica)" : "");
+        (donoPelaPasta
+          ? clienteDaOrigem
+            ? " (dono veio do cliente fixo do endereço: o arquivo não se identifica)"
+            : " (dono deduzido da pasta: o arquivo não se identifica)"
+          : "");
 
       if (!simular) {
         await mkdir(path.dirname(destinoAbs), { recursive: true });
