@@ -43,7 +43,8 @@ export type TipoDocumento =
   | "TERMO_CREDENCIAMENTO"
   | "DEMONSTRATIVO_ICMS"
   | "DOSSIE_ECAC"
-  | "APURACAO_IPI";
+  | "APURACAO_IPI"
+  | "RECIBO_REC";
 
 export const ROTULO_TIPO: Record<TipoDocumento, string> = {
   SPED_ECD: "SPED-ECD",
@@ -73,6 +74,7 @@ export const ROTULO_TIPO: Record<TipoDocumento, string> = {
   DEMONSTRATIVO_ICMS: "Demonstrativo do ICMS",
   DOSSIE_ECAC: "Documento de dossiê do e-CAC",
   APURACAO_IPI: "Apuração do IPI",
+  RECIBO_REC: "Recibo de transmissão (.REC)",
 };
 
 export interface Classificacao {
@@ -219,7 +221,55 @@ export function cnpjNoSped(campos: string[], posicao: number, primeiraLinha: str
  * Último recurso, para documento cujo conteúdo realmente não traz o período.
  * Quem usa isto avisa na evidência: nome de arquivo é palpite de quem salvou.
  */
+/**
+ * Competência dos relatórios da família GFIP/SEFIP — GPS, RE, comprovante.
+ *
+ * Aqui não dá pra pegar "a primeira data": o cabeçalho traz a versão do
+ * programa e a data da impressão, e ambas parecem competência. Um RE do 13º de
+ * 2019 estava sendo arquivado em 12/2017, que é a data da versão "SEFIP 8.40
+ * (14/12/2017)". Dois anos de erro num documento de folha.
+ *
+ * Duas fontes, nesta ordem:
+ *   1. o campo `COMP:` — explícito, e é o que os relatórios RE trazem;
+ *   2. a `MM/AAAA` que NÃO é pedaço de uma data completa. Na GPS, o layout
+ *      imprime "DATA: 14/12/2019 HORA: 08:31:25 13/2019": o 12/2019 pertence à
+ *      data, o 13/2019 é a competência.
+ *
+ * Mês 13 é competência válida: é o 13º salário.
+ */
+/** Mês por extenso, como a GIAM escreve o período de referência. */
+const MESES_POR_EXTENSO = [
+  "JANEIRO", "FEVEREIRO", "MARCO", "ABRIL", "MAIO", "JUNHO",
+  "JULHO", "AGOSTO", "SETEMBRO", "OUTUBRO", "NOVEMBRO", "DEZEMBRO",
+];
+
+/** `set.2025`, `jan.2026` — o jeito que o ReceitaNet nomeia o arquivo. */
+const MESES_ABREVIADOS = [
+  "jan", "fev", "mar", "abr", "mai", "jun",
+  "jul", "ago", "set", "out", "nov", "dez",
+];
+
+export function competenciaPeloMesEscrito(nome: string): { ano: number; mes: number } | null {
+  const m = /\b(jan|fev|mar|abr|mai|jun|jul|ago|set|out|nov|dez)[a-z]*\.?[ -]?(20\d{2})/i.exec(nome);
+  if (!m) return null;
+  return { ano: Number(m[2]), mes: MESES_ABREVIADOS.indexOf(m[1].toLowerCase()) + 1 };
+}
+
+export function competenciaSefip(texto: string): { ano: number; mes: number } | null {
+  const comp = /COMP:?\s*(0[1-9]|1[0-3])\/(20\d{2})/i.exec(texto);
+  if (comp) return { ano: Number(comp[2]), mes: Number(comp[1]) };
+
+  const solta = /(?<!\d\/)\b(0[1-9]|1[0-3])\/(20\d{2})\b/.exec(texto);
+  return solta ? { ano: Number(solta[2]), mes: Number(solta[1]) } : null;
+}
+
 export function competenciaPeloNome(nome: string): { ano: number; mes: number } | null {
+  // AAAAMMDD primeiro: é como o PVA nomeia o período ("PISCOFINS_20210801_...")
+  // e é mais específico. Testado depois de MM.AAAA, "20210801" casaria como
+  // "08/0120" — ou pior, seria lido como um mês qualquer perdido na string.
+  const iso = /(20\d{2})(0[1-9]|1[0-2])[0-3]\d/.exec(nome);
+  if (iso) return { ano: Number(iso[1]), mes: Number(iso[2]) };
+
   const m = /(0[1-9]|1[0-2])[.\-_ ]?(20\d{2})/.exec(nome);
   if (!m) return null;
   return { ano: Number(m[2]), mes: Number(m[1]) };
@@ -380,6 +430,42 @@ export function classificarTexto(
         contaCodigo: null,
         documentos: 1,
         evidencia: "XML com namespace DCTFWeb",
+      },
+    };
+  }
+
+  // --- .REC: o recibo de transmissão em formato de máquina ---
+  //
+  // Uma linha só: `RC01` + CNPJ + data + hora + o hash do SPED transmitido. É o
+  // par do recibo em PDF, e prova a mesma entrega — por isso fica junto do SPED
+  // que ele comprova, e não numa pasta de recibos separada.
+  //
+  // A competência NÃO está no conteúdo (só a data da transmissão, que é de
+  // outro mês). Ela sai do nome gerado pelo próprio PVA.
+  // O prefixo varia com o SPED: `RC01` no EFD-ICMS, `RCP01` no Contribuições.
+  const rc = /^RC([A-Z]?)\d{2}(\d{14})/.exec(amostra);
+  if (ext === ".rec" && rc) {
+    const cnpjRec = rc[2];
+    const c = competenciaPeloNome(nomeArquivo) ?? competenciaPeloMesEscrito(nomeArquivo);
+    if (!c) {
+      return { ok: false, motivo: "recibo .REC sem competência no nome do arquivo" };
+    }
+    const deContribuicoes = /PISCOFINS|CONTRIB/i.test(nomeArquivo);
+    return {
+      ok: true,
+      classificacao: {
+        tipo: "RECIBO_REC",
+        ano: c.ano,
+        mes: c.mes,
+        cnpj: validarCnpj(cnpjRec) ? cnpjRec : null,
+        nomeEmpresa: null,
+        inscricaoEstadual: null,
+        tributo: null,
+        variante: deContribuicoes ? "CONTRIBUICOES" : "FISCAL",
+        reciboDe: deContribuicoes ? "CONTRIBUICOES" : "FISCAL",
+        contaCodigo: null,
+        documentos: 1,
+        evidencia: "registro RC01; competência pelo nome gerado pelo PVA",
       },
     };
   }
@@ -639,25 +725,25 @@ export function classificarPdf(texto: string, nomeArquivo: string): ResultadoCla
   // comprovante da GFIP e o analítico viriam como guia e brigariam pelo mesmo
   // nome de arquivo.
   if (/COMPROVANTE DE DECLARACAO DAS CONTRIBUICOES A RECOLHER/i.test(t)) {
-    const c = competenciaCurta();
+    const c = competenciaSefip(t);
     return simples(
       "COMPROVANTE_GFIP",
       { ano: c?.ano ?? null, mes: c?.mes ?? null },
       "comprovante de declaração à Previdência",
     );
   }
-  if (/RELAT[OÓ]RIO ANAL[IÍ]TICO DE GPS/i.test(t)) return simples("GPS", { ano: competenciaCurta()?.ano ?? null, mes: competenciaCurta()?.mes ?? null }, "relatório analítico de GPS", "ANALITICO");
-  if (/RELAT[OÓ]RIO ANAL[IÍ]TICO DA GRF/i.test(t)) return simples("GRF_FGTS", { ano: competenciaCurta()?.ano ?? null, mes: competenciaCurta()?.mes ?? null }, "relatório analítico da GRF", "ANALITICO");
+  if (/RELAT[OÓ]RIO ANAL[IÍ]TICO DE GPS/i.test(t)) return simples("GPS", { ano: competenciaSefip(t)?.ano ?? null, mes: competenciaSefip(t)?.mes ?? null }, "relatório analítico de GPS", "ANALITICO");
+  if (/RELAT[OÓ]RIO ANAL[IÍ]TICO DA GRF/i.test(t)) return simples("GRF_FGTS", { ano: competenciaSefip(t)?.ano ?? null, mes: competenciaSefip(t)?.mes ?? null }, "relatório analítico da GRF", "ANALITICO");
   if (/GFIP\s*-\s*SEFIP|SEFIP \d/i.test(t)) {
-    const c = competenciaCurta();
-    return simples("GFIP_SEFIP", { ano: c?.ano ?? null, mes: c?.mes ?? null }, "GFIP/SEFIP", analitico);
+    const c = competenciaSefip(t);
+    return simples("GFIP_SEFIP", { ano: c?.ano ?? null, mes: c?.mes ?? null }, /RELACAO DOS TRABALHADORES/i.test(t) ? "relação dos trabalhadores (RE)" : "GFIP/SEFIP", /RELACAO DOS TRABALHADORES/i.test(t) ? "RELACAO TRABALHADORES" : analitico);
   }
   if (/FUNDO DE GARANTIA DO TEMPO DE SERVICO|\bGRF\b/i.test(t)) {
-    const c = competenciaCurta();
+    const c = competenciaSefip(t);
     return simples("GRF_FGTS", { ano: c?.ano ?? null, mes: c?.mes ?? null }, "GRF / FGTS", analitico);
   }
   if (/NOTIFICACAO DE LANCAMENTO|MULTA POR ATRASO NA ENTREGA/i.test(t)) {
-    const c = competenciaCurta();
+    const c = competenciaSefip(t);
     return simples(
       "NOTIFICACAO_MULTA",
       { ano: c?.ano ?? soAno(), mes: c?.mes ?? null },
@@ -762,7 +848,7 @@ export function classificarPdf(texto: string, nomeArquivo: string): ResultadoCla
     return simples("TERMO_CREDENCIAMENTO", { ano: soAno(), mes: null }, "termo de credenciamento");
   }
   if (/GUIA DA PREVIDENCIA SOCIAL|\bGPS\b/i.test(t)) {
-    const c = competenciaCurta();
+    const c = competenciaSefip(t);
     return simples("GPS", { ano: c?.ano ?? null, mes: c?.mes ?? null }, "guia da previdência (GPS)", analitico);
   }
 
@@ -972,6 +1058,28 @@ export function classificarPdf(texto: string, nomeArquivo: string): ResultadoCla
 
   // --- Espelho da GIAM (SEFAZ-TO) ---
   if (/GIAM/i.test(t) && /SEFAZ|Secretaria da Fazenda/i.test(t)) {
+    // O campo 3.1 escreve o mês por extenso ("JULHO/2025"), e o formulário está
+    // cheio de outras MM/AAAA (vencimento, domicílio, datas dos quadros). Sem
+    // ler o campo certo, o espelho de julho foi classificado como agosto.
+    //
+    // Não dá pra ancorar no rótulo: o extrator devolve TODOS os rótulos do
+    // formulário juntos ("3.1 - PERÍODO REFERÊNCIA 3.2 - ATIV. ECONÔMICA...") e
+    // os valores noutro trecho. Mas mês por extenso só existe nesse campo — as
+    // outras datas do formulário são numéricas.
+    const porExtenso =
+      /(JANEIRO|FEVEREIRO|MAR[ÇC]O|ABRIL|MAIO|JUNHO|JULHO|AGOSTO|SETEMBRO|OUTUBRO|NOVEMBRO|DEZEMBRO)\s*\/\s*(20\d{2})/i.exec(
+        t,
+      );
+    if (porExtenso) {
+      const mes = MESES_POR_EXTENSO.indexOf(semAcento(porExtenso[1]).toUpperCase()) + 1;
+      if (mes > 0) {
+        return simples(
+          "GIAM_ESPELHO",
+          { ano: Number(porExtenso[2]), mes },
+          `espelho da GIAM (período ${porExtenso[1]}/${porExtenso[2]})`,
+        );
+      }
+    }
     const comp = /\b(\d{2})\/(\d{4})\b/.exec(t);
     const ie = /Inscricao Estadual:?\s*([\d.-]{9,15})/i.exec(t)?.[1];
     return {

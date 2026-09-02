@@ -45,7 +45,9 @@ const AMOSTRA_BYTES = 8 * 1024;
 /** Teto de arquivos por execução — evita varredura infinita em pasta gigante. */
 const LIMITE_ARQUIVOS = 5000;
 
-const EXTENSOES = new Set([".pdf", ".txt", ".dec", ".xml"]);
+// O ".rec" entra aqui porque é o recibo de transmissão em formato de máquina:
+// 357 deles estavam parados em DECLARACOES, invisíveis para o robô.
+const EXTENSOES = new Set([".pdf", ".txt", ".dec", ".xml", ".rec"]);
 
 /**
  * Pastas que o robô não varre.
