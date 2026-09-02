@@ -309,6 +309,15 @@ export async function organizarDocumentos(params: {
       .map((c) => [c.inscricaoEstadual!.replace(/\D/g, ""), c]),
   );
 
+  // O escritório também tem escrituração própria, e ele nunca é cliente de si
+  // mesmo: sem isso, os SPED da March ficavam em quarentena por "sem razão
+  // social", sendo que o nome dela está no cadastro desde sempre.
+  const escritorio = await prisma.escritorio.findUnique({
+    where: { id: params.escritorioId },
+    select: { razaoSocial: true, cnpj: true },
+  });
+  const cnpjDoEscritorio = escritorio?.cnpj?.replace(/\D/g, "") ?? null;
+
   // Hashes já arquivados — não se arquiva o mesmo conteúdo duas vezes.
   const jaArquivados = new Set(
     (
@@ -478,7 +487,9 @@ export async function organizarDocumentos(params: {
       if (cliente) {
         pastaDaEmpresa = pastaCliente(cliente);
       } else if (c.cnpj) {
-        const escolhido = nomePorCnpj.get(c.cnpj)?.nome ?? null;
+        const escolhido =
+          nomePorCnpj.get(c.cnpj)?.nome ??
+          (c.cnpj === cnpjDoEscritorio ? (escritorio?.razaoSocial ?? null) : null);
         pastaDaEmpresa =
           pastaExistenteDoCnpj(raiz, c.cnpj) ??
           (escolhido ? path.join(raiz, nomearPasta(escolhido, c.cnpj)) : null);

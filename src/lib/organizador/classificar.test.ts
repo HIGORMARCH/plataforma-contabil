@@ -155,7 +155,13 @@ describe("classificarPdf", () => {
       `MINISTÉRIO DA ECONOMIA\nNOTIFICAÇÃO DE LANÇAMENTO\nMULTA POR ATRASO NA ENTREGA DA ESCRITURAÇÃO FISCAL DIGITAL DAS CONTRIBUIÇÕES\nCNPJ: 37.417.896/0001-19\nPeríodo de Apuração (PA) Prazo Final Entrega\n03/2024 15/05/2024`,
       "RECIBO DE ENTREGA 03.2024.pdf",
     );
-    expect(r.ok).toBe(false);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    // O que importa é NÃO ser declaração do Simples. Hoje ela tem tipo próprio;
+    // antes ia pra quarentena — as duas respostas são aceitáveis, arquivar como
+    // PGDAS-D nunca foi.
+    expect(r.classificacao.tipo).not.toBe("PGDASD_DECLARACAO");
+    expect(r.classificacao.tipo).toBe("NOTIFICACAO_MULTA");
   });
 
   it("recibo de entrega de SPED vira RECIBO_SPED, com a competência do período", () => {
@@ -206,6 +212,7 @@ describe("destinoDoDocumento", () => {
     nomeEmpresa: null,
     inscricaoEstadual: null,
     tributo: null,
+    variante: null,
     reciboDe: null,
     contaCodigo: null,
     documentos: 1,

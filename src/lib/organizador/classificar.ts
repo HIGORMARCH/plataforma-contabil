@@ -31,7 +31,17 @@ export type TipoDocumento =
   | "DRE_DOMINIO"
   | "GIAM_ARQUIVO"
   | "GIAM_ESPELHO"
-  | "RECIBO_SPED";
+  | "RECIBO_SPED"
+  | "GPS"
+  | "GRF_FGTS"
+  | "GFIP_SEFIP"
+  | "COMPROVANTE_GFIP"
+  | "NOTIFICACAO_MULTA"
+  | "DARE_ICMS"
+  | "DEFIS"
+  | "LIVRO_FISCAL"
+  | "TERMO_CREDENCIAMENTO"
+  | "DEMONSTRATIVO_ICMS";
 
 export const ROTULO_TIPO: Record<TipoDocumento, string> = {
   SPED_ECD: "SPED-ECD",
@@ -49,6 +59,16 @@ export const ROTULO_TIPO: Record<TipoDocumento, string> = {
   GIAM_ARQUIVO: "GIAM (arquivo do Domínio)",
   GIAM_ESPELHO: "Espelho da GIAM",
   RECIBO_SPED: "Recibo de entrega de SPED",
+  GPS: "GPS — Guia da Previdência",
+  GRF_FGTS: "GRF / analítico do FGTS",
+  GFIP_SEFIP: "GFIP / SEFIP",
+  COMPROVANTE_GFIP: "Comprovante de declaração à Previdência",
+  NOTIFICACAO_MULTA: "Notificação de lançamento (multa)",
+  DARE_ICMS: "DARE / guia estadual",
+  DEFIS: "DEFIS (Simples)",
+  LIVRO_FISCAL: "Livro fiscal",
+  TERMO_CREDENCIAMENTO: "Termo de credenciamento",
+  DEMONSTRATIVO_ICMS: "Demonstrativo do ICMS",
 };
 
 export interface Classificacao {
@@ -72,6 +92,8 @@ export interface Classificacao {
   inscricaoEstadual: string | null;
   /** Tributo, só para o razão. */
   tributo: TributoRazao | null;
+  /** Distingue documentos do mesmo tipo: "ANALITICO" vs a guia em si. */
+  variante: string | null;
   /** Qual SPED o recibo comprova — só para RECIBO_SPED. */
   reciboDe: "CONTRIBUICOES" | "FISCAL" | "ECD" | "ECF" | null;
   /** Código da conta contábil (razão) — desempata dois razões do mesmo tributo. */
@@ -128,6 +150,54 @@ export function acharCnpj(texto: string): string | null {
   }
   for (const m of texto.matchAll(/\b(\d{14})\b/g)) {
     if (validarCnpj(m[1])) return m[1];
+  }
+  return null;
+}
+
+/**
+ * CNPJ grudado no meio de uma sequência de dígitos.
+ *
+ * Arquivo posicional não separa campos: o cabeçalho da DCTF antiga traz
+ * `...930044463938000113236...`, com o CNPJ colado entre outros números, e
+ * nenhuma busca com fronteira de palavra o encontra. Aqui a varredura é
+ * janela a janela, e o dígito verificador é o que separa CNPJ de coincidência.
+ *
+ * Usado só onde não há alternativa (formato posicional): num texto qualquer, a
+ * chance de uma sequência aleatória passar no DV é pequena, mas não é zero.
+ */
+export function acharCnpjEmbutido(texto: string, nomeArquivo?: string): string | null {
+  const candidatos: string[] = [];
+  for (const corrida of texto.match(/\d{14,}/g) ?? []) {
+    for (let i = 0; i + 14 <= corrida.length; i++) {
+      const candidato = corrida.slice(i, i + 14);
+      if (validarCnpj(candidato)) candidatos.push(candidato);
+    }
+  }
+  if (candidatos.length === 0) return null;
+  // Uma janela deslocada pode passar no DV por acaso: em
+  // "...930044463938000113..." o trecho "93004446393800" é um CNPJ válido que
+  // não existe, e vem ANTES do verdadeiro. Quando o nome do arquivo confirma um
+  // dos candidatos, ele desempata — o nome não decide sozinho, só escolhe entre
+  // números que o conteúdo já ofereceu.
+  if (nomeArquivo) {
+    const digitos = soDigitos(nomeArquivo);
+    const confirmado = candidatos.find((c) => digitos.includes(c));
+    if (confirmado) return confirmado;
+  }
+  return candidatos[0];
+}
+
+/**
+ * Competência a partir de um par de datas DDMMAAAA coladas — o jeito que os
+ * arquivos posicionais escrevem o período de apuração ("0101202231012022").
+ * Só aceita quando as duas datas são do MESMO mês, que é o que caracteriza o
+ * período; assim um par qualquer de números não vira competência.
+ */
+export function competenciaPorParDeDatas(texto: string): { ano: number; mes: number } | null {
+  for (const m of texto.matchAll(/(\d{8})(\d{8})/g)) {
+    const ini = dataSped(m[1]);
+    const fim = dataSped(m[2]);
+    if (ini && fim && ini.ano === fim.ano && ini.mes === fim.mes) return ini;
   }
   return null;
 }
@@ -209,21 +279,31 @@ export function classificarTexto(
   const ext = extensao.toLowerCase();
 
   // --- DCTF antiga: .dec começando com DCTFM ---
+  //
+  // Arquivo posicional, sem separador: o CNPJ vem colado entre outros números e
+  // a competência aparece como duas datas grudadas ("0101202231012022"). Antes
+  // eu exigia um registro R10 que nem todo arquivo tem, e 9 DCTF da Palmas Hall
+  // ficaram paradas por isso.
   if (ext === ".dec" && amostra.startsWith("DCTFM")) {
-    const m = amostra.match(/R10\d{14}(\d{6})/);
-    if (!m) return { ok: false, motivo: "DCTF antiga sem o registro R10 com a competência" };
-    const ano = Number(m[1].slice(0, 4));
-    const mes = Number(m[1].slice(4, 6));
+    const pelaR10 = amostra.match(/R10\d{14}(\d{6})/);
+    const competencia = pelaR10
+      ? { ano: Number(pelaR10[1].slice(0, 4)), mes: Number(pelaR10[1].slice(4, 6)) }
+      : competenciaPorParDeDatas(amostra);
+    if (!competencia) {
+      return { ok: false, motivo: "DCTF antiga sem competência legível no cabeçalho" };
+    }
+    const { ano, mes } = competencia;
     return {
       ok: true,
       classificacao: {
         tipo: "DCTF_ANTIGA",
         ano,
         mes,
-        cnpj: acharCnpj(amostra),
+        cnpj: acharCnpj(amostra) ?? acharCnpjEmbutido(amostra, nomeArquivo),
         nomeEmpresa: null,
         inscricaoEstadual: null,
         tributo: null,
+        variante: null,
         reciboDe: null,
         contaCodigo: null,
         documentos: 1,
@@ -245,6 +325,7 @@ export function classificarTexto(
         nomeEmpresa: null,
         inscricaoEstadual: null,
         tributo: null,
+        variante: null,
         reciboDe: null,
         contaCodigo: null,
         documentos: 1,
@@ -276,6 +357,7 @@ export function classificarTexto(
           nomeEmpresa: nomeNoSped(campos, 5),
           inscricaoEstadual: null,
           tributo: null,
+          variante: null,
           reciboDe: null,
           contaCodigo: null,
           documentos: 1,
@@ -285,7 +367,15 @@ export function classificarTexto(
     }
 
     if (layout === "LECF") {
-      const d = dataSped(campos[3] ?? "");
+      // O ECF NÃO segue o layout do ECD:
+      //   ECD  |0000|LECD|DT_INI|DT_FIN|NOME|CNPJ|
+      //   ECF  |0000|LECF|VERSAO|CNPJ|NOME|...|DT_INI|DT_FIN|
+      // Tratar os dois igual deixava o ECF sem ano ("SPED-ECF sem ano
+      // identificado") e ele parava na quarentena.
+      const d =
+        dataSped(campos[3] ?? "") ??
+        campos.map((c) => dataSped(c)).find((x) => x !== null) ??
+        null;
       return {
         ok: true,
         classificacao: {
@@ -296,6 +386,7 @@ export function classificarTexto(
           nomeEmpresa: nomeNoSped(campos, 5),
           inscricaoEstadual: null,
           tributo: null,
+          variante: null,
           reciboDe: null,
           contaCodigo: null,
           documentos: 1,
@@ -326,6 +417,7 @@ export function classificarTexto(
           nomeEmpresa: nomeNoSped(campos, 8),
           inscricaoEstadual: null,
           tributo: null,
+          variante: null,
           reciboDe: null,
           contaCodigo: null,
           documentos: 1,
@@ -355,6 +447,7 @@ export function classificarTexto(
           nomeEmpresa: nomeNoSped(campos, 6),
           inscricaoEstadual: ie && /^\d+$/.test(ie) ? ie : null,
           tributo: null,
+          variante: null,
           reciboDe: null,
           contaCodigo: null,
           documentos: 1,
@@ -382,6 +475,7 @@ export function classificarTexto(
         nomeEmpresa: null,
         inscricaoEstadual: ie,
         tributo: null,
+        variante: null,
         reciboDe: null,
         contaCodigo: null,
         documentos: 1,
@@ -441,12 +535,113 @@ export function classificarPdf(texto: string, nomeArquivo: string): ResultadoCla
         nomeEmpresa,
         inscricaoEstadual: null,
         tributo: null,
+        variante: null,
         reciboDe: null,
         contaCodigo: null,
         documentos: paginas,
         evidencia: `"registro de arrecadação" em ${paginas} página(s)`,
       },
     };
+  }
+
+  // --- Documentos de folha, guias e livros ---
+  //
+  // Reconhecidos pelo título, que nesses formulários é estável. A competência
+  // sai de "MM/AAAA" no corpo; sem ela o documento fica em quarentena, porque
+  // mês chutado põe a guia no ano errado.
+  const competenciaCurta = (): { ano: number; mes: number } | null => {
+    const m = /\b(0[1-9]|1[0-2])\/(20\d{2})\b/.exec(t);
+    return m ? { ano: Number(m[2]), mes: Number(m[1]) } : null;
+  };
+  const soAno = (): number | null => {
+    const m = /\b(20\d{2})\b/.exec(t);
+    return m ? Number(m[1]) : null;
+  };
+
+  const analitico = /RELATORIO ANALITICO|ANALITICO DA/i.test(t) ? "ANALITICO" : null;
+  const simples = (
+    tipo: TipoDocumento,
+    competencia: { ano: number | null; mes: number | null },
+    evidencia: string,
+    variante: string | null = null,
+  ): ResultadoClassificacao => ({
+    ok: true,
+    classificacao: {
+      tipo,
+      ano: competencia.ano,
+      mes: competencia.mes,
+      cnpj,
+      nomeEmpresa,
+      inscricaoEstadual: null,
+      tributo: null,
+      variante,
+      reciboDe: null,
+      contaCodigo: null,
+      documentos: 1,
+      evidencia,
+    },
+  });
+
+  // A ordem vai do específico ao genérico: "GPS" aparece dentro de vários
+  // formulários de folha, então a guia da GPS é testada por último — senão o
+  // comprovante da GFIP e o analítico viriam como guia e brigariam pelo mesmo
+  // nome de arquivo.
+  if (/COMPROVANTE DE DECLARACAO DAS CONTRIBUICOES A RECOLHER/i.test(t)) {
+    const c = competenciaCurta();
+    return simples(
+      "COMPROVANTE_GFIP",
+      { ano: c?.ano ?? null, mes: c?.mes ?? null },
+      "comprovante de declaração à Previdência",
+    );
+  }
+  if (/RELAT[OÓ]RIO ANAL[IÍ]TICO DE GPS/i.test(t)) return simples("GPS", { ano: competenciaCurta()?.ano ?? null, mes: competenciaCurta()?.mes ?? null }, "relatório analítico de GPS", "ANALITICO");
+  if (/RELAT[OÓ]RIO ANAL[IÍ]TICO DA GRF/i.test(t)) return simples("GRF_FGTS", { ano: competenciaCurta()?.ano ?? null, mes: competenciaCurta()?.mes ?? null }, "relatório analítico da GRF", "ANALITICO");
+  if (/GFIP\s*-\s*SEFIP|SEFIP \d/i.test(t)) {
+    const c = competenciaCurta();
+    return simples("GFIP_SEFIP", { ano: c?.ano ?? null, mes: c?.mes ?? null }, "GFIP/SEFIP", analitico);
+  }
+  if (/FUNDO DE GARANTIA DO TEMPO DE SERVICO|\bGRF\b/i.test(t)) {
+    const c = competenciaCurta();
+    return simples("GRF_FGTS", { ano: c?.ano ?? null, mes: c?.mes ?? null }, "GRF / FGTS", analitico);
+  }
+  if (/NOTIFICACAO DE LANCAMENTO|MULTA POR ATRASO NA ENTREGA/i.test(t)) {
+    const c = competenciaCurta();
+    return simples(
+      "NOTIFICACAO_MULTA",
+      { ano: c?.ano ?? soAno(), mes: c?.mes ?? null },
+      "notificação de lançamento / multa",
+    );
+  }
+  // Demonstrativo do ICMS do Domínio — é o cálculo que ORIGINA a DARE, não a
+  // guia. Precisa vir antes da regra do DARE porque o corpo do demonstrativo
+  // cita a guia que ele gera.
+  if (/DEMONSTRATIVO DO ICMS/i.test(t)) {
+    const c = competenciaCurta();
+    return simples(
+      "DEMONSTRATIVO_ICMS",
+      { ano: c?.ano ?? null, mes: c?.mes ?? null },
+      /ANTECIPADO/i.test(t) ? "demonstrativo do ICMS antecipado" : "demonstrativo do ICMS",
+    );
+  }
+  if (/Documento de Arrecadacao de Receitas Estaduais|\bDARE\b/i.test(t)) {
+    const c = competenciaCurta();
+    return simples("DARE_ICMS", { ano: c?.ano ?? null, mes: c?.mes ?? null }, "DARE estadual");
+  }
+  if (/Informacoes Socioeconomicas e Fiscais|\(DEFIS\)/i.test(t)) {
+    const ano = /Ano Calend[aá]rio:?\s*(20\d{2})/i.exec(t)?.[1];
+    return simples("DEFIS", { ano: ano ? Number(ano) : soAno(), mes: null }, "DEFIS");
+  }
+  if (/LIVRO REGISTRO DE (ENTRADAS|SAIDAS|APURACAO|INVENTARIO)|REGISTRO DE APURACAO DO ICMS/i.test(t)) {
+    const c = competenciaCurta();
+    const qual = /ENTRADAS/i.test(t) ? "ENTRADAS" : /SAIDAS/i.test(t) ? "SAIDAS" : /INVENTARIO/i.test(t) ? "INVENTARIO" : "APURACAO";
+    return simples("LIVRO_FISCAL", { ano: c?.ano ?? null, mes: c?.mes ?? null }, "livro fiscal", qual);
+  }
+  if (/TERMO DE CREDENCIAMENTO|CREDENCIAMENTO DE USO DA ESCRITURACAO/i.test(t)) {
+    return simples("TERMO_CREDENCIAMENTO", { ano: soAno(), mes: null }, "termo de credenciamento");
+  }
+  if (/GUIA DA PREVIDENCIA SOCIAL|GPS/i.test(t)) {
+    const c = competenciaCurta();
+    return simples("GPS", { ano: c?.ano ?? null, mes: c?.mes ?? null }, "guia da previdência (GPS)", analitico);
   }
 
   // --- Recibo de entrega de SPED ---
@@ -456,14 +651,17 @@ export function classificarPdf(texto: string, nomeArquivo: string): ResultadoCla
   // depois, um recibo de ECD viraria "Balanço do Domínio" — foi o que aconteceu
   // com o "RECIBO BALANÇO E DRE SPED 2025.pdf" da Rovani.
   if (/RECIBO DE ENTREGA DE ESCRITURACAO|recibo de entrega contem a transcricao/i.test(t)) {
-    const reciboDe: Classificacao["reciboDe"] = /CONTRIBUI/i.test(t)
+    // "CONTRIBUI" casaria com "Contribuinte", palavra que está em TODO recibo —
+    // e por isso o recibo do SPED-ICMS virava "SPED CONTRIBUIÇÃO". O que
+    // distingue é o título da escrituração, não uma palavra solta.
+    const reciboDe: Classificacao["reciboDe"] = /DIGITAL\s*-?\s*CONTRIBUICOES|EFD-?\s*CONTRIBUICOES/i.test(t)
       ? "CONTRIBUICOES"
-      : /ICMS|IPI/i.test(t)
-        ? "FISCAL"
-        : /CONTABIL FISCAL|ECF\b/i.test(t)
-          ? "ECF"
-          : /CONTABIL DIGITAL|ECD\b/i.test(t)
-            ? "ECD"
+      : /CONTABIL FISCAL|\bECF\b/i.test(t)
+        ? "ECF"
+        : /CONTABIL DIGITAL|\bECD\b/i.test(t)
+          ? "ECD"
+          : /ICMS|IPI|ESCRITURACAO FISCAL DIGITAL/i.test(t)
+            ? "FISCAL"
             : null;
 
     if (!reciboDe) {
@@ -473,6 +671,9 @@ export function classificarPdf(texto: string, nomeArquivo: string): ResultadoCla
     // "Período de apuração: 01/03/2026 a 31/03/2026" — a data INICIAL é a
     // competência. O rótulo sai depois do valor no texto extraído, então a
     // âncora é o próprio intervalo.
+    // Retificadora não substitui o original: são dois documentos da mesma
+    // competência, e sem marcar no nome eles brigam pelo mesmo arquivo.
+    const retificadora = /RETIFICADORA|Tipo:?\s*Retific/i.test(t) ? "RETIFICADORA" : null;
     const periodo = /(\d{2})\/(\d{2})\/(\d{4})\s*a\s*(\d{2})\/(\d{2})\/(\d{4})/.exec(t);
     const anual = reciboDe === "ECD" || reciboDe === "ECF";
     return {
@@ -485,6 +686,7 @@ export function classificarPdf(texto: string, nomeArquivo: string): ResultadoCla
         nomeEmpresa,
         inscricaoEstadual: null,
         tributo: null,
+        variante: retificadora,
         reciboDe,
         contaCodigo: null,
         documentos: 1,
@@ -514,6 +716,7 @@ export function classificarPdf(texto: string, nomeArquivo: string): ResultadoCla
         nomeEmpresa,
         inscricaoEstadual: null,
         tributo: null,
+        variante: null,
         reciboDe: null,
         contaCodigo: null,
         documentos: 1,
@@ -547,6 +750,7 @@ export function classificarPdf(texto: string, nomeArquivo: string): ResultadoCla
         nomeEmpresa,
         inscricaoEstadual: null,
         tributo: null,
+        variante: null,
         reciboDe: null,
         contaCodigo: null,
         documentos: 1,
@@ -588,6 +792,7 @@ export function classificarPdf(texto: string, nomeArquivo: string): ResultadoCla
         nomeEmpresa,
         inscricaoEstadual: null,
         tributo,
+        variante: null,
         reciboDe: null,
         contaCodigo,
         documentos: 1,
@@ -609,6 +814,7 @@ export function classificarPdf(texto: string, nomeArquivo: string): ResultadoCla
         nomeEmpresa,
         inscricaoEstadual: null,
         tributo: null,
+        variante: null,
         reciboDe: null,
         contaCodigo: null,
         documentos: 1,
@@ -628,6 +834,7 @@ export function classificarPdf(texto: string, nomeArquivo: string): ResultadoCla
         nomeEmpresa,
         inscricaoEstadual: null,
         tributo: null,
+        variante: null,
         reciboDe: null,
         contaCodigo: null,
         documentos: 1,
@@ -650,6 +857,7 @@ export function classificarPdf(texto: string, nomeArquivo: string): ResultadoCla
         nomeEmpresa,
         inscricaoEstadual: ie ? soDigitos(ie) : null,
         tributo: null,
+        variante: null,
         reciboDe: null,
         contaCodigo: null,
         documentos: 1,
