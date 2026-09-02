@@ -1,6 +1,7 @@
 import { requirePapel, PAPEIS_INTERNOS } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { pastaRaiz } from "@/lib/storage/filesystem";
+import { conferirApuracaoIcms } from "@/lib/organizador/conferirApuracaoIcms";
 import { adicionarOrigemAction, alternarOrigemAction, removerOrigemAction } from "./actions";
 import { ExecutarRoboButton } from "./_components/ExecutarRoboButton";
 
@@ -49,6 +50,11 @@ export default async function OrganizadorPage({
   const totalArquivados = await prisma.arquivoOrganizado.count({
     where: { escritorioId: sessao.escritorioId, status: { in: ["ARQUIVADO", "JA_NO_LUGAR"] } },
   });
+
+  // Leitura de disco, não do banco: a verdade sobre o que está arquivado é a
+  // pasta. Se alguém apagar um PDF por fora, a conferência tem que acusar.
+  const apuracoes = conferirApuracaoIcms();
+  const comFalta = apuracoes.filter((a) => a.faltando.length > 0);
 
   return (
     <div className="mx-auto max-w-6xl px-6 py-8">
@@ -189,6 +195,60 @@ export default async function OrganizadorPage({
         </h2>
         <ExecutarRoboButton temOrigem={origens.some((o) => o.ativo)} />
       </section>
+
+      {apuracoes.length > 0 && (
+        <section className="mb-6 rounded-xl border border-slate-200 bg-white p-5">
+          <div className="mb-3 flex flex-wrap items-baseline justify-between gap-3">
+            <h2 className="text-sm font-bold uppercase tracking-wide text-slate-500">
+              Conferência da apuração do ICMS
+            </h2>
+            <span className="text-xs text-slate-500">
+              {comFalta.length} de {apuracoes.length} competência(s) incompleta(s)
+            </span>
+          </div>
+          <p className="mb-3 max-w-[80ch] text-xs leading-relaxed text-slate-600">
+            Vale para quem apura em sistema próprio, fora do Domínio. Nesses sistemas{" "}
+            <b>o fechamento do inventário do mês é o que libera a apuração do ICMS</b> — se ele não
+            está na pasta, ou o fechamento não foi feito (e a apuração ao lado não vale), ou foi
+            feito e ninguém guardou.
+          </p>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-500">
+                  <th className="px-3 py-2 text-left font-semibold">Empresa</th>
+                  <th className="px-3 text-left font-semibold">Competência</th>
+                  <th className="px-3 text-left font-semibold">Falta</th>
+                </tr>
+              </thead>
+              <tbody>
+                {apuracoes.map((a) => (
+                  <tr key={`${a.pasta}-${a.ano}-${a.mes}`} className="border-b border-slate-100">
+                    <td className="px-3 py-2 text-left text-slate-700">{a.empresa}</td>
+                    <td className="px-3 font-mono text-xs text-slate-600">
+                      {String(a.mes).padStart(2, "0")}/{a.ano}
+                    </td>
+                    <td className="px-3 text-xs">
+                      {a.faltando.length === 0 ? (
+                        <span className="text-slate-400">— completa</span>
+                      ) : (
+                        a.faltando.map((f) => (
+                          <span
+                            key={f}
+                            className="mr-1 inline-block rounded bg-red-50 px-1.5 py-0.5 text-[11px] font-semibold text-red-800"
+                          >
+                            {f}
+                          </span>
+                        ))
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
 
       {ultimos.length > 0 && (
         <section className="mb-6 rounded-xl border border-slate-200 bg-white p-5">
