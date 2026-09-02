@@ -41,7 +41,9 @@ export type TipoDocumento =
   | "DEFIS"
   | "LIVRO_FISCAL"
   | "TERMO_CREDENCIAMENTO"
-  | "DEMONSTRATIVO_ICMS";
+  | "DEMONSTRATIVO_ICMS"
+  | "DOSSIE_ECAC"
+  | "APURACAO_IPI";
 
 export const ROTULO_TIPO: Record<TipoDocumento, string> = {
   SPED_ECD: "SPED-ECD",
@@ -69,6 +71,8 @@ export const ROTULO_TIPO: Record<TipoDocumento, string> = {
   LIVRO_FISCAL: "Livro fiscal",
   TERMO_CREDENCIAMENTO: "Termo de credenciamento",
   DEMONSTRATIVO_ICMS: "Demonstrativo do ICMS",
+  DOSSIE_ECAC: "Documento de dossiê do e-CAC",
+  APURACAO_IPI: "Apuração do IPI",
 };
 
 export interface Classificacao {
@@ -323,10 +327,20 @@ export function classificarTexto(
     const competencia = pelaR10
       ? { ano: Number(pelaR10[1].slice(0, 4)), mes: Number(pelaR10[1].slice(4, 6)) }
       : competenciaPorParDeDatas(amostra);
-    if (!competencia) {
+    // O `.dec` é posicional e nem sempre o cabeçalho entrega a competência.
+    // Quando não entrega, o nome de arquivo do PVA (`...-DCTFM36-202201-...`)
+    // é a única fonte — e o padrão AAAAMM ali é do próprio programa, não é
+    // invenção de quem salvou.
+    const peloNomeDoPva = /-(\d{4})(0[1-9]|1[0-2])-/.exec(nomeArquivo);
+    const competenciaFinal =
+      competencia ??
+      (peloNomeDoPva
+        ? { ano: Number(peloNomeDoPva[1]), mes: Number(peloNomeDoPva[2]) }
+        : null);
+    if (!competenciaFinal) {
       return { ok: false, motivo: "DCTF antiga sem competência legível no cabeçalho" };
     }
-    const { ano, mes } = competencia;
+    const { ano, mes } = competenciaFinal;
     return {
       ok: true,
       classificacao: {
@@ -341,7 +355,9 @@ export function classificarTexto(
         reciboDe: null,
         contaCodigo: null,
         documentos: 1,
-        evidencia: "cabeçalho DCTFM + registro R10",
+        evidencia: competencia
+          ? "cabeçalho DCTFM + registro R10"
+          : "cabeçalho DCTFM; competência pelo nome gerado pelo PVA",
       },
     };
   }
@@ -648,6 +664,44 @@ export function classificarPdf(texto: string, nomeArquivo: string): ResultadoCla
       "notificação de lançamento / multa",
     );
   }
+  // Peças de dossiê do e-CAC: ficha de identificação, despacho de criação,
+  // documentos juntados. O que amarra tudo é o número do processo, e é por ele
+  // que o contador procura — não pela competência, que esses papéis nem têm.
+  const processo = /\b(\d{5}\.\d{6}\/\d{4}-\d{2})\b/.exec(t);
+  if (processo && /SERVICO PUBLICO FEDERAL|DOSSI[EÊ]|Data de Protocolo/i.test(t)) {
+    const ano = /\/(\d{4})-\d{2}$/.exec(processo[1])?.[1];
+    // A folha ordena o dossiê; sem ela as peças embaralham e ninguém sabe qual
+    // veio antes. O nome do arquivo original diz que peça é — o conteúdo não.
+    const folha = /\bFl\.?\s*(\d{1,3})\b/i.exec(t)?.[1];
+    // Sem `path` aqui de propósito: o classificador não conhece disco, só texto.
+    const peca = nomeArquivo
+      .replace(/\.[a-z0-9]+$/i, "")
+      .replace(/^[\d-]+_/, "")
+      .replace(/^Fl\d+_/i, "");
+    return {
+      ok: true,
+      classificacao: {
+        tipo: "DOSSIE_ECAC",
+        ano: ano ? Number(ano) : soAno(),
+        mes: null,
+        cnpj,
+        nomeEmpresa,
+        inscricaoEstadual: null,
+        tributo: null,
+        variante: folha ? `Fl${folha.padStart(2, "0")} ${peca}` : peca,
+        reciboDe: null,
+        contaCodigo: processo[1],
+        documentos: 1,
+        evidencia: `dossiê do e-CAC, processo ${processo[1]}`,
+      },
+    };
+  }
+
+  if (/REGISTROS FISCAIS DA APURACAO DOS VALORES DE IPI/i.test(t)) {
+    const c = competenciaCurta();
+    return simples("APURACAO_IPI", { ano: c?.ano ?? null, mes: c?.mes ?? null }, "apuração do IPI");
+  }
+
   // Demonstrativo do ICMS do Domínio — é o cálculo que ORIGINA a DARE, não a
   // guia. Precisa vir antes da regra do DARE porque o corpo do demonstrativo
   // cita a guia que ele gera.
@@ -890,8 +944,13 @@ export function classificarPdf(texto: string, nomeArquivo: string): ResultadoCla
       },
     };
   }
-  if (/DEMONSTRACAO DO RESULTADO/i.test(t)) {
+  // "DO RESULTADO" (Domínio) e "DE RESULTADO DO EXERCÍCIO" (PVA da ECD) são a
+  // mesma demonstração com títulos diferentes. Mas NÃO são o mesmo documento:
+  // a do PVA é a que foi transmitida, a do Domínio é a do sistema. Guardar as
+  // duas com o mesmo nome faria uma apagar a outra na conferência.
+  if (/DEMONSTRACAO D[OE] RESULTADO/i.test(t)) {
     const ano = /\b(20\d{2})\b/.exec(t);
+    const daEcd = /Per[ií]odo da Escritura[çc][ãa]o/i.test(t) && /Entidade:/i.test(t);
     return {
       ok: true,
       classificacao: {
@@ -902,7 +961,7 @@ export function classificarPdf(texto: string, nomeArquivo: string): ResultadoCla
         nomeEmpresa,
         inscricaoEstadual: null,
         tributo: null,
-        variante: null,
+        variante: daEcd ? "ECD" : null,
         reciboDe: null,
         contaCodigo: null,
         documentos: 1,
