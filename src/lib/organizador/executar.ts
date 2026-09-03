@@ -27,7 +27,7 @@
 
 import { createHash } from "node:crypto";
 import { existsSync, readdirSync } from "node:fs";
-import { copyFile, mkdir, readdir, readFile, rename, stat } from "node:fs/promises";
+import { copyFile, mkdir, readdir, readFile, rename, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { prisma } from "@/lib/db";
 import { pastaCliente, pastaRaiz } from "@/lib/storage/filesystem";
@@ -216,6 +216,59 @@ function pastaAncestralComCnpj(arquivo: string, raiz: string): string | null {
   return null;
 }
 
+/** Pasta onde ficam as anotações do que precisa de olho humano. */
+const PASTA_OBSERVACAO = "OBSERVAÇÃO";
+const ARQUIVO_OBSERVACAO = "_A CONFERIR.md";
+
+/**
+ * Primeiro nome livre a partir do desejado: `GPS 03.2019 -2.pdf`, `-3`, ...
+ *
+ * Existe para nunca sobrescrever e nunca descartar: dois documentos diferentes
+ * da mesma competência ficam os dois, lado a lado, na mesma pasta.
+ */
+function nomeLivre(caminho: string): string {
+  const dir = path.dirname(caminho);
+  const ext = path.extname(caminho);
+  const base = path.basename(caminho, ext);
+  for (let i = 2; i < 100; i++) {
+    const tentativa = path.join(dir, `${base} -${i}${ext}`);
+    if (!existsSync(tentativa)) return tentativa;
+  }
+  return path.join(dir, `${base} -${Date.now()}${ext}`);
+}
+
+/**
+ * Escreve na pasta OBSERVAÇÃO da empresa o que precisa ser analisado.
+ *
+ * Decisão do Higor em 02/09/2026: em vez de o robô engolir a dúvida (ou de ela
+ * morrer num relatório de execução que ninguém reabre), ela fica escrita na
+ * pasta do cliente, ao lado dos documentos — onde quem vai conferir já está.
+ */
+async function anotarObservacao(params: {
+  pastaEmpresa: string;
+  texto: string;
+  simular: boolean;
+}): Promise<void> {
+  if (params.simular) return;
+  const dir = path.join(params.pastaEmpresa, PASTA_OBSERVACAO);
+  await mkdir(dir, { recursive: true });
+  const arquivo = path.join(dir, ARQUIVO_OBSERVACAO);
+  const hoje = new Date().toLocaleDateString("pt-BR");
+
+  let conteudo = "";
+  try {
+    conteudo = await readFile(arquivo, "utf8");
+  } catch {
+    conteudo =
+      "# A conferir\n\n" +
+      "Anotado pelo organizador de documentos. Cada item é uma dúvida que o robô\n" +
+      "não podia resolver sozinho sem arriscar perder informação.\n";
+  }
+  // Repetir a mesma anotação a cada passagem transformaria o arquivo em lixo.
+  if (conteudo.includes(params.texto)) return;
+  await writeFile(arquivo, `${conteudo}\n## ${hoje}\n\n${params.texto}\n`, "utf8");
+}
+
 /** O que a fase 1 apurou de cada arquivo, para a fase 2 decidir. */
 interface Pendente {
   arquivo: string;
@@ -244,9 +297,30 @@ async function mandarPraQuarentena(params: {
   raiz: string;
   empresa: string | null;
   simular: boolean;
+  /** Por que parou — vira a anotação na pasta OBSERVAÇÃO da empresa. */
+  motivo?: string;
 }): Promise<string | null> {
-  const { arquivo, raiz, empresa, simular } = params;
+  const { arquivo, raiz, empresa, simular, motivo } = params;
   if (!dentroDaRaiz(arquivo, raiz)) return null;
+
+  // Quando dá pra saber de quem é, a pendência é anotada NA PASTA DA EMPRESA.
+  // A quarentena é do robô; a pasta do cliente é de quem confere — e é lá que a
+  // pessoa está quando percebe que falta alguma coisa.
+  if (motivo && empresa) {
+    const cnpjDaEmpresa = /_(\d{14})$/.exec(nomeSeguroDePasta(empresa))?.[1];
+    const pastaEmpresa = cnpjDaEmpresa ? pastaExistenteDoCnpj(raiz, cnpjDaEmpresa) : null;
+    if (pastaEmpresa) {
+      await anotarObservacao({
+        pastaEmpresa,
+        texto:
+          `**${path.basename(arquivo)}** ficou em quarentena: ${motivo}.\n\n` +
+          `   - está em: \`_QUARENTENA\\${nomeSeguroDePasta(empresa)}\\\`\n` +
+          `   - **o que fazer:** renomear com a competência (ex.: \`03.2025\`) e rodar o ` +
+          `organizador de novo, ou dizer o que é o documento.`,
+        simular,
+      });
+    }
+  }
 
   const grupo = empresa ? nomeSeguroDePasta(empresa) : SEM_IDENTIFICACAO;
   const pasta = path.join(raiz, PASTA_QUARENTENA, grupo);
@@ -455,6 +529,7 @@ export async function organizarDocumentos(params: {
             raiz,
             empresa: grupoDaOrigem(arquivo, raiz),
             simular,
+            motivo: cls.motivo,
           });
           await registrar(
             { ...base, status: "QUARENTENA", destino, detalhe: cls.motivo },
@@ -597,7 +672,8 @@ export async function organizarDocumentos(params: {
         continue;
       }
 
-      const destinoAbs = path.join(pastaDaEmpresa, dest.destino.relativo);
+      const destinoOriginal = path.join(pastaDaEmpresa, dest.destino.relativo);
+      let destinoAbs = destinoOriginal;
       base.destino = destinoAbs;
 
       if (path.resolve(destinoAbs) === path.resolve(arquivo)) {
@@ -620,16 +696,27 @@ export async function organizarDocumentos(params: {
           );
           continue;
         }
+        // Decisão do Higor em 02/09/2026: sabendo o que o arquivo é, GUARDA OS
+        // DOIS. Duas GPS de 03/2019 com valores diferentes (R$ 910,53 e
+        // R$ 899,84) não são cópia — é guia recalculada, e sumir com uma
+        // esconde justamente o que o contador precisa ver. O segundo ganha
+        // sufixo, e a divergência é escrita na pasta OBSERVAÇÃO da empresa.
+        const alternativo = nomeLivre(destinoAbs);
+        destinoAbs = alternativo;
+        base.destino = alternativo;
+        await anotarObservacao({
+          pastaEmpresa: pastaDaEmpresa,
+          texto:
+            `**${path.basename(destinoOriginal)}** — chegou um segundo documento para a mesma ` +
+            `competência, com conteúdo diferente. Nenhum foi descartado: o novo está como ` +
+            `\`${path.basename(alternativo)}\`.\n\n` +
+            `   - origem: \`${arquivo}\`\n` +
+            `   - tipo: ${c.tipo}${c.mes ? ` — competência ${c.mes}/${c.ano}` : ""}\n` +
+            `   - **o que conferir:** qual dos dois vale. Costuma ser retificação ou ` +
+            `recálculo; se os valores forem iguais, é reimpressão e um pode sair.`,
+          simular,
+        });
         relatorio.conflitos++;
-        await registrar(
-          {
-            ...base,
-            status: "CONFLITO",
-            detalhe: "já existe outro arquivo neste destino — nada foi sobrescrito",
-          },
-          { hash, tipo: c.tipo, clienteId: cliente?.id ?? null, ano: c.ano, mes: c.mes },
-        );
-        continue;
       }
 
       const acao: "mover" | "copiar" = dentroDaRaiz(arquivo, raiz) ? "mover" : "copiar";

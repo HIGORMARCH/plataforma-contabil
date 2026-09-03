@@ -1073,11 +1073,23 @@ export function classificarPdf(texto: string, nomeArquivo: string): ResultadoCla
     if (porExtenso) {
       const mes = MESES_POR_EXTENSO.indexOf(semAcento(porExtenso[1]).toUpperCase()) + 1;
       if (mes > 0) {
-        return simples(
+        // A GIAM não traz CNPJ: quem identifica o contribuinte é a inscrição
+        // estadual. Sem carregá-la, o espelho da LUPO ficava em quarentena por
+        // "sem CNPJ válido" — num documento que diz de quem é na segunda linha.
+        //
+        // Ancorar no rótulo não funciona (os rótulos saem todos juntos), mas o
+        // formato da IE do Tocantins é inconfundível — `29.496.425-8` — e a do
+        // contribuinte vem no cabeçalho, antes dos valores do corpo.
+        const ie =
+          /INSCRI[ÇC][ÃA]O ESTADUAL\s*(\d{2}\.\d{3}\.\d{3}-\d)/i.exec(t)?.[1] ??
+          /\b\d{2}\.\d{3}\.\d{3}-\d\b/.exec(t)?.[0];
+        const base = simples(
           "GIAM_ESPELHO",
           { ano: Number(porExtenso[2]), mes },
           `espelho da GIAM (período ${porExtenso[1]}/${porExtenso[2]})`,
         );
+        if (base.ok && ie) base.classificacao.inscricaoEstadual = soDigitos(ie);
+        return base;
       }
     }
     const comp = /\b(\d{2})\/(\d{4})\b/.exec(t);
