@@ -56,19 +56,20 @@ cliente reestruturada em três grupos.
 
 - **Estrutura nova** — `DECLARAÇÕES` (o que foi declarado), `GUIAS` (o que foi
   pago), `RAZÃO` (o que a conciliação compara), `OUTROS` (o resto). Feita para
-  o painel de obrigações varrer o disco. O mapa vive em  E em
-   — os dois têm que concordar.
+  o painel de obrigações varrer o disco. O mapa vive em `destino.ts` E em
+  `pastaTipoAno` (storage/filesystem.ts) — os dois têm que concordar, senão a
+  tela procura onde o robô não gravou.
 - **25 tipos reconhecidos** (eram 15): GPS, GRF/FGTS, GFIP/SEFIP, DARE, DEFIS,
-  livro fiscal, dossiê do e-CAC, apuração de ICMS/IPI, recibo .
+  livro fiscal, dossiê do e-CAC, apuração de ICMS/IPI, recibo `.REC`.
 - **Erros corrigidos que já tinham arquivado errado:** 182 recibos com nome
   trocado, 46 SPED na empresa errada (o CNPJ vinha da transportadora citada no
   corpo), 18 documentos de folha com a competência lida da versão do programa.
 - **Regra nova:** conteúdo diferente disputando o mesmo nome não some — vira
-   e uma nota em  na pasta do cliente.
+  ` -2` e uma nota em `OBSERVAÇÃO\_A CONFERIR.md` na pasta do cliente.
 - **Achado que exige decisão:** duas GPS de 03/2019 da New Office com R$ 910,53
   e R$ 899,84 — guia recalculada, não cópia.
 
-Ver .
+Ver `docs/RELATORIO-SESSAO-2026-09-02.md`.
 
 ## Sessão anterior (29/08/2026)
 
