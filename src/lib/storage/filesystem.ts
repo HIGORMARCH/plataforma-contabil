@@ -88,7 +88,7 @@ export function pastaCliente(cliente: ClienteRef): string {
  * Um arquivo por tributo, com o nome dizendo qual é (ver src/lib/razao/tributos.ts).
  */
 export function pastaRazaoDoCliente(cliente: ClienteRef): string {
-  return path.join(pastaCliente(cliente), "RAZAO");
+  return path.join(pastaCliente(cliente), PASTA_RAZAO);
 }
 
 /**
@@ -125,9 +125,29 @@ export function listarPastasDaRaiz(): string[] {
   }
 }
 
+/**
+ * Onde cada tipo mora dentro da pasta do cliente.
+ *
+ * Estrutura definida pelo Higor em 02/09/2026, para o painel de obrigações
+ * conseguir varrer as pastas e dizer de quais clientes os comprovantes já estão
+ * ali. Três lugares, e a pergunta que cada um responde:
+ *
+ *   DECLARAÇÕES  — o que foi DECLARADO ao fisco (SPED, GIAM, DCTF, DEFIS)
+ *   GUIAS        — o que foi PAGO (guia e comprovante de pagamento)
+ *   RAZÃO        — os razões que a plataforma usa para comparar
+ *
+ * O que não responde a nenhuma das três (balanço, processo, notificação) fica
+ * em OUTROS, para não sujar as pastas que o painel varre.
+ */
+export const PASTA_DECLARACOES = "DECLARAÇÕES";
+export const PASTA_GUIAS = "GUIAS";
+export const PASTA_RAZAO = "RAZÃO";
+export const PASTA_OUTROS = "OUTROS";
+
 /** Path da pasta de um tipo de documento pra um ano específico. */
 export function pastaTipoAno(cliente: ClienteRef, tipo: TipoDocumento, ano: number): string {
-  return path.join(pastaCliente(cliente), tipo, String(ano));
+  const grupo = tipo === "BALANCOS-DOMINIO" ? PASTA_OUTROS : PASTA_DECLARACOES;
+  return path.join(pastaCliente(cliente), grupo, tipo, String(ano));
 }
 
 /**

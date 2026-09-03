@@ -221,18 +221,23 @@ describe("destinoDoDocumento", () => {
 
   it("manda cada tipo para onde o leitor dele procura", () => {
     const casos: Array<[Parameters<typeof destinoDoDocumento>[0], string]> = [
-      [{ ...base, tipo: "SPED_ECD" }, "SPED-ECD\\2025\\2025.txt"],
-      [{ ...base, tipo: "SPED_FISCAL" }, "SPED-FISCAL\\2025\\12.txt"],
-      [{ ...base, tipo: "DAS_GUIA" }, "FISCAL\\IMPOSTOS\\SIMPLES NACIONAL\\2025\\DAS-12.2025.pdf"],
+      [{ ...base, tipo: "SPED_ECD" }, "DECLARAÇÕES\\SPED-ECD\\2025\\2025.txt"],
+      [{ ...base, tipo: "SPED_FISCAL" }, "DECLARAÇÕES\\SPED-FISCAL\\2025\\12.txt"],
+      [{ ...base, tipo: "DAS_GUIA" }, "GUIAS\\SIMPLES NACIONAL\\2025\\DAS-12.2025.pdf"],
       [
         { ...base, tipo: "PGDASD_DECLARACAO" },
-        "FISCAL\\IMPOSTOS\\SIMPLES NACIONAL\\2025\\PGDASD-DECLARACAO-12.2025.pdf",
+        "DECLARAÇÕES\\PGDAS-D\\2025\\PGDASD-DECLARACAO-12.2025.pdf",
       ],
       [
         { ...base, tipo: "COMPROVANTE_ARRECADACAO" },
-        "FISCAL\\IMPOSTOS\\SIMPLES NACIONAL\\2025\\COMPROVANTE-ARRECADACAO-2025.pdf",
+        "GUIAS\\SIMPLES NACIONAL\\2025\\COMPROVANTE-ARRECADACAO-2025.pdf",
       ],
-      [{ ...base, tipo: "BALANCO_DOMINIO" }, "BALANCOS-DOMINIO\\2025\\balanco.pdf"],
+      [{ ...base, tipo: "GPS" }, "GUIAS\\INSS\\2025\\GPS 12.2025.pdf"],
+      [
+        { ...base, tipo: "COMPROVANTE_GFIP" },
+        "DECLARAÇÕES\\GFIP-SEFIP\\2025\\COMPROVANTE GFIP 12.2025.pdf",
+      ],
+      [{ ...base, tipo: "BALANCO_DOMINIO" }, "OUTROS\\BALANCOS-DOMINIO\\2025\\balanco.pdf"],
     ];
     for (const [cls, esperado] of casos) {
       const ext = esperado.endsWith(".txt") ? ".txt" : ".pdf";
@@ -247,7 +252,7 @@ describe("destinoDoDocumento", () => {
     const r = destinoDoDocumento({ ...base, tipo: "RAZAO", tributo: "ICMS" }, ".pdf");
     expect(r.ok).toBe(true);
     if (!r.ok) return;
-    expect(r.destino.relativo).toBe("RAZAO\\Razao ICMS.pdf");
+    expect(r.destino.relativo).toBe("RAZÃO\\Razao ICMS.pdf");
   });
 
   it("dois razões do mesmo tributo não brigam pelo mesmo arquivo", () => {
@@ -264,8 +269,8 @@ describe("destinoDoDocumento", () => {
     );
     expect(normal.ok && difal.ok).toBe(true);
     if (!normal.ok || !difal.ok) return;
-    expect(normal.destino.relativo).toBe("RAZAO\\Razao ICMS 2.1.40.100.2.pdf");
-    expect(difal.destino.relativo).toBe("RAZAO\\Razao ICMS 2.1.40.102.5.pdf");
+    expect(normal.destino.relativo).toBe("RAZÃO\\Razao ICMS 2.1.40.100.2.pdf");
+    expect(difal.destino.relativo).toBe("RAZÃO\\Razao ICMS 2.1.40.102.5.pdf");
     expect(normal.destino.relativo).not.toBe(difal.destino.relativo);
   });
 

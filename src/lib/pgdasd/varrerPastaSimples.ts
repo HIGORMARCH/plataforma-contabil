@@ -81,7 +81,7 @@ export async function varrerPastaSimples(params: {
   if (!cliente) throw new Error("Cliente não encontrado.");
 
   const base = pastaCliente(cliente);
-  const subpasta = params.subpasta ?? path.join("FISCAL", "IMPOSTOS", "SIMPLES NACIONAL");
+  const subpasta = params.subpasta ?? path.join("GUIAS", "SIMPLES NACIONAL");
   const pastaLida = subpasta ? path.join(base, subpasta) : base;
 
   const pdfs = listarPdfs(pastaLida);
