@@ -447,25 +447,32 @@ export function classificarTexto(
   if (ext === ".rec" && rc) {
     const cnpjRec = rc[2];
     const c = competenciaPeloNome(nomeArquivo) ?? competenciaPeloMesEscrito(nomeArquivo);
-    if (!c) {
-      return { ok: false, motivo: "recibo .REC sem competência no nome do arquivo" };
-    }
     const deContribuicoes = /PISCOFINS|CONTRIB/i.test(nomeArquivo);
+    // Sem competência no nome, sobra o que o arquivo tem de melhor: o HASH do
+    // SPED transmitido. Esse mesmo hash está impresso no recibo em PDF, que já
+    // está arquivado com a competência no nome — é por ele que os dois se
+    // encontram. Quem faz o encontro é o executor, que enxerga a pasta.
+    const hashDoSped = /\b([0-9A-F]{32})\b/.exec(amostra)?.[1] ?? null;
+    if (!c && !hashDoSped) {
+      return { ok: false, motivo: "recibo .REC sem competência no nome e sem hash do SPED" };
+    }
     return {
       ok: true,
       classificacao: {
         tipo: "RECIBO_REC",
-        ano: c.ano,
-        mes: c.mes,
+        ano: c?.ano ?? null,
+        mes: c?.mes ?? null,
         cnpj: validarCnpj(cnpjRec) ? cnpjRec : null,
         nomeEmpresa: null,
         inscricaoEstadual: null,
         tributo: null,
         variante: deContribuicoes ? "CONTRIBUICOES" : "FISCAL",
         reciboDe: deContribuicoes ? "CONTRIBUICOES" : "FISCAL",
-        contaCodigo: null,
+        contaCodigo: hashDoSped,
         documentos: 1,
-        evidencia: "registro RC01; competência pelo nome gerado pelo PVA",
+        evidencia: c
+          ? "registro RC01; competência pelo nome gerado pelo PVA"
+          : "registro RC01; competência será buscada pelo hash do SPED",
       },
     };
   }

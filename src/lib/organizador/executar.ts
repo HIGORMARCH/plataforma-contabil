@@ -216,6 +216,59 @@ function pastaAncestralComCnpj(arquivo: string, raiz: string): string | null {
   return null;
 }
 
+/**
+ * A competência de um `.REC`, descoberta pelo hash do SPED.
+ *
+ * O `.REC` traz o hash do arquivo transmitido, e esse mesmo hash está impresso
+ * no recibo em PDF — que já está arquivado com a competência no nome. Achando o
+ * recibo que carrega o hash, sabe-se de que mês é o `.REC`.
+ *
+ * É melhor que qualquer palpite pela data de transmissão: entrega atrasada, ou
+ * retificação meses depois, quebrariam a conta "mês seguinte".
+ */
+async function competenciaPeloHashDoSped(
+  pastaEmpresa: string,
+  hash: string,
+): Promise<{ ano: number; mes: number } | null> {
+  const recibos = path.join(pastaEmpresa, "RECIBOS");
+  if (!existsSync(recibos)) return null;
+
+  let anos: string[];
+  try {
+    anos = await readdir(recibos);
+  } catch {
+    return null;
+  }
+
+  const { PDFParse } = await import("pdf-parse");
+  for (const ano of anos) {
+    const dir = path.join(recibos, ano);
+    let nomes: string[];
+    try {
+      nomes = await readdir(dir);
+    } catch {
+      continue;
+    }
+    for (const nome of nomes) {
+      // O nome é padronizado pelo próprio robô ("SPED FISCAL 09.2025.pdf"), e é
+      // dele que sai a competência — o PDF só confirma que é este recibo.
+      const comp = /\b(0[1-9]|1[0-2])\.(20\d{2})\b/.exec(nome);
+      if (!comp) continue;
+      try {
+        const { text } = await new PDFParse({
+          data: await readFile(path.join(dir, nome)),
+        }).getText();
+        if (text.replace(/\s+/g, "").toUpperCase().includes(hash)) {
+          return { ano: Number(comp[2]), mes: Number(comp[1]) };
+        }
+      } catch {
+        continue;
+      }
+    }
+  }
+  return null;
+}
+
 /** Pasta onde ficam as anotações do que precisa de olho humano. */
 const PASTA_OBSERVACAO = "OBSERVAÇÃO";
 const ARQUIVO_OBSERVACAO = "_A CONFERIR.md";
@@ -303,9 +356,37 @@ async function mandarPraQuarentena(params: {
   const { arquivo, raiz, empresa, simular, motivo } = params;
   if (!dentroDaRaiz(arquivo, raiz)) return null;
 
+  // NÃO MEXE em arquivo que já está na pasta da empresa dele.
+  //
+  // A quarentena existe para o que está solto ou perdido — não para punir o
+  // documento que o robô não soube ler. Quando o `.rec` entrou na varredura, 28
+  // arquivos que estavam quietos na pasta do cliente foram arrancados de lá e
+  // empilhados na quarentena, que tinha acabado de ser zerada. Movê-los não
+  // acrescentou nada: só tirou o documento de onde o contador já o encontrava.
+  const jaNaPastaDaEmpresa = pastaAncestralComCnpj(arquivo, raiz);
+  const naQuarentena = path
+    .relative(raiz, arquivo)
+    .split(path.sep)
+    .includes(PASTA_QUARENTENA);
+
   // Quando dá pra saber de quem é, a pendência é anotada NA PASTA DA EMPRESA.
   // A quarentena é do robô; a pasta do cliente é de quem confere — e é lá que a
   // pessoa está quando percebe que falta alguma coisa.
+  if (jaNaPastaDaEmpresa && !naQuarentena) {
+    if (motivo) {
+      await anotarObservacao({
+        pastaEmpresa: jaNaPastaDaEmpresa,
+        texto:
+          `**${path.basename(arquivo)}** não foi organizado: ${motivo}.\n\n` +
+          `   - continua onde estava: \`${path.relative(jaNaPastaDaEmpresa, arquivo)}\`\n` +
+          `   - **o que fazer:** renomear com a competência (ex.: \`03.2025\`) e rodar o ` +
+          `organizador de novo, ou dizer o que é o documento.`,
+        simular,
+      });
+    }
+    return arquivo; // fica onde está
+  }
+
   if (motivo && empresa) {
     const cnpjDaEmpresa = /_(\d{14})$/.exec(nomeSeguroDePasta(empresa))?.[1];
     const pastaEmpresa = cnpjDaEmpresa ? pastaExistenteDoCnpj(raiz, cnpjDaEmpresa) : null;
@@ -652,6 +733,17 @@ export async function organizarDocumentos(params: {
       base.cliente = cliente
         ? cliente.razaoSocial
         : `${nomePorCnpj.get(c.cnpj!)?.nome ?? c.cnpj} (sem cadastro)`;
+
+      // O `.REC` sem competência no nome só descobre de que mês é agora, que a
+      // pasta da empresa é conhecida: o recibo em PDF dela carrega o mesmo hash.
+      if (c.tipo === "RECIBO_REC" && !c.mes && c.contaCodigo) {
+        const achada = await competenciaPeloHashDoSped(pastaDaEmpresa, c.contaCodigo);
+        if (achada) {
+          c.ano = achada.ano;
+          c.mes = achada.mes;
+          c.evidencia = `registro RC01; competência pelo recibo com o hash ${c.contaCodigo.slice(0, 8)}…`;
+        }
+      }
 
       // --- Para onde vai? ---
       const dest = destinoDoDocumento(c, path.extname(arquivo));
