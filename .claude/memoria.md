@@ -49,7 +49,28 @@ Quando Higor sinalizar fim de sessão ("vamos fechar", "boa noite", equivalente)
 
 Detalhe completo em `~/.claude/CLAUDE.md` global do Higor.
 
-## Última sessão (29/08/2026)
+## Última sessão (02/09/2026)
+
+Organizador de documentos: quarentena de 953 para ZERO, e a pasta de cada
+cliente reestruturada em três grupos.
+
+- **Estrutura nova** — `DECLARAÇÕES` (o que foi declarado), `GUIAS` (o que foi
+  pago), `RAZÃO` (o que a conciliação compara), `OUTROS` (o resto). Feita para
+  o painel de obrigações varrer o disco. O mapa vive em  E em
+   — os dois têm que concordar.
+- **25 tipos reconhecidos** (eram 15): GPS, GRF/FGTS, GFIP/SEFIP, DARE, DEFIS,
+  livro fiscal, dossiê do e-CAC, apuração de ICMS/IPI, recibo .
+- **Erros corrigidos que já tinham arquivado errado:** 182 recibos com nome
+  trocado, 46 SPED na empresa errada (o CNPJ vinha da transportadora citada no
+  corpo), 18 documentos de folha com a competência lida da versão do programa.
+- **Regra nova:** conteúdo diferente disputando o mesmo nome não some — vira
+   e uma nota em  na pasta do cliente.
+- **Achado que exige decisão:** duas GPS de 03/2019 da New Office com R$ 910,53
+  e R$ 899,84 — guia recalculada, não cópia.
+
+Ver .
+
+## Sessão anterior (29/08/2026)
 
 Conciliação de impostos: o razão contábil entrou na plataforma, e dois bugs que
 mostravam número errado na tela foram corrigidos.
