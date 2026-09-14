@@ -219,6 +219,22 @@ export function validarExercicio(ex: DemonstrativosExercicio): Inconsistencia[] 
     });
   }
 
+  // 8) O resultado que está no PL tem que ser o mesmo da DRE — senão o
+  //    resultado não foi transferido (ou foi transferido com outro valor).
+  const resultadoNoPL = ex.balanco.patrimonioLiquido.resultadoExercicio;
+  const resultadoDRE = ex.dre.resultadoLiquidoInformado ?? r.resultadoLiquido;
+  if (resultadoNoPL != null && resultadoDRE != null && Math.abs(resultadoNoPL - resultadoDRE) > 1) {
+    problemas.push({
+      codigo: "RESULTADO_PL_DIFERENTE_DRE",
+      severidade: "atencao",
+      titulo: "Resultado no PL diferente do resultado da DRE",
+      descricao: `O PL traz resultado do exercício de ${moeda(resultadoNoPL)}, mas a DRE apura ${moeda(
+        resultadoDRE,
+      )}. Diferença de ${moeda(resultadoNoPL - resultadoDRE)} — verificar a transferência do resultado.`,
+      bloqueia: false,
+    });
+  }
+
   return problemas;
 }
 

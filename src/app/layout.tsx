@@ -30,6 +30,10 @@ export const metadata: Metadata = {
   title: "Plataforma Contábil — Análise Financeira",
   description:
     "Plataforma para análise de demonstrativos contábeis e geração de relatórios técnicos com auxílio de IA.",
+  // O tradutor automático do Chrome congelava textos ao trocar de ano (a tela
+  // mostrava T01/26 com 2019 selecionado) e trocava termos ("transmitida" →
+  // "Diploma"). Documento contábil não se traduz.
+  other: { google: "notranslate" },
 };
 
 export default function RootLayout({
@@ -38,6 +42,7 @@ export default function RootLayout({
   return (
     <html
       lang="pt-BR"
+      translate="no"
       className={`h-full antialiased ${display.variable} ${body.variable} ${numeric.variable}`}
     >
       <body className="min-h-full flex flex-col">{children}</body>

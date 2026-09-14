@@ -50,6 +50,12 @@ export interface PatrimonioLiquido {
   capitalSocial: Maybe;
   reservas: Maybe;
   lucrosAcumulados: Maybe;
+  /**
+   * Resultado do exercício ainda no PL (conta "resultado do exercício em
+   * curso"). COM SINAL: lucro positivo, prejuízo negativo. Tem que ser igual
+   * ao resultado da DRE — é a prova de que o resultado foi transferido.
+   */
+  resultadoExercicio?: Maybe;
   /** Informe positivo; é subtraído do PL. */
   prejuizosAcumulados: Maybe;
   outros: Maybe;

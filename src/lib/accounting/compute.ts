@@ -67,6 +67,7 @@ export function totaisBalanco(b: BalancoPatrimonial): TotaisBalanco {
     b.patrimonioLiquido.capitalSocial,
     b.patrimonioLiquido.reservas,
     b.patrimonioLiquido.lucrosAcumulados,
+    b.patrimonioLiquido.resultadoExercicio ?? null, // com sinal
     b.patrimonioLiquido.outros,
   );
   const pl = plPositivo === null ? null : plPositivo - prejuizo;

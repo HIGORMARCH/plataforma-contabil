@@ -158,6 +158,20 @@ function melhorConta(contas: Conta[], prefixoGrupo: string, pred: (c: Conta) => 
   return cands[0];
 }
 
+/** Soma as contas ANALÍTICAS (sem subcontas) sob um grupo cuja descrição casa. */
+function somaFolhas(contas: Conta[], prefixoGrupo: string, re: RegExp): { valor: number; trecho: string } | null {
+  const folhas = contas.filter(
+    (c) =>
+      sob(c.codigo, prefixoGrupo) &&
+      c.codigo !== prefixoGrupo &&
+      re.test(c.descNorm) &&
+      !contas.some((o) => o.codigo !== c.codigo && o.codigo.startsWith(c.codigo + ".")),
+  );
+  if (folhas.length === 0) return null;
+  const valor = Math.round(folhas.reduce((a, c) => a + c.valor, 0) * 100) / 100;
+  return { valor, trecho: folhas.map((c) => c.bruta).join(" + ") };
+}
+
 function melhorDetalhe(contas: Conta[], prefixoGrupo: string, termos: string[]): Conta | undefined {
   return melhorConta(contas, prefixoGrupo, (c) => termos.some((t) => c.descNorm.includes(t)));
 }
@@ -265,8 +279,16 @@ export function extrairPorClassificacao(linhas: string[]): ResultadoExtracao {
     // Subtrai também as Reservas quando existem em sintética própria — senão
     // o plug de lucros incorporaria erroneamente o saldo das reservas.
     const reservas = detalhe["pl.reservas"]?.valor ?? 0;
+    // Resultado do exercício ainda no PL ("resultado do exercício em curso") —
+    // em campo próprio, para a tela provar que é o mesmo da DRE.
+    const resultado = somaFolhas(contas, gPL.codigo, /resultado do exercicio|lucro do exercicio|prejuizo do exercicio/);
+    if (resultado && Math.abs(resultado.valor) > 0.005) set("pl.resultadoExercicio", resultado.valor, resultado.trecho);
+    // Retiradas/distribuição antecipada de lucro reduzem o PL — vão em "Outros (PL)".
+    const retiradas = somaFolhas(contas, gPL.codigo, /retirada de lucro|lucros distribuidos|distribuicao de lucro|dividendos/);
+    if (retiradas && Math.abs(retiradas.valor) > 0.005) set("pl.outros", retiradas.valor, retiradas.trecho);
     // plug de lucros/prejuízos para o PL fechar com o total do grupo (com sinal).
-    const plug = gPL.valor - capital - reservas;
+    const plug =
+      Math.round((gPL.valor - capital - reservas - (resultado?.valor ?? 0) - (retiradas?.valor ?? 0)) * 100) / 100;
     if (plug >= 0) {
       set("pl.lucrosAcumulados", plug, `Ajuste p/ PL = ${gPL.bruta}`, "media");
     } else {
@@ -275,59 +297,137 @@ export function extrairPorClassificacao(linhas: string[]): ResultadoExtracao {
   }
 
   // ---- DRE ----
-  const inicioDRE = linhas.findIndex((l) => /demonstra[çc][ãa]o do resultado/i.test(l));
-  if (inicioDRE >= 0) {
-    const rb = valorDRErotulo(linhas, inicioDRE, ["receita bruta", "receita operacional bruta", "receita de vendas"]);
-    const recLiq = valorDRErotulo(linhas, inicioDRE, ["receita liquida", "receita operacional liquida"]);
-    const lucroBruto = valorDRErotulo(linhas, inicioDRE, ["lucro bruto", "resultado bruto", "prejuizo bruto"]);
-    const dfin = valorDRErotulo(linhas, inicioDRE, ["despesas financeiras"]);
-    const rfin = valorDRErotulo(linhas, inicioDRE, ["receitas financeiras"]);
-    const outras = valorDRErotuloComSinal(linhas, inicioDRE, [
-      "outras receitas operacionais",
-      "outras receitas e despesas operacionais",
-      "outras receitas e despesas",
-    ]);
-    const resInfo = valorDRErotuloComSinal(linhas, inicioDRE, [
-      "lucro liquido do exercicio",
-      "prejuizo liquido do exercicio",
-      "resultado liquido do exercicio",
-      "(=) resultado liquido",
-      "prejuizo do exercicio",
-      "resultado do exercicio",
-    ]);
-
-    if (rb.v !== null && recLiq.v !== null && lucroBruto.v !== null && resInfo.v !== null) {
-      // ESTRATÉGIA ROBUSTA: ancora nos subtotais declarados e deriva os
-      // componentes, de modo que o resultado feche com o LUCRO LÍQUIDO do
-      // documento — independente de como cada plano nomeia as despesas.
-      set("dre.receitaBrutaVendas", rb.v, rb.trecho);
-      const ded = rb.v - recLiq.v;
-      if (ded > 0.005) set("dre.deducoes", ded, `Receita bruta − líquida (${recLiq.trecho})`, "media");
-      const cus = recLiq.v - lucroBruto.v;
-      if (cus > 0.005) set("dre.custos", cus, `Receita líquida − lucro bruto (${lucroBruto.trecho})`, "media");
-      if (rfin.v !== null) set("dre.receitasFinanceiras", rfin.v, rfin.trecho);
-      if (dfin.v !== null) set("dre.despesasFinanceiras", dfin.v, dfin.trecho);
-      if (outras.v !== null) set("dre.outrasReceitasDespesas", outras.v, outras.trecho);
-      // Despesas operacionais = total apurado para o resultado bater com o declarado:
-      // resultadoLíquido = lucroBruto − despOp + outras + recFin − despFin.
-      const despOp = lucroBruto.v + (outras.v ?? 0) + (rfin.v ?? 0) - (dfin.v ?? 0) - resInfo.v;
-      if (Math.abs(despOp) > 0.005) set("dre.despesasOperacionais", despOp, `Despesas apuradas p/ resultado = ${resInfo.trecho}`, "media");
-      set("dre.resultadoLiquidoInformado", resInfo.v, resInfo.trecho, "media");
-    } else {
-      // FALLBACK: captura por componentes (DREs sem todos os subtotais).
-      set("dre.receitaBrutaVendas", rb.v, rb.trecho);
-      const ded = valorDRErotulo(linhas, inicioDRE, ["deducoes", "(-) deducoes", "impostos sobre"]);
-      set("dre.deducoes", ded.v, ded.trecho);
-      const cus = valorDRErotulo(linhas, inicioDRE, ["cmv", "custo das mercadorias", "custo dos produtos", "custo dos servicos", "custos"]);
-      set("dre.custos", cus.v, cus.trecho);
-      const dop = valorDRErotulo(linhas, inicioDRE, ["despesas operacionais"]);
-      set("dre.despesasOperacionais", dop.v, dop.trecho);
-      if (dfin.v !== null) set("dre.despesasFinanceiras", dfin.v, dfin.trecho);
-      if (rfin.v !== null) set("dre.receitasFinanceiras", rfin.v, rfin.trecho);
-      if (outras.v !== null) set("dre.outrasReceitasDespesas", outras.v, outras.trecho);
-      set("dre.resultadoLiquidoInformado", resInfo.v, resInfo.trecho, "media");
-    }
-  }
+  const inicioDRE = linhas.findIndex((l) => RE_TITULO_DRE.test(l));
+  if (inicioDRE >= 0) Object.assign(campos, extrairDRE(linhas, inicioDRE));
 
   return { ano: detectarAnoReferencia(linhas), campos, linhas };
+}
+
+const RE_TITULO_DRE = /demonstra[çc][ãa]o d[oe] resultado/i;
+const RE_TITULO_BALANCO = /balan[çc]o patrimonial/i;
+
+/**
+ * Documento que é SÓ a Demonstração do Resultado — a "D. R. E." impressa pelo
+ * Domínio não traz código de conta, então não cai no parser por classificação.
+ * Na heurística genérica ela sobrescrevia o balanço já importado: "VENDA DE
+ * MERCADORIAS" virava estoque e "SALÁRIOS E ORDENADOS" virava obrigação
+ * trabalhista. Um PDF de DRE só pode preencher campo de DRE.
+ */
+export function ehSoDemonstracaoResultado(linhas: string[]): boolean {
+  return linhas.some((l) => RE_TITULO_DRE.test(l)) && !linhas.some((l) => RE_TITULO_BALANCO.test(l));
+}
+
+export function extrairDemonstracaoResultado(linhas: string[]): ResultadoExtracao {
+  const inicio = linhas.findIndex((l) => RE_TITULO_DRE.test(l));
+  return { ano: detectarAnoReferencia(linhas), campos: inicio >= 0 ? extrairDRE(linhas, inicio) : {}, linhas };
+}
+
+/** Descrição sem o marcador de sinal à esquerda — "(-) depreciações" → "depreciações". */
+function semMarcador(norm: string): string {
+  return norm.replace(/^\([-+=]\)\s*/, "");
+}
+
+/** Magnitude do último valor monetário da linha, ou null. */
+function magnitude(linha: string): number | null {
+  const nums = linha.match(/[\d.]+,\d{2}/g);
+  return nums && nums.length ? numero(nums[nums.length - 1]) : null;
+}
+
+/**
+ * IRPJ/CSLL: só procura DEPOIS da linha do LAIR — antes dela "contribuição
+ * social" pode ser qualquer outra coisa. Se a primeira linha já traz os dois
+ * tributos juntos ("PROVISÃO PARA IR E CSLL"), ela é o total; senão soma as linhas.
+ */
+function tributosSobreLucro(linhas: string[], aPartirDe: number): { v: Maybe; trecho: string } {
+  const termos = ["provisao para", "imposto de renda", "irpj", "contribuicao social", "csll"];
+  const achadas: { v: number; trecho: string; norm: string }[] = [];
+  for (let i = aPartirDe; i < linhas.length; i++) {
+    const norm = semMarcador(normalizar(linhas[i]));
+    if (!termos.some((t) => norm.startsWith(t))) continue;
+    const v = magnitude(linhas[i]);
+    if (v !== null) achadas.push({ v, trecho: linhas[i].trim(), norm });
+  }
+  if (achadas.length === 0) return { v: null, trecho: "" };
+  const primeira = achadas[0];
+  const ehConjunta = /(imposto de renda|irpj|\bir\b)/.test(primeira.norm) && /(contribuicao social|csll|\bcs\b)/.test(primeira.norm);
+  if (ehConjunta) return { v: primeira.v, trecho: primeira.trecho };
+  return { v: achadas.reduce((a, x) => a + x.v, 0), trecho: achadas.map((x) => x.trecho).join(" + ") };
+}
+
+/**
+ * Depreciação/amortização é informativa (EBITDA) — já está dentro das despesas.
+ * Soma as linhas da DRE; se uma delas é o subtotal das demais, fica só ela.
+ */
+function depreciacaoAmortizacao(linhas: string[], inicioDRE: number): { v: Maybe; trecho: string } {
+  const achadas: { v: number; trecho: string }[] = [];
+  for (let i = inicioDRE; i < linhas.length; i++) {
+    const norm = semMarcador(normalizar(linhas[i]));
+    if (!/^(deprecia|amortiza|exaust)/.test(norm)) continue;
+    const v = magnitude(linhas[i]);
+    if (v !== null) achadas.push({ v, trecho: linhas[i].trim() });
+  }
+  if (achadas.length === 0) return { v: null, trecho: "" };
+  const total = achadas.reduce((a, x) => a + x.v, 0);
+  const subtotal = achadas.length > 1 ? achadas.find((x) => Math.abs(x.v - (total - x.v)) < 0.01) : undefined;
+  if (subtotal) return { v: subtotal.v, trecho: subtotal.trecho };
+  return { v: total, trecho: achadas.map((x) => x.trecho).join(" + ") };
+}
+
+function extrairDRE(linhas: string[], inicioDRE: number): Record<string, CampoExtraido> {
+  const campos: Record<string, CampoExtraido> = {};
+  const set = (chave: string, valor: Maybe, trecho: string, confianca: CampoExtraido["confianca"] = "alta") => {
+    if (valor === null) return;
+    campos[chave] = { valor: Math.round(valor * 100) / 100, trecho, confianca };
+  };
+
+  const rb = valorDRErotulo(linhas, inicioDRE, ["receita bruta", "receita operacional bruta", "receita de vendas"]);
+  const dfin = valorDRErotulo(linhas, inicioDRE, ["despesas financeiras"]);
+  const rfin = valorDRErotulo(linhas, inicioDRE, ["receitas financeiras"]);
+  const outras = valorDRErotuloComSinal(linhas, inicioDRE, [
+    "outras receitas operacionais",
+    "outras receitas e despesas operacionais",
+    "outras receitas e despesas",
+    "outras despesas operacionais",
+  ]);
+  const resInfo = valorDRErotuloComSinal(linhas, inicioDRE, [
+    "lucro liquido do exercicio",
+    "prejuizo liquido do exercicio",
+    "resultado liquido do exercicio",
+    "(=) resultado liquido",
+    "prejuizo do exercicio",
+    "lucro do exercicio",
+    "resultado do exercicio",
+  ]);
+  const lair = valorDRErotuloComSinal(linhas, inicioDRE, [
+    "resultado antes do ir",
+    "resultado antes dos tributos",
+    "resultado antes do imposto",
+    "lucro antes do ir",
+    "lucro antes do imposto",
+    "prejuizo antes do ir",
+  ]);
+  const idxLair = lair.v === null ? -1 : linhas.findIndex((l, i) => i >= inicioDRE && l.trim() === lair.trecho);
+  const trib = idxLair >= 0 ? tributosSobreLucro(linhas, idxLair + 1) : { v: null, trecho: "" };
+  const dep = depreciacaoAmortizacao(linhas, inicioDRE);
+
+  if (lair.v !== null) set("dre.resultadoAntesTributos", lair.v, lair.trecho);
+  if (trib.v !== null) set("dre.tributosSobreLucro", trib.v, trib.trecho);
+  if (dep.v !== null) set("dre.depreciacaoAmortizacao", dep.v, dep.trecho, "media");
+
+  // Importa FIEL: cada campo é a linha que o documento imprime. Nada é
+  // deduzido de diferença entre subtotais — se as linhas não fecharem com o
+  // resultado impresso, a validação DRE_DIVERGENTE aponta para o contador.
+  const ded = valorDRErotulo(linhas, inicioDRE, ["deducoes", "(-) deducoes", "impostos sobre"]);
+  const cus = valorDRErotulo(linhas, inicioDRE, ["cmv", "custo das mercadorias", "custo dos produtos", "custo dos servicos", "custo das vendas", "custos"]);
+  const dop = valorDRErotulo(linhas, inicioDRE, ["despesas operacionais"]);
+
+  set("dre.receitaBrutaVendas", rb.v, rb.trecho);
+  set("dre.deducoes", ded.v, ded.trecho);
+  set("dre.custos", cus.v, cus.trecho);
+  set("dre.despesasOperacionais", dop.v, dop.trecho);
+  set("dre.receitasFinanceiras", rfin.v, rfin.trecho);
+  set("dre.despesasFinanceiras", dfin.v, dfin.trecho);
+  set("dre.outrasReceitasDespesas", outras.v, outras.trecho);
+  set("dre.resultadoLiquidoInformado", resInfo.v, resInfo.trecho);
+  return campos;
 }

@@ -200,7 +200,7 @@ export default async function PisCofinsPage({
 
   const cliente = await prisma.cliente.findFirst({
     where: { id, escritorioId: sessao.escritorioId },
-    select: { id: true, razaoSocial: true, cnpj: true, regimeTributario: true, pastaFiscal: true },
+    select: { id: true, razaoSocial: true, cnpj: true, regimeTributario: true, pastaFiscal: true, pastaSpedContribuicoes: true },
   });
   if (!cliente) notFound();
 
@@ -439,7 +439,7 @@ export default async function PisCofinsPage({
 
       {/* Ações */}
       <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
-        <VarrerPastaButton clienteId={id} pastaSugerida={cliente.pastaFiscal} />
+        <VarrerPastaButton clienteId={id} pastaSugerida={cliente.pastaSpedContribuicoes || cliente.pastaFiscal} />
         <VarrerPastaDctfAntigaButton clienteId={id} />
         <UploadSpedContrib clienteId={id} />
         <SincronizarDctfWebButton clienteId={id} ano={ano} />

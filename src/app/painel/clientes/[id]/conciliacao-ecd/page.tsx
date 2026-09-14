@@ -52,6 +52,7 @@ export default async function ConciliacaoEcdPage({
   const exercicio = cliente.exercicios.find((e) => e.ano === anoSelecionado);
   if (exercicio) {
     arqEcd = await caminhoEcdDoAno(clienteRef, anoSelecionado, {
+      pastaEcd: cliente.pastaSpedEcd,
       pastaFiscalLegada: cliente.pastaFiscal,
     });
     if (arqEcd) {
@@ -415,8 +416,7 @@ function BalancoHierarquico({ linhas }: { linhas: LinhaConciliacao[] }) {
           contas: [
             "pl.capitalSocial",
             "pl.reservas",
-            "pl.lucrosAcumulados",
-            "pl.prejuizosAcumulados",
+            "pl.lucrosPrejuizos",
           ],
         },
       ],

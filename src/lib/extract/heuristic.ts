@@ -6,6 +6,7 @@
 
 import { parseNumero } from "../import";
 import type { Maybe } from "../accounting/types";
+import { detectarAnoReferencia } from "./classificacao";
 
 export interface CampoExtraido {
   valor: Maybe;
@@ -109,8 +110,18 @@ function detectarSecao(l: string): Secao {
   if (l.includes("passivo circulante")) return "passivo_circ";
   if (l.includes("passivo nao circulante") || l.includes("passivo exigivel a longo")) return "passivo_ncirc";
   if (l.includes("patrimonio liquido")) return "pl";
-  if (l.includes("demonstracao do resultado") || l.includes("receita") || l.includes("dre")) return "dre";
+  if (l.includes("demonstracao do resultado") || /^receita (bruta|operacional)/.test(l) || /^dre\b/.test(l)) return "dre";
   return null;
+}
+
+/**
+ * Dentro da DRE só se preenche campo de DRE; no balanço, só campo de balanço.
+ * Sem isso "VENDA DE MERCADORIAS" virava estoque e "SALÁRIOS" virava
+ * obrigação trabalhista.
+ */
+function chaveCabeNaSecao(chave: string, secao: Secao): boolean {
+  if (secao === null) return true;
+  return secao === "dre" ? chave.startsWith("dre.") : !chave.startsWith("dre.");
 }
 
 function ehLinhaTotal(l: string): boolean {
@@ -126,11 +137,11 @@ export function extrairDemonstrativos(linhas: string[]): ResultadoExtracao {
     const l = normalizar(bruta);
     if (!l) continue;
 
-    // Detecta ano (31/12/AAAA ou "exercicio AAAA").
-    const mAno = bruta.match(/\b(20\d{2}|19\d{2})\b/);
+    // Ano de reserva (maior ano citado). A data de emissão/impressão do
+    // relatório não conta: um balanço de 2019 emitido hoje não é de 2026.
+    const mAno = /emiss[ãa]o|impress[ãa]o|hora:/i.test(bruta) ? null : bruta.match(/\b(20\d{2}|19\d{2})\b/);
     if (mAno) {
       const a = Number(mAno[1]);
-      // mantém o maior ano encontrado (exercício mais recente).
       if (a >= 1990 && a <= 2100 && (ano === null || a > ano)) ano = a;
     }
 
@@ -152,6 +163,7 @@ export function extrairDemonstrativos(linhas: string[]): ResultadoExtracao {
     // 2) Regras específicas — primeira que casar e ainda não preenchida.
     for (const r of REGRAS) {
       if (r.chave in campos) continue;
+      if (!chaveCabeNaSecao(r.chave, secao)) continue;
       if (r.testar(l, secao)) {
         campos[r.chave] = { valor, trecho: bruta.trim(), confianca: "alta" };
         break;
@@ -159,5 +171,6 @@ export function extrairDemonstrativos(linhas: string[]): ResultadoExtracao {
     }
   }
 
-  return { ano, campos, linhas };
+  // O ano do exercício declarado ("encerrado em", "exercício em 31/12/AAAA") manda.
+  return { ano: detectarAnoReferencia(linhas) ?? ano, campos, linhas };
 }

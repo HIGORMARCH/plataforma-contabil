@@ -1,6 +1,6 @@
 # Manual da Pasta do Cliente — Plataforma Contábil
 
-> Última atualização: 30/08/2026
+> Última atualização: 13/09/2026 (importar Balanço e DRE do Domínio, um de cada vez)
 > Todas as pastas ficam em `C:\PlataformaContabil\`
 
 Este manual é para quem organiza os arquivos dos clientes. Ele diz onde guardar
@@ -161,8 +161,41 @@ conteúdo — pode largar os dois na mesma pasta:
 | Comprovante de Arrecadação da Receita | `FISCAL\IMPOSTOS\SIMPLES NACIONAL\<ANO>\` | PGDAS-D · Conciliação |
 | Espelho ou comprovante da GIAM | `FISCAL\IMPOSTOS\GIAM\<ANO>\` | Auditoria de ICMS |
 | SPED-Fiscal, SPED-Contribuições, ECD, ECF (o `.txt` transmitido) | `FISCAL\DECLARAÇÕES\<tipo>\` | Auditoria · Balanço · Balancete |
-| Balanço e DRE do Domínio (PDF) | Subir pela tela do exercício | Conciliação Domínio × ECD |
+| Balanço e DRE do Domínio (PDF) | Subir pela tela do exercício, **um de cada vez** (seção 7.1) | Conciliação Domínio × ECD |
 | XML e zip de notas | `FISCAL\DOCUMENTOS FISCAIS\<ANO>\<MM.ANO>\` | Tributação NCM |
+
+### 7.1 Balanço e DRE do Domínio: um PDF de cada vez
+
+Tela: cliente → **Exercícios** → quadro *Extrair de PDF (Balanço / DRE)*.
+
+**Balanço e DRE entram separados, um depois do outro.** Nunca os dois no mesmo
+PDF, nunca os dois selecionados juntos. A plataforma lê um arquivo por vez e
+descobre pelo conteúdo se é o Balanço ou a DRE; cada um preenche só a sua parte
+do formulário.
+
+**Passo a passo:**
+
+1. Digite o **ano do exercício** no formulário.
+2. Suba o PDF do **Balanço** exportado do Domínio.
+3. Confira no lado do balanço:
+   - o total do **ATIVO** e do **PASSIVO** é o mesmo que o Domínio imprime;
+   - a linha **Ativo = Passivo + PL** está verde.
+4. Suba o PDF da **D.R.E.** Ela preenche só os campos da DRE; o balanço continua
+   como estava.
+5. Confira a linha **Resultado da DRE transferido para o PL** verde. O resultado
+   do exercício que está no Patrimônio Líquido tem que ser o mesmo da DRE.
+6. Clique em **Salvar exercício**.
+
+Nada é gravado antes do passo 6. Se algo não bater, corrija na tela ou suba o PDF
+de novo.
+
+**Avisos da tela:**
+
+| Aviso | O que significa | O que fazer |
+|---|---|---|
+| "Este PDF é do exercício X, mas o formulário está em Y" (amarelo) | O PDF é de outro ano. O ano do formulário **não** foi trocado | Conferir se subiu o documento certo |
+| "Ativo diferente de Passivo + PL" (vermelho) | Os campos do balanço não fecham | Conferir o Balanço contra o PDF |
+| "Resultado no PL diferente da DRE" (vermelho) | O resultado do exercício no PL não é o da DRE: não foi transferido, ou Balanço e DRE são de versões diferentes | Reexportar os dois do Domínio no mesmo momento e subir de novo |
 
 ---
 
@@ -208,16 +241,24 @@ conteúdo — pode largar os dois na mesma pasta:
 
 ---
 
-## 11. Os três campos de pasta no cadastro
+## 11. Os campos de pasta no cadastro
 
 | Campo | Para quê |
 |---|---|
 | **Pasta do cliente** | A pasta na fonte única. É o campo que vale daqui pra frente — conciliação, razão, PGDAS-D e as cópias padronizadas |
-| **Pasta de arquivos fiscais** | Caminho legado (Z:\, servidor). Ainda usado por Obrigações Acessórias, SPED-Fiscal e GIAM |
-| **Pasta da GIAM** | Pasta compartilhada onde o Domínio salva a GIAM de todos os clientes juntos; a plataforma filtra pela inscrição estadual |
+| **Pasta da ECD** | Ex.: `DECLARACOES\SPED\ECD`. Conciliação Domínio × ECD e Obrigações Acessórias |
+| **Pasta da ECF** | Ex.: `DECLARACOES\SPED\ECF`. IRPJ/CSLL e Obrigações Acessórias |
+| **Pasta da EFD-Contribuições** | Ex.: `DECLARACOES\SPED\EFD_CONTRIBUICOES`. PIS/COFINS e Obrigações Acessórias |
+| **Pasta da EFD ICMS/IPI** | Ex.: `DECLARACOES\SPED\EFD_ICMS_IPI`. SPED-Fiscal × GIAM do Domínio × GIAM do portal |
+| **Pasta geral dos SPEDs** | Opcional. Só é usada quando a pasta do tipo está vazia |
+| **Pasta da GIAM** | Pasta onde o Domínio salva a GIAM; a plataforma filtra pela inscrição estadual |
 
-Preencher os três não faz mal. O ideal é a *Pasta do cliente* apontar para
-`C:\PlataformaContabil\...` com os arquivos do servidor já copiados para lá.
+Uma pasta por tipo de SPED deixa claro, para quem mexe nas pastas, onde cada
+arquivo vai. Mesmo assim a plataforma confere o conteúdo: arquivo de outro tipo
+ou de outro CNPJ é ignorado, não importado errado.
+
+> **ECD:** não renomeie o `.txt`. A conciliação acha o arquivo pelo período no
+> nome (`AAAA0101-AAAA1231`), como vem do ReceitanetBX.
 
 ---
 
@@ -233,7 +274,7 @@ Preencher os três não faz mal. O ideal é a *Pasta do cliente* apontar para
 | Coluna "Pago" vazia no FGTS | Não temos fonte de pagamento de FGTS ainda | Nada a fazer hoje (será o eSocial) |
 | Coluna "Pago" vazia no ICMS | O DARE estadual não passa pelo e-CAC | A tela mostra o declarado na GIAM, com asterisco |
 | Balanço/Balancete sem um ano | Falta o `SPED-ECD\<ANO>\<ANO>.txt` | Importar o ECD pela tela do exercício |
-| Obrigações Acessórias vazio | *Pasta de arquivos fiscais* não preenchida | Preencher no cadastro (seção 11) |
+| Obrigações Acessórias vazio | Pastas da ECD, ECF e EFD-Contribuições não preenchidas | Preencher no cadastro (seção 11) |
 
 ---
 

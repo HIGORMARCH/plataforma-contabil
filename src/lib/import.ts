@@ -41,6 +41,7 @@ export const CAMPOS_BALANCO: DefCampo[] = [
   { chave: "pl.capitalSocial", rotulo: "Capital social", grupo: "Patrimônio Líquido" },
   { chave: "pl.reservas", rotulo: "Reservas", grupo: "Patrimônio Líquido" },
   { chave: "pl.lucrosAcumulados", rotulo: "Lucros acumulados", grupo: "Patrimônio Líquido" },
+  { chave: "pl.resultadoExercicio", rotulo: "Resultado do exercício (prejuízo negativo)", grupo: "Patrimônio Líquido" },
   { chave: "pl.prejuizosAcumulados", rotulo: "Prejuízos acumulados (informe positivo)", grupo: "Patrimônio Líquido" },
   { chave: "pl.outros", rotulo: "Outros (PL)", grupo: "Patrimônio Líquido" },
 ];
@@ -67,6 +68,8 @@ export function parseNumero(v: unknown): Maybe {
   if (typeof v === "number") return Number.isFinite(v) ? v : null;
   let s = String(v).trim().replace(/[R$\s]/g, "");
   if (s === "") return null;
+  // Só pontos em grupos de 3 ("1.500", "1.980.951") = separador de milhar pt-BR.
+  if (/^-?\d{1,3}(\.\d{3})+$/.test(s)) s = s.replace(/\./g, "");
   // Se tem vírgula e ponto, assume ponto como milhar e vírgula como decimal.
   if (s.includes(",") && s.includes(".")) s = s.replace(/\./g, "").replace(",", ".");
   else if (s.includes(",")) s = s.replace(",", ".");
@@ -110,6 +113,7 @@ export function montarExercicio(ano: number, mapa: Record<string, Maybe>, docume
         capitalSocial: g("pl.capitalSocial"),
         reservas: g("pl.reservas"),
         lucrosAcumulados: g("pl.lucrosAcumulados"),
+        resultadoExercicio: g("pl.resultadoExercicio"),
         prejuizosAcumulados: g("pl.prejuizosAcumulados"),
         outros: g("pl.outros"),
       },
@@ -174,6 +178,7 @@ export function achatarExercicio(ex: DemonstrativosExercicio): Record<string, Ma
     "pl.capitalSocial": b.patrimonioLiquido.capitalSocial,
     "pl.reservas": b.patrimonioLiquido.reservas,
     "pl.lucrosAcumulados": b.patrimonioLiquido.lucrosAcumulados,
+    "pl.resultadoExercicio": b.patrimonioLiquido.resultadoExercicio ?? null,
     "pl.prejuizosAcumulados": b.patrimonioLiquido.prejuizosAcumulados,
     "pl.outros": b.patrimonioLiquido.outros,
     "dre.receitaBrutaVendas": d.receitaBrutaVendas,

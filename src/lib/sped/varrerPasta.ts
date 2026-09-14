@@ -73,16 +73,16 @@ export async function varrerPastaSped(params: {
 }): Promise<RelatorioVarredura> {
   const cliente = await prisma.cliente.findUnique({
     where: { id: params.clienteId },
-    select: { pastaFiscal: true },
+    select: { pastaFiscal: true, pastaSpedFiscal: true },
   });
 
-  if (!cliente?.pastaFiscal) {
+  // Pasta da EFD ICMS/IPI; vazia = pasta geral dos SPEDs.
+  const pasta = cliente?.pastaSpedFiscal || cliente?.pastaFiscal;
+  if (!pasta) {
     throw new Error(
-      "Cliente sem pasta fiscal cadastrada. Configure 'Pasta de arquivos fiscais' no cadastro.",
+      "Cliente sem pasta da EFD ICMS/IPI cadastrada. Configure 'Pasta da EFD ICMS/IPI' no cadastro.",
     );
   }
-
-  const pasta = cliente.pastaFiscal;
 
   // Confere que a pasta existe e é acessível.
   try {

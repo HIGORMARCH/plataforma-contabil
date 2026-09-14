@@ -9,7 +9,7 @@ interface Campo {
 }
 interface Resposta {
   ano: number | null;
-  origem: "heuristica" | "ia" | "plano_contas";
+  origem: "heuristica" | "ia" | "plano_contas" | "dre";
   totalLinhas: number;
   campos: Record<string, Campo>;
   erro?: string;
@@ -17,6 +17,7 @@ interface Resposta {
 
 const ROTULO_ORIGEM: Record<Resposta["origem"], string> = {
   plano_contas: " (plano de contas com código D/C — balanço reconciliado)",
+  dre: " (Demonstração do Resultado — os campos do balanço não foram tocados)",
   ia: " (com auxílio de IA)",
   heuristica: "",
 };
@@ -28,6 +29,7 @@ function formatarBR(v: number): string {
 export function ExtrairPDF({ clienteId }: { clienteId?: string } = {}) {
   const [estado, setEstado] = useState<"idle" | "processando" | "ok" | "erro">("idle");
   const [msg, setMsg] = useState<string>("");
+  const [aviso, setAviso] = useState<string>("");
   const [resumo, setResumo] = useState<{ chave: string; campo: Campo }[]>([]);
 
   async function enviar(e: React.ChangeEvent<HTMLInputElement>) {
@@ -35,6 +37,7 @@ export function ExtrairPDF({ clienteId }: { clienteId?: string } = {}) {
     if (!file) return;
     setEstado("processando");
     setMsg("Lendo o PDF e extraindo os saldos...");
+    setAviso("");
     setResumo([]);
 
     try {
@@ -49,11 +52,22 @@ export function ExtrairPDF({ clienteId }: { clienteId?: string } = {}) {
         return;
       }
 
-      // Preenche o ano.
+      // Ano: só preenche se o formulário ainda não tem um. Balanço e DRE do
+      // mesmo exercício sobem um depois do outro — se o segundo PDF for de
+      // outro ano, o contador precisa ver, não ter o ano trocado em silêncio.
       if (data.ano) {
-        document.querySelectorAll<HTMLInputElement>('input[name="ano"]').forEach((i) => {
-          i.value = String(data.ano);
-        });
+        const inputs = document.querySelectorAll<HTMLInputElement>('input[name="ano"]');
+        const atual = [...inputs].map((i) => i.value.trim()).find(Boolean);
+        if (atual && atual !== String(data.ano)) {
+          setAviso(
+            `Este PDF é do exercício ${data.ano}, mas o formulário está em ${atual}. ` +
+              "O ano não foi alterado — confira se é o documento certo antes de salvar.",
+          );
+        } else {
+          inputs.forEach((i) => {
+            i.value = String(data.ano);
+          });
+        }
       }
 
       // Preenche os campos e destaca.
@@ -64,6 +78,8 @@ export function ExtrairPDF({ clienteId }: { clienteId?: string } = {}) {
         if (input) {
           input.value = formatarBR(campo.valor);
           input.classList.add("ring-2", "ring-[var(--brand-2)]", "bg-teal-50");
+          // Atribuir .value não dispara evento — sem isto os totais do balanço não recalculam.
+          input.dispatchEvent(new Event("input", { bubbles: true }));
           preenchidos.push({ chave, campo });
         }
       }
@@ -117,6 +133,8 @@ export function ExtrairPDF({ clienteId }: { clienteId?: string } = {}) {
           {msg}
         </div>
       )}
+
+      {aviso && <div className="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800">{aviso}</div>}
 
       {resumo.length > 0 && (
         <details className="mt-3 text-xs text-slate-600">

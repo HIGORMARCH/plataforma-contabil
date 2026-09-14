@@ -49,7 +49,20 @@ Quando Higor sinalizar fim de sessão ("vamos fechar", "boa noite", equivalente)
 
 Detalhe completo em `~/.claude/CLAUDE.md` global do Higor.
 
-## Última sessão (02/09/2026)
+## Última sessão (13–14/09/2026)
+
+Pastas do cliente no modelo do Higor, telas por ano e ECF completa.
+
+- **Pastas:** `C:\PlataformaContabil\<NOME>` (sem CNPJ), `CONTABIL\<ANO>`, `FISCAL\SPED|DOMINIO\<TIPO>\<ANO>`, `FISCAL\DCTF\<ANO>`, `FISCAL\DCTFWEB\<ANO>`. Cadastro ganhou "Pastas do cliente"; as telas leem de lá.
+- **Balanço/DRE do Domínio** importa fiel ao impresso; tela Ativo | Passivo | DRE com conferência do resultado no PL.
+- **ECF:** Lucro Real, SPED transmitido × Domínio, retificadora vigente = última entrega.
+- **IRPJ/CSLL, ICMS e PGDAS-D por ano.** Leitores de PDF da DCTF Mensal e do recibo DCTFWeb prontos (sem varredura ainda).
+- **Regras novas:** só fazer o que o Higor manda; documento estranho → mostrar e perguntar; escopo 2019–2026; ver o que já existe (ReceitanetBX Serviço, march-cofre) antes de construir coleta.
+- **Atenção:** schema aplicado só no local; deploy no 220 pendente (credenciais inválidas).
+
+Ver `docs/RELATORIO-SESSAO-2026-09-14.md`.
+
+## Sessão anterior (02/09/2026)
 
 Organizador de documentos: quarentena de 953 para ZERO, e a pasta de cada
 cliente reestruturada em três grupos.

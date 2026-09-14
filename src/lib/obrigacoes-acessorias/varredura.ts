@@ -151,25 +151,36 @@ export async function varrerObrigacoesAcessorias(params: {
 }): Promise<RelatorioVarreduraObrigacoes> {
   const cliente = await prisma.cliente.findUnique({
     where: { id: params.clienteId },
-    select: { pastaFiscal: true },
+    select: { pastaFiscal: true, pastaSpedEcd: true, pastaSpedEcf: true, pastaSpedContribuicoes: true },
   });
-  if (!cliente?.pastaFiscal) {
-    throw new Error(
-      "Cliente sem pasta fiscal cadastrada. Configure em Editar cadastro.",
-    );
-  }
-  const pasta = cliente.pastaFiscal;
-
-  try {
-    const st = await stat(pasta);
-    if (!st.isDirectory()) throw new Error(`"${pasta}" não é uma pasta`);
-  } catch (e) {
-    throw new Error(
-      `Não consegui ler a pasta "${pasta}": ${e instanceof Error ? e.message : String(e)}`,
-    );
+  // Pastas por tipo + a geral. A mesma pasta (ou uma dentro da outra) não
+  // conta arquivo duas vezes: cada arquivo fica com a primeira raiz que o achou.
+  const pastas = [
+    ...new Set(
+      [cliente?.pastaSpedEcd, cliente?.pastaSpedEcf, cliente?.pastaSpedContribuicoes, cliente?.pastaFiscal].filter(
+        (p): p is string => !!p?.trim(),
+      ),
+    ),
+  ];
+  if (pastas.length === 0) {
+    throw new Error("Cliente sem pastas de SPED cadastradas. Configure em Editar cadastro.");
   }
 
-  const caminhos = await listarArquivosRecursivo(pasta);
+  const raizDe = new Map<string, string>();
+  const ilegiveis: string[] = [];
+  for (const p of pastas) {
+    const st = await stat(p).catch(() => null);
+    if (!st?.isDirectory()) {
+      ilegiveis.push(p);
+      continue;
+    }
+    for (const c of await listarArquivosRecursivo(p)) if (!raizDe.has(c)) raizDe.set(c, p);
+  }
+  if (ilegiveis.length === pastas.length) {
+    throw new Error(`Não consegui ler nenhuma pasta: ${ilegiveis.join(" · ")}`);
+  }
+  const pasta = pastas.join(" · ");
+  const caminhos = [...raizDe.keys()];
   const relatorio: RelatorioVarreduraObrigacoes = {
     pasta,
     totalArquivos: caminhos.length,
@@ -180,7 +191,7 @@ export async function varrerObrigacoesAcessorias(params: {
   };
 
   for (const caminho of caminhos) {
-    const rotulo = relative(pasta, caminho) || caminho;
+    const rotulo = relative(raizDe.get(caminho)!, caminho) || caminho;
     try {
       const info = await stat(caminho);
       // Amostra só do começo do arquivo pra identificar o tipo (arquivos SPED

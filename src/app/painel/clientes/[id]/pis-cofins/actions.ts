@@ -71,9 +71,9 @@ export async function varrerPastaSpedAction(
     if (!pasta) {
       const c = await prisma.cliente.findUnique({
         where: { id: clienteId },
-        select: { pastaFiscal: true },
+        select: { pastaFiscal: true, pastaSpedContribuicoes: true },
       });
-      pasta = c?.pastaFiscal ?? "";
+      pasta = c?.pastaSpedContribuicoes || c?.pastaFiscal || "";
     }
     if (!pasta) {
       return {

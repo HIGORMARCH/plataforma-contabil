@@ -520,13 +520,15 @@ export function pastaEcdDoCliente(pastaFiscal: string | null | undefined): strin
 export async function caminhoEcdDoAno(
   cliente: ClienteRef,
   ano: number,
-  opts?: { pastaFiscalLegada?: string | null },
+  opts?: { pastaEcd?: string | null; pastaFiscalLegada?: string | null },
 ): Promise<string | null> {
   const alvo = caminhoArquivo(cliente, "SPED-ECD", ano, null, ".txt");
   if (existsSync(alvo)) return alvo;
 
-  // Fallback: procura na pasta legada e copia pra única (só primeira vez).
-  const pastaLegada = opts?.pastaFiscalLegada ? path.join(opts.pastaFiscalLegada, "ECD") : null;
+  // Fallback: procura na pasta da ECD do cadastro (ou <pasta geral>\ECD) e
+  // copia pra única (só primeira vez).
+  const pastaLegada =
+    opts?.pastaEcd || (opts?.pastaFiscalLegada ? path.join(opts.pastaFiscalLegada, "ECD") : null);
   if (!pastaLegada || !existsSync(pastaLegada)) return null;
   const origem = escolherArquivoEcdEmPasta(pastaLegada, ano);
   if (!origem) return null;

@@ -8,6 +8,7 @@ export function UploadEcfForm({ clienteId }: { clienteId: string }) {
   const [pending, startTransition] = useTransition();
   const [msg, setMsg] = useState<{ tipo: "ok" | "erro"; texto: string } | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const [fonte, setFonte] = useState<"TRANSMITIDO" | "DOMINIO">("TRANSMITIDO");
   const router = useRouter();
 
   function submit() {
@@ -20,6 +21,7 @@ export function UploadEcfForm({ clienteId }: { clienteId: string }) {
       const fd = new FormData();
       fd.set("clienteId", clienteId);
       fd.set("file", file);
+      fd.set("fonte", fonte);
       const r = await uploadEcfAction(fd);
       if (r.ok) {
         setMsg({ tipo: "ok", texto: `${r.mensagem}${r.ano ? ` (ano ${r.ano})` : ""}` });
@@ -36,6 +38,14 @@ export function UploadEcfForm({ clienteId }: { clienteId: string }) {
       <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
         Importar ECF (.txt) manualmente
       </div>
+      <select
+        value={fonte}
+        onChange={(e) => setFonte(e.target.value as "TRANSMITIDO" | "DOMINIO")}
+        className="input mb-2 text-xs"
+      >
+        <option value="TRANSMITIDO">ECF transmitida (SPED)</option>
+        <option value="DOMINIO">ECF do Domínio</option>
+      </select>
       <input
         type="file"
         ref={fileRef}

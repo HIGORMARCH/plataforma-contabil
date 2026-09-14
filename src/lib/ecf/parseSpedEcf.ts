@@ -113,8 +113,37 @@ export function parseSpedEcf(conteudo: string): EcfParsed {
       if (campos[2] === "13") {
         trimestreAtual.csllApurado = parseValor(campos[4] ?? "0");
       }
+    } else if (reg === "N030") {
+      // Lucro Real — |N030|dtIni|dtFim|T0N|. Conferido nas ECF da Casa São Paulo
+      // (layouts 0006 a 0010): trimestral vem como T01..T04. Estimativa mensal
+      // (A01..A12) fica fora por enquanto: fecha o trimestre corrente.
+      const dtIni = parseDataDDMMYYYY(campos[2] ?? "");
+      const dtFim = parseDataDDMMYYYY(campos[3] ?? "");
+      const m = /^T0([1-4])$/.exec(campos[4] ?? "");
+      if (dtIni && dtFim && m) {
+        trimestreAtual = {
+          trimestre: Number(m[1]) as 1 | 2 | 3 | 4,
+          dataInicial: dtIni,
+          dataFinal: dtFim,
+          regime: "REAL_TRIMESTRAL",
+          irpjApurado: 0,
+          csllApurado: 0,
+        };
+        trimestres.set(trimestreAtual.trimestre, trimestreAtual);
+      } else {
+        trimestreAtual = undefined;
+      }
+    } else if (reg === "N630" && trimestreAtual) {
+      // |N630|COD|DESC|VALOR| — item 26 é "IMPOSTO DE RENDA A PAGAR" (Lucro Real)
+      if (campos[2] === "26") {
+        trimestreAtual.irpjApurado = parseValor(campos[4] ?? "0");
+      }
+    } else if (reg === "N670" && trimestreAtual) {
+      // |N670|COD|DESC|VALOR| — item 21 é "CSLL A PAGAR" (Lucro Real)
+      if (campos[2] === "21") {
+        trimestreAtual.csllApurado = parseValor(campos[4] ?? "0");
+      }
     }
-    // TODO fase 2: blocos M/N pra Lucro Real
   }
 
   res.apuracoes = [...trimestres.values()].sort((a, b) => a.trimestre - b.trimestre);

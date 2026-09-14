@@ -1,9 +1,7 @@
-import path from "node:path";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requirePapel, PAPEIS_INTERNOS } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import { pastaCliente } from "@/lib/storage/filesystem";
 import { VarrerPastaEcfButton } from "./_components/VarrerPastaEcfButton";
 import { UploadEcfForm } from "./_components/UploadEcfForm";
 
@@ -57,6 +55,20 @@ const AUSENTE = (
   <span className="text-slate-300" title="Não entregue / não importado">—</span>
 );
 
+/** Valor da ECF do Domínio: vermelho quando difere da transmitida. */
+function CelulaDominio({ valor, presente, sped, spedPresente }: { valor: number; presente: boolean; sped: number; spedPresente: boolean }) {
+  if (!presente) return AUSENTE;
+  const difere = spedPresente && Math.abs(valor - sped) > 0.01;
+  return (
+    <span
+      className={difere ? "font-semibold text-red-600" : undefined}
+      title={difere ? `Diferente da ECF transmitida (${brl(sped)})` : undefined}
+    >
+      {brl(valor)}
+    </span>
+  );
+}
+
 export default async function IrpjCsllPage({
   params,
   searchParams,
@@ -72,16 +84,23 @@ export default async function IrpjCsllPage({
 
   const cliente = await prisma.cliente.findFirst({
     where: { id, escritorioId: sessao.escritorioId },
-    select: { id: true, razaoSocial: true, cnpj: true, regimeTributario: true },
+    select: {
+      id: true,
+      razaoSocial: true,
+      cnpj: true,
+      regimeTributario: true,
+      pastaFiscal: true,
+      pastaSpedEcf: true,
+      pastaDominioEcf: true,
+    },
   });
   if (!cliente) notFound();
 
-  // Pasta única padronizada: C:\PlataformaContabil\<CLIENTE>_<CNPJ>\SPED-ECF
-  // A varredura é recursiva, então pega todos os anos dentro dessa raiz.
-  const pastaEcf = path.join(
-    pastaCliente({ razaoSocial: cliente.razaoSocial, cnpj: cliente.cnpj }),
-    "SPED-ECF",
-  );
+  // As pastas vêm do cadastro (Pastas do cliente → Fiscal) — a mesma regra que a
+  // ação de varredura usa: transmitida = ECF do SPED (ou a pasta dos SPED
+  // transmitidos); Domínio = ECF do Domínio.
+  const pastaEcfSped = cliente.pastaSpedEcf || cliente.pastaFiscal || null;
+  const pastaEcfDominio = cliente.pastaDominioEcf || null;
 
   // Anos com dados (ECF ou DCTF) — não mostra ano vazio no seletor
   const [ecfAnos, dctfPeriodos] = await Promise.all([
@@ -102,7 +121,7 @@ export default async function IrpjCsllPage({
   if (!anosComDados.has(ano)) anosComDados.add(ano);
   const anosDisponiveis = [...anosComDados].sort((a, b) => b - a);
 
-  // Busca as 4 apurações trimestrais do ECF e as DCTFs do ano
+  // Busca as apurações trimestrais do ECF (as duas fontes) e as DCTFs do ano
   const inicio = new Date(ano, 0, 1);
   const fim = new Date(ano, 11, 31);
   const [ecfs, dctfs] = await Promise.all([
@@ -119,27 +138,45 @@ export default async function IrpjCsllPage({
   // Consolida por trimestre
   type Linha = {
     trimestre: 1 | 2 | 3 | 4;
-    ecfPresente: boolean;
+    spedPresente: boolean;
+    dominioPresente: boolean;
     dctfPresente: boolean; // ao menos 1 dos 3 meses do trim tem DCTF importada
     regime?: string;
-    irpjEcf: number;
+    irpjSped: number;
+    irpjDominio: number;
     irpjDctf: number;
-    csllEcf: number;
+    csllSped: number;
+    csllDominio: number;
     csllDctf: number;
   };
-  const linhas: Record<1 | 2 | 3 | 4, Linha> = {
-    1: { trimestre: 1, ecfPresente: false, dctfPresente: false, irpjEcf: 0, irpjDctf: 0, csllEcf: 0, csllDctf: 0 },
-    2: { trimestre: 2, ecfPresente: false, dctfPresente: false, irpjEcf: 0, irpjDctf: 0, csllEcf: 0, csllDctf: 0 },
-    3: { trimestre: 3, ecfPresente: false, dctfPresente: false, irpjEcf: 0, irpjDctf: 0, csllEcf: 0, csllDctf: 0 },
-    4: { trimestre: 4, ecfPresente: false, dctfPresente: false, irpjEcf: 0, irpjDctf: 0, csllEcf: 0, csllDctf: 0 },
-  };
+  const vazia = (t: 1 | 2 | 3 | 4): Linha => ({
+    trimestre: t,
+    spedPresente: false,
+    dominioPresente: false,
+    dctfPresente: false,
+    irpjSped: 0,
+    irpjDominio: 0,
+    irpjDctf: 0,
+    csllSped: 0,
+    csllDominio: 0,
+    csllDctf: 0,
+  });
+  const linhas: Record<1 | 2 | 3 | 4, Linha> = { 1: vazia(1), 2: vazia(2), 3: vazia(3), 4: vazia(4) };
 
   for (const e of ecfs) {
-    const t = e.trimestre as 1 | 2 | 3 | 4;
-    linhas[t].ecfPresente = true;
-    linhas[t].regime = e.regime;
-    linhas[t].irpjEcf += Number(e.irpjApurado.toString());
-    linhas[t].csllEcf += Number(e.csllApurada.toString());
+    const l = linhas[e.trimestre as 1 | 2 | 3 | 4];
+    l.regime ??= e.regime;
+    const irpj = Number(e.irpjApurado.toString());
+    const csll = Number(e.csllApurada.toString());
+    if (e.fonte === "DOMINIO") {
+      l.dominioPresente = true;
+      l.irpjDominio += irpj;
+      l.csllDominio += csll;
+    } else {
+      l.spedPresente = true;
+      l.irpjSped += irpj;
+      l.csllSped += csll;
+    }
   }
 
   for (const d of dctfs) {
@@ -154,10 +191,10 @@ export default async function IrpjCsllPage({
     }
   }
 
-  const totIrpjEcf = Object.values(linhas).reduce((s, l) => s + l.irpjEcf, 0);
-  const totIrpjDctf = Object.values(linhas).reduce((s, l) => s + l.irpjDctf, 0);
-  const totCsllEcf = Object.values(linhas).reduce((s, l) => s + l.csllEcf, 0);
-  const totCsllDctf = Object.values(linhas).reduce((s, l) => s + l.csllDctf, 0);
+  const soma = (k: keyof Pick<Linha, "irpjSped" | "irpjDominio" | "irpjDctf" | "csllSped" | "csllDominio" | "csllDctf">) =>
+    Object.values(linhas).reduce((s, l) => s + l[k], 0);
+  const algumDominio = Object.values(linhas).some((l) => l.dominioPresente);
+  const algumSped = Object.values(linhas).some((l) => l.spedPresente);
 
   return (
     <div className="space-y-6">
@@ -187,50 +224,68 @@ export default async function IrpjCsllPage({
         ))}
       </div>
 
-      {/* Ações */}
-      <div className="grid gap-3 md:grid-cols-2">
-        <VarrerPastaEcfButton clienteId={id} pastaSugerida={pastaEcf} />
+      {/* Ações: uma varredura por fonte */}
+      <div className="grid gap-3 md:grid-cols-3">
+        <VarrerPastaEcfButton clienteId={id} fonte="TRANSMITIDO" titulo="ECF transmitida (SPED)" pasta={pastaEcfSped} ano={ano} />
+        <VarrerPastaEcfButton clienteId={id} fonte="DOMINIO" titulo="ECF do Domínio" pasta={pastaEcfDominio} ano={ano} />
         <UploadEcfForm clienteId={id} />
       </div>
 
       {/* Tabela de confronto trimestral */}
-      <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
+      {/* key={ano}: troca de ano recria a tabela inteira — nenhum texto do ano
+          anterior sobrevive (nem a cópia que o tradutor do Chrome congela). */}
+      <div key={ano} className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
         <table className="w-full text-sm">
           <thead className="bg-slate-50">
             <tr>
-              <th className="px-3 py-2 text-left font-semibold text-slate-600">Trimestre</th>
-              <th className="px-3 py-2 text-right font-semibold text-blue-700">IRPJ ECF</th>
-              <th className="px-3 py-2 text-right font-semibold text-blue-700">IRPJ DCTF/DCTFWeb</th>
-              <th className="px-3 py-2 text-center font-semibold text-slate-600">Divergência IRPJ</th>
-              <th className="px-3 py-2 text-right font-semibold text-purple-700">CSLL ECF</th>
-              <th className="px-3 py-2 text-right font-semibold text-purple-700">CSLL DCTF/DCTFWeb</th>
-              <th className="px-3 py-2 text-center font-semibold text-slate-600">Divergência CSLL</th>
+              <th className="px-3 py-2 text-left font-semibold text-slate-600" rowSpan={2}>Trimestre</th>
+              <th className="border-l border-slate-200 px-3 py-1 text-center font-semibold text-blue-700" colSpan={4}>IRPJ</th>
+              <th className="border-l border-slate-200 px-3 py-1 text-center font-semibold text-purple-700" colSpan={4}>CSLL</th>
+            </tr>
+            <tr className="text-xs">
+              <th className="border-l border-slate-200 px-3 py-2 text-right font-semibold text-blue-700">ECF SPED</th>
+              <th className="px-3 py-2 text-right font-semibold text-blue-700">ECF Domínio</th>
+              <th className="px-3 py-2 text-right font-semibold text-blue-700">DCTF/DCTFWeb</th>
+              <th className="px-3 py-2 text-center font-semibold text-slate-600">SPED × DCTF</th>
+              <th className="border-l border-slate-200 px-3 py-2 text-right font-semibold text-purple-700">ECF SPED</th>
+              <th className="px-3 py-2 text-right font-semibold text-purple-700">ECF Domínio</th>
+              <th className="px-3 py-2 text-right font-semibold text-purple-700">DCTF/DCTFWeb</th>
+              <th className="px-3 py-2 text-center font-semibold text-slate-600">SPED × DCTF</th>
             </tr>
           </thead>
           <tbody>
             {Object.values(linhas).map((l) => {
-              const divIrpj = calcularDivergencia(l.irpjEcf, l.irpjDctf, l.ecfPresente, l.dctfPresente);
-              const divCsll = calcularDivergencia(l.csllEcf, l.csllDctf, l.ecfPresente, l.dctfPresente);
-              const nada = !l.ecfPresente && !l.dctfPresente;
+              const divIrpj = calcularDivergencia(l.irpjSped, l.irpjDctf, l.spedPresente, l.dctfPresente);
+              const divCsll = calcularDivergencia(l.csllSped, l.csllDctf, l.spedPresente, l.dctfPresente);
+              const nada = !l.spedPresente && !l.dominioPresente && !l.dctfPresente;
               return (
                 <tr key={l.trimestre} className={`border-t border-slate-100 ${nada ? "text-slate-400" : ""}`}>
                   <td className="px-3 py-2 font-medium">
-                    T0{l.trimestre}/{String(ano).slice(2)}
+                    T0{l.trimestre}/{ano}
+                    <span className="ml-1 text-[11px] font-normal text-slate-500">
+                      {["jan–mar", "abr–jun", "jul–set", "out–dez"][l.trimestre - 1]}/{ano}
+                    </span>
                     {l.regime && (
                       <span className="ml-1 text-[10px] uppercase tracking-wide text-slate-400">
                         {l.regime === "PRESUMIDO" ? "Pres." : l.regime === "REAL_TRIMESTRAL" ? "Real T" : "Real A"}
                       </span>
                     )}
                   </td>
+                  <td className="border-l border-slate-100 px-3 py-2 text-right font-mono">
+                    {l.spedPresente ? brl(l.irpjSped) : AUSENTE}
+                  </td>
                   <td className="px-3 py-2 text-right font-mono">
-                    {l.ecfPresente ? brl(l.irpjEcf) : AUSENTE}
+                    <CelulaDominio valor={l.irpjDominio} presente={l.dominioPresente} sped={l.irpjSped} spedPresente={l.spedPresente} />
                   </td>
                   <td className="px-3 py-2 text-right font-mono">
                     {l.dctfPresente ? brl(l.irpjDctf) : AUSENTE}
                   </td>
                   <td className={`px-3 py-2 text-center text-xs ${divIrpj.classe}`}>{divIrpj.rotulo}</td>
+                  <td className="border-l border-slate-100 px-3 py-2 text-right font-mono">
+                    {l.spedPresente ? brl(l.csllSped) : AUSENTE}
+                  </td>
                   <td className="px-3 py-2 text-right font-mono">
-                    {l.ecfPresente ? brl(l.csllEcf) : AUSENTE}
+                    <CelulaDominio valor={l.csllDominio} presente={l.dominioPresente} sped={l.csllSped} spedPresente={l.spedPresente} />
                   </td>
                   <td className="px-3 py-2 text-right font-mono">
                     {l.dctfPresente ? brl(l.csllDctf) : AUSENTE}
@@ -243,15 +298,21 @@ export default async function IrpjCsllPage({
           <tfoot className="bg-slate-50 font-semibold">
             <tr className="border-t-2 border-slate-300">
               <td className="px-3 py-2">Total {ano}</td>
-              <td className="px-3 py-2 text-right font-mono">{brl(totIrpjEcf)}</td>
-              <td className="px-3 py-2 text-right font-mono">{brl(totIrpjDctf)}</td>
-              <td className={`px-3 py-2 text-center text-xs ${calcularDivergencia(totIrpjEcf, totIrpjDctf, true, true).classe}`}>
-                {calcularDivergencia(totIrpjEcf, totIrpjDctf, true, true).rotulo}
+              <td className="border-l border-slate-200 px-3 py-2 text-right font-mono">{brl(soma("irpjSped"))}</td>
+              <td className="px-3 py-2 text-right font-mono">
+                <CelulaDominio valor={soma("irpjDominio")} presente={algumDominio} sped={soma("irpjSped")} spedPresente={algumSped} />
               </td>
-              <td className="px-3 py-2 text-right font-mono">{brl(totCsllEcf)}</td>
-              <td className="px-3 py-2 text-right font-mono">{brl(totCsllDctf)}</td>
-              <td className={`px-3 py-2 text-center text-xs ${calcularDivergencia(totCsllEcf, totCsllDctf, true, true).classe}`}>
-                {calcularDivergencia(totCsllEcf, totCsllDctf, true, true).rotulo}
+              <td className="px-3 py-2 text-right font-mono">{brl(soma("irpjDctf"))}</td>
+              <td className={`px-3 py-2 text-center text-xs ${calcularDivergencia(soma("irpjSped"), soma("irpjDctf"), true, true).classe}`}>
+                {calcularDivergencia(soma("irpjSped"), soma("irpjDctf"), true, true).rotulo}
+              </td>
+              <td className="border-l border-slate-200 px-3 py-2 text-right font-mono">{brl(soma("csllSped"))}</td>
+              <td className="px-3 py-2 text-right font-mono">
+                <CelulaDominio valor={soma("csllDominio")} presente={algumDominio} sped={soma("csllSped")} spedPresente={algumSped} />
+              </td>
+              <td className="px-3 py-2 text-right font-mono">{brl(soma("csllDctf"))}</td>
+              <td className={`px-3 py-2 text-center text-xs ${calcularDivergencia(soma("csllSped"), soma("csllDctf"), true, true).classe}`}>
+                {calcularDivergencia(soma("csllSped"), soma("csllDctf"), true, true).rotulo}
               </td>
             </tr>
           </tfoot>
@@ -260,9 +321,9 @@ export default async function IrpjCsllPage({
 
       {ecfs.length === 0 && dctfs.length === 0 && (
         <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-          <b>Nenhum dado ainda pra {ano}.</b> Varra a pasta ECF pra importar a apuração anual do
-          IRPJ/CSLL, ou envie o arquivo .txt manualmente. Os débitos da DCTF/DCTFWeb são
-          reaproveitados do módulo PIS/COFINS (mesmo arquivo).
+          <b>Nenhum dado ainda pra {ano}.</b> Varra a pasta da ECF transmitida e a do Domínio, ou envie o
+          arquivo .txt manualmente. Os débitos da DCTF/DCTFWeb são reaproveitados do módulo PIS/COFINS
+          (mesmo arquivo).
         </div>
       )}
     </div>

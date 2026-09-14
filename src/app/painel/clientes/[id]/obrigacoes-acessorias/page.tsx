@@ -42,6 +42,9 @@ export default async function ObrigacoesAcessoriasPage({
       razaoSocial: true,
       nomeFantasia: true,
       pastaFiscal: true,
+      pastaSpedEcd: true,
+      pastaSpedEcf: true,
+      pastaSpedContribuicoes: true,
       regimeTributario: true,
     },
   });
@@ -127,7 +130,14 @@ export default async function ObrigacoesAcessoriasPage({
         <h2 className="mb-3 text-sm font-bold uppercase tracking-wide text-slate-500">
           Varredura da pasta do cliente
         </h2>
-        <VarrerPastaObrigacoesButton clienteId={id} pastaFiscal={cliente.pastaFiscal} />
+        <VarrerPastaObrigacoesButton
+          clienteId={id}
+          pastaFiscal={
+            [...new Set([cliente.pastaSpedEcd, cliente.pastaSpedEcf, cliente.pastaSpedContribuicoes, cliente.pastaFiscal])]
+              .filter(Boolean)
+              .join(" · ") || null
+          }
+        />
       </section>
 
       {ehSimples(cliente.regimeTributario) && (

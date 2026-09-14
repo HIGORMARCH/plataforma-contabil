@@ -2,9 +2,13 @@
 
 import { revalidatePath } from "next/cache";
 import { requireSessao, PAPEIS_INTERNOS } from "@/lib/auth";
-import { importarSpedEcf } from "@/lib/ecf/importar";
+import { importarSpedEcf, type FonteEcf } from "@/lib/ecf/importar";
 import { varrerPastaEcf } from "@/lib/ecf/varrerPasta";
 import { prisma } from "@/lib/db";
+
+function fonteDo(fd: FormData): FonteEcf {
+  return String(fd.get("fonte") ?? "") === "DOMINIO" ? "DOMINIO" : "TRANSMITIDO";
+}
 
 export async function uploadEcfAction(
   fd: FormData,
@@ -29,6 +33,7 @@ export async function uploadEcfAction(
       clienteId,
       nomeArquivo: file.name,
       conteudo,
+      fonte: fonteDo(fd),
       origem: "UPLOAD",
       importadoPor: sessao.userId,
     });
@@ -53,25 +58,28 @@ export async function varrerPastaEcfAction(
 
     const clienteId = String(fd.get("clienteId") ?? "");
     const pastaOverride = String(fd.get("pasta") ?? "").trim();
+    const fonte = fonteDo(fd);
     if (!clienteId) return { ok: false, erro: "Falta clienteId." };
 
     let pasta = pastaOverride;
     if (!pasta) {
       const c = await prisma.cliente.findUnique({
         where: { id: clienteId },
-        select: { pastaFiscal: true },
+        select: { pastaFiscal: true, pastaSpedEcf: true, pastaDominioEcf: true },
       });
-      pasta = c?.pastaFiscal ?? "";
+      pasta = fonte === "DOMINIO" ? c?.pastaDominioEcf || "" : c?.pastaSpedEcf || c?.pastaFiscal || "";
     }
     if (!pasta) {
       return {
         ok: false,
         erro:
-          "Nenhuma pasta informada e o cliente não tem pastaFiscal cadastrada. Preencha o campo ou cadastre no editar cliente.",
+          fonte === "DOMINIO"
+            ? "Nenhuma pasta informada e o cliente não tem a pasta da ECF do Domínio cadastrada."
+            : "Nenhuma pasta informada e o cliente não tem a pasta da ECF transmitida cadastrada.",
       };
     }
 
-    const res = await varrerPastaEcf({ clienteId, pasta, usuarioId: sessao.userId });
+    const res = await varrerPastaEcf({ clienteId, pasta, usuarioId: sessao.userId, fonte });
     revalidatePath(`/painel/clientes/${clienteId}/irpj-csll`);
 
     const resumo =
@@ -79,7 +87,8 @@ export async function varrerPastaEcfAction(
       `${res.importadosNovos} novo(s) · ${res.substituidos} substituído(s) · ` +
       `${res.ignoradosJaImportados} já importado(s) · ` +
       `${res.ignoradosCnpjDiferente} de outro CNPJ · ` +
-      `${res.ignoradosNaoEcf} não-ECF · ${res.falhas.length} falha(s)`;
+      `${res.ignoradosNaoEcf} não-ECF · ${res.falhas.length} falha(s)` +
+      (res.falhas.length ? " — veja os detalhes por arquivo" : "");
 
     return { ok: true, resumo, detalhes: res.detalhes };
   } catch (e) {

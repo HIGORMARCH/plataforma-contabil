@@ -11,6 +11,18 @@
 - [ ] **Conferir 02/2026 e 03/2026 da LUPO QUIOSQUE** — têm GIAM no Domínio e não têm Espelho no portal SEFAZ, e estão DENTRO do período atendido. Ou o robô não sincronizou, ou não foram transmitidas.
 - [ ] **Validar impressão do relatório de Impostos a Pagar** — Ctrl+P na LUPO (84 competências) pra conferir quebra de página. Nenhuma tela desta sessão foi verificada visualmente (login bloqueia a sessão do Claude).
 
+- [ ] **Corrigir credenciais do 220** (`.env.remote.used` inválido) para o deploy da sessão 13–14/09.
+
+## Abertas em 14/09/2026
+
+- [ ] **ReceitanetBX Serviço como fonte de DCTF/DCTFWeb/recibos** (2019–2026, todos os clientes) — ler `C:\Dev\march-cofre\docs\MANUAL-RECEITANETBX-SERVICO.md` antes de qualquer robô. Extensão do Chrome no e-CAC descartada para lote.
+- [ ] **Varredura `FISCAL\DCTF` e `FISCAL\DCTFWEB` → `DctfWebDeclaracao`** usando `src/lib/dctf-pdf/`; nomes reais: `Impressão da Declaração - MMAAAA.pdf` (com/sem espaço) e `Recibo Declaracao MMAAAA.pdf`.
+- [ ] **Deploy 220** — código + `prisma db push` (pastas do cliente, `pastaContabil`, `fonte` da ECF + unique novo, período de atendimento) + apagar exercício 2026 errado da Casa São Paulo lá.
+- [ ] **`dctf-antiga/importarEVarrer.ts`** copia `.dec` para pasta com nome antigo (sem `pastaLocal`).
+- [ ] **Conciliação de Impostos** lendo razões de `CONTABIL\<ANO>`.
+- [ ] **Robô organizador + varredura do march-cofre** na estrutura nova (tarefa "March - Varredura Declaracoes Servidor" desabilitada) — sessões próprias.
+- [ ] **Senha por pasta de cliente** — Higor define o que exige senha, quem cadastra e recuperação.
+
 ## Ideias não implementadas
 
 - [ ] **eSocial como fonte de pagamento** — FGTS não passa pelo e-CAC (é GRF / FGTS Digital). Decidido: entra na MESMA tela de Conciliação de Impostos, como mais uma fonte. Falta mapear o portal e escrever o robô. Higor sugeriu deixar acesso nativo no servidor de automação (certificado instalado lá) para o robô autenticar sem humano.

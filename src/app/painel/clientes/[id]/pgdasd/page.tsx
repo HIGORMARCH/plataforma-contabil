@@ -39,15 +39,13 @@ export default async function PgdasdPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ anoInicial?: string; anoFinal?: string }>;
+  searchParams: Promise<{ ano?: string }>;
 }) {
   const sessao = await requirePapel(PAPEIS_INTERNOS);
   const { id } = await params;
   const q = await searchParams;
 
   const anoCorrente = new Date().getUTCFullYear();
-  const anoInicial = Number(q.anoInicial) || anoCorrente - 1;
-  const anoFinal = Number(q.anoFinal) || anoCorrente;
 
   const cliente = await prisma.cliente.findFirst({
     where: { id, escritorioId: sessao.escritorioId },
@@ -63,6 +61,22 @@ export default async function PgdasdPage({
     },
   });
   if (!cliente) notFound();
+
+  // Um ano por vez: o que está em tela é só a competência escolhida.
+  const [anosDecl, anosGuia, anosPag] = await Promise.all([
+    prisma.pgdasdDeclaracao.findMany({ where: { clienteId: id }, select: { periodoApuracao: true }, distinct: ["periodoApuracao"] }),
+    prisma.dasSimplesGuia.findMany({ where: { clienteId: id }, select: { periodoApuracao: true }, distinct: ["periodoApuracao"] }),
+    prisma.ecacPagamento.findMany({ where: { clienteId: id, tipoCodigo: "9" }, select: { periodoApuracao: true }, distinct: ["periodoApuracao"] }),
+  ]);
+  const anosComDados = new Set<number>(
+    [...anosDecl, ...anosGuia, ...anosPag].map((x) => x.periodoApuracao.getUTCFullYear()),
+  );
+  const ano = Number(q.ano) || (anosComDados.size ? Math.max(...anosComDados) : anoCorrente);
+  anosComDados.add(ano);
+  const anosDisponiveis = [...anosComDados].sort((a, b) => b - a);
+  // Consulta e leitura cobrem exatamente o ano em tela.
+  const anoInicial = ano;
+  const anoFinal = ano;
 
   const de = new Date(Date.UTC(anoInicial, 0, 1));
   const ate = new Date(Date.UTC(anoFinal, 11, 1));
@@ -164,34 +178,18 @@ export default async function PgdasdPage({
         </div>
       )}
 
-      <div className="mb-6 rounded-xl border border-slate-200 bg-white p-4">
-        <form className="flex flex-wrap items-end gap-3">
-          <label className="flex flex-col text-sm">
-            <span className="mb-1 text-xs text-slate-500">Ano inicial</span>
-            <input
-              type="number"
-              name="anoInicial"
-              defaultValue={anoInicial}
-              min={2010}
-              max={anoCorrente}
-              className="w-28 rounded border border-slate-300 px-2 py-1"
-            />
-          </label>
-          <label className="flex flex-col text-sm">
-            <span className="mb-1 text-xs text-slate-500">Ano final</span>
-            <input
-              type="number"
-              name="anoFinal"
-              defaultValue={anoFinal}
-              min={2010}
-              max={anoCorrente + 1}
-              className="w-28 rounded border border-slate-300 px-2 py-1"
-            />
-          </label>
-          <button type="submit" className="btn btn-primary">
-            Atualizar período
-          </button>
-        </form>
+      {/* Seletor de ano — igual às telas de IRPJ/CSLL e ICMS */}
+      <div className="mb-6 flex flex-wrap items-center gap-2">
+        <span className="text-sm text-slate-600">Ano:</span>
+        {anosDisponiveis.map((a) => (
+          <Link
+            key={a}
+            href={`/painel/clientes/${id}/pgdasd?ano=${a}`}
+            className={`btn text-sm ${a === ano ? "btn-primary" : "btn-ghost"}`}
+          >
+            {a}
+          </Link>
+        ))}
       </div>
 
       <section className="mb-6 rounded-xl border border-slate-200 bg-white p-5">
@@ -200,7 +198,7 @@ export default async function PgdasdPage({
         </h2>
         <ConsultarPgdasdButton clienteId={id} anoInicial={anoInicial} anoFinal={anoFinal} />
         <div className="mt-4 border-t border-slate-100 pt-4">
-          <VarrerPastaSimplesButton clienteId={id} />
+          <VarrerPastaSimplesButton clienteId={id} ano={ano} />
         </div>
         {ultimaConsulta && (
           <p className="mt-3 border-t border-slate-100 pt-3 text-xs text-slate-500">
@@ -217,19 +215,20 @@ export default async function PgdasdPage({
         )}
       </section>
 
+      {/* key={ano}: trocar de ano recria os quadros — nada do ano anterior sobrevive. */}
+      <div key={ano}>
       {declaracoes.length === 0 ? (
         <div className="rounded-xl border border-slate-200 bg-white px-6 py-10 text-center text-sm text-slate-500">
-          Nenhuma declaração PGDAS-D consultada no período {anoInicial}
-          {anoFinal !== anoInicial ? `–${anoFinal}` : ""}. Use o botão acima.
+          Nenhuma declaração PGDAS-D consultada em {ano}. Use o botão acima.
         </div>
       ) : (
         <section className="mb-6 overflow-x-auto rounded-xl border border-slate-200 bg-white p-5">
           <div className="mb-3 flex flex-wrap items-baseline justify-between gap-3">
             <h2 className="text-sm font-bold uppercase tracking-wide text-slate-500">
-              Declarações lidas
+              Declarações lidas — {ano}
             </h2>
             <p className="text-sm text-slate-500">
-              Total do DAS no período:{" "}
+              Total do DAS em {ano}:{" "}
               <span className="font-mono text-lg font-semibold text-slate-800">
                 {fmtBrl.format(totalDebito)}
               </span>
@@ -248,7 +247,7 @@ export default async function PgdasdPage({
       {temConfronto && (
         <section className="mb-6 overflow-x-auto rounded-xl border border-slate-200 bg-white p-5">
           <h2 className="mb-1 text-sm font-bold uppercase tracking-wide text-slate-500">
-            Declarado × guia × pago
+            Declarado × guia × pago — {ano}
           </h2>
           <p className="mb-3 text-xs text-slate-500">
             Três documentos do mesmo mês, lado a lado — nunca somados. A declaração é o apurado, a
@@ -347,6 +346,7 @@ export default async function PgdasdPage({
           </ul>
         </section>
       )}
+      </div>
 
       <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-xs leading-relaxed text-slate-600">
         <p>

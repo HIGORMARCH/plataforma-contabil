@@ -1,10 +1,16 @@
 /**
  * Importa 1 arquivo SPED-ECF: parseia, valida CNPJ, dedup por hash, grava
  * EcfImportacao + N EcfApuracao (1 por trimestre).
+ *
+ * FONTE: a ECF transmitida (FISCAL\SPED\ECF) e a gerada no Domínio
+ * (FISCAL\DOMINIO\ECF) do mesmo ano convivem. Substituição e dedup acontecem
+ * só dentro da mesma fonte.
  */
 import { createHash } from "node:crypto";
 import { prisma } from "@/lib/db";
 import { parseSpedEcf, type EcfParsed } from "./parseSpedEcf";
+
+export type FonteEcf = "TRANSMITIDO" | "DOMINIO";
 
 export interface ResultadoImport {
   ok: boolean;
@@ -23,11 +29,13 @@ export async function importarSpedEcf(params: {
   clienteId: string;
   nomeArquivo: string;
   conteudo: string;
+  fonte?: FonteEcf;
   origem?: "UPLOAD" | "VARREDURA_PASTA";
   caminhoOrigem?: string;
   importadoPor?: string;
 }): Promise<ResultadoImport> {
   const { clienteId, nomeArquivo, conteudo } = params;
+  const fonte: FonteEcf = params.fonte ?? "TRANSMITIDO";
 
   const cliente = await prisma.cliente.findUnique({
     where: { id: clienteId },
@@ -47,12 +55,15 @@ export async function importarSpedEcf(params: {
     return { ok: false, mensagem: "Período do arquivo (0000) inválido" };
   }
   if (parsed.apuracoes.length === 0) {
-    return { ok: false, mensagem: "Arquivo sem apurações trimestrais (bloco P/M/N)" };
+    return {
+      ok: false,
+      mensagem: "Arquivo sem apurações trimestrais (Presumido: bloco P · Lucro Real trimestral: bloco N)",
+    };
   }
 
   const hash = createHash("sha256").update(conteudo).digest("hex");
   const jaImportado = await prisma.ecfImportacao.findFirst({
-    where: { clienteId, hashArquivo: hash },
+    where: { clienteId, hashArquivo: hash, fonte },
     select: { id: true },
   });
   if (jaImportado) {
@@ -66,9 +77,9 @@ export async function importarSpedEcf(params: {
     };
   }
 
-  // Se já existe importação anterior pro mesmo ano/cliente, substituímos.
+  // Importação anterior do mesmo ano, na MESMA fonte, é substituída.
   const anterior = await prisma.ecfImportacao.findFirst({
-    where: { clienteId, ano: parsed.ano },
+    where: { clienteId, ano: parsed.ano, fonte },
     select: { id: true },
   });
   const substituiu = !!anterior;
@@ -93,6 +104,7 @@ export async function importarSpedEcf(params: {
         dataFimArq: parsed.dataFinal,
         ano: parsed.ano,
         regimeAno: parsed.regimeAno,
+        fonte,
         importadoPor: params.importadoPor,
         apuracoesGravadas: parsed.apuracoes.length,
         sucesso: true,
@@ -110,6 +122,7 @@ export async function importarSpedEcf(params: {
           regime: a.regime,
           irpjApurado: a.irpjApurado,
           csllApurada: a.csllApurado,
+          fonte,
           importacaoId: imp.id,
         },
       });

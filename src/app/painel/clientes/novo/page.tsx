@@ -4,6 +4,7 @@ import { BuscarCNPJ } from "@/components/BuscarCNPJ";
 import { criarClienteAction } from "../actions";
 import { AcessoEcacFields } from "../_components/AcessoEcacFields";
 import { AcessoSefazFields } from "../_components/AcessoSefazFields";
+import { PastasLocaisFields } from "../_components/PastasLocaisFields";
 import { PeriodoAtendimentoFields } from "../_components/PeriodoAtendimentoFields";
 
 function Campo({
@@ -114,6 +115,8 @@ export default async function NovoClientePage({
         <AcessoEcacFields />
 
         <AcessoSefazFields />
+
+        <PastasLocaisFields />
 
         <section className="card p-5">
           <h2 className="mb-4 text-sm font-bold uppercase tracking-wide text-slate-500">Responsáveis e contato</h2>

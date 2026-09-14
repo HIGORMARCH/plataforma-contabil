@@ -17,12 +17,20 @@ interface Resultado {
  * arrecadação. Diferente da consulta ao SERPRO, isto não custa nada — por isso
  * pode rodar quantas vezes quiser.
  */
-export function VarrerPastaSimplesButton({ clienteId }: { clienteId: string }) {
+/** Ano do arquivo pelo caminho organizado ("<ANO>\guia.pdf") ou pelo nome ("DAS-12.2025.pdf"). */
+function anoDoArquivo(arquivo: string): number | null {
+  const m = /(?:^|[\\/])((?:19|20)\d{2})[\\/]/.exec(arquivo) ?? /(?:^|\D)((?:19|20)\d{2})(?:\D|$)/.exec(arquivo);
+  return m ? Number(m[1]) : null;
+}
+
+export function VarrerPastaSimplesButton({ clienteId, ano }: { clienteId: string; ano: number }) {
   const [rodando, setRodando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
   const [res, setRes] = useState<Resultado | null>(null);
   const [, startTransition] = useTransition();
   const router = useRouter();
+
+  const ignoradosAno = (res?.ignorados ?? []).filter((x) => anoDoArquivo(x.arquivo) === ano);
 
   async function varrer() {
     setRodando(true);
@@ -76,13 +84,13 @@ export function VarrerPastaSimplesButton({ clienteId }: { clienteId: string }) {
               {a}
             </p>
           ))}
-          {res.ignorados.length > 0 && (
+          {ignoradosAno.length > 0 && (
             <details className="mt-2">
               <summary className="cursor-pointer text-slate-500">
-                {res.ignorados.length} arquivo(s) não reconhecido(s)
+                {ignoradosAno.length} arquivo(s) de {ano} não reconhecido(s)
               </summary>
               <ul className="mt-1 space-y-0.5 text-slate-500">
-                {res.ignorados.map((x, i) => (
+                {ignoradosAno.map((x, i) => (
                   <li key={i}>
                     <span className="font-mono">{x.arquivo}</span> — {x.motivo}
                   </li>

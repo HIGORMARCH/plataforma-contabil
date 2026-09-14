@@ -51,8 +51,8 @@ export function VarrerPastaButton({
         />
         <p className="mt-1 text-[11px] text-slate-500">
           {pastaSugerida
-            ? `Sugerida (pastaFiscal cadastrada): ${pastaSugerida}. Pode ajustar.`
-            : "Cadastre pastaFiscal no cliente pra ter default. Ou digite aqui direto."}
+            ? `Sugerida (pasta da EFD-Contribuições no cadastro): ${pastaSugerida}. Pode ajustar.`
+            : "Cadastre a pasta da EFD-Contribuições no cliente pra ter default. Ou digite aqui direto."}
         </p>
       </div>
       <button

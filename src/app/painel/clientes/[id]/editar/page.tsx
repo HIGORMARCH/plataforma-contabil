@@ -9,11 +9,10 @@ import {
   nomearCliente,
   pastaCliente,
   pastaRaiz,
-  pastaRazaoDoCliente,
 } from "@/lib/storage/filesystem";
-import { NOMES_RAZAO_ESPERADOS } from "@/lib/razao/tributos";
 import { AcessoEcacFields } from "../../_components/AcessoEcacFields";
 import { AcessoSefazFields } from "../../_components/AcessoSefazFields";
+import { PastasLocaisFields } from "../../_components/PastasLocaisFields";
 import { PeriodoAtendimentoFields } from "../../_components/PeriodoAtendimentoFields";
 import { ExcluirClienteButton } from "../../_components/ExcluirClienteButton";
 
@@ -70,8 +69,6 @@ export default async function EditarClientePage({
   const nomeConvencionado = nomearCliente(cliente);
   const pastaEmUso = pastaCliente(cliente);
   const pastaExiste = existe(pastaEmUso);
-  const pastaRazaoCliente = pastaRazaoDoCliente(cliente);
-  const pastaRazaoExiste = existe(pastaRazaoCliente);
 
   return (
     <div>
@@ -169,23 +166,33 @@ export default async function EditarClientePage({
 
         <AcessoSefazFields
           inscricaoEstadualInicial={cliente.inscricaoEstadual ?? ""}
-          pastaFiscalInicial={cliente.pastaFiscal ?? ""}
-          pastaGiamInicial={cliente.pastaGiam ?? ""}
           jaCadastrada={!!cliente.senhaSefaz}
         />
 
-        <section className="card p-5">
-          <h2 className="mb-1 text-sm font-bold uppercase tracking-wide text-slate-500">
-            Pasta do cliente (fonte única)
-          </h2>
-          <p className="mb-4 text-xs text-slate-500">
-            Onde a plataforma procura os arquivos deste cliente dentro de{" "}
-            <code className="font-mono">{raizArquivos}</code>. As pastas foram criadas à mão, com o
-            apelido da equipe, então escolha a certa na lista — sem isso a plataforma procura por um
-            nome derivado da razão social, que não existe em disco, e não acha nada.
+        <PastasLocaisFields
+          pastaDoCliente={pastaEmUso}
+          iniciais={{
+            pastaContabil: cliente.pastaContabil,
+            pastaFiscal: cliente.pastaFiscal,
+            pastaGiam: cliente.pastaGiam,
+            pastaSpedEcd: cliente.pastaSpedEcd,
+            pastaSpedEcf: cliente.pastaSpedEcf,
+            pastaSpedContribuicoes: cliente.pastaSpedContribuicoes,
+            pastaSpedFiscal: cliente.pastaSpedFiscal,
+            pastaDominio: cliente.pastaDominio,
+            pastaDominioEcd: cliente.pastaDominioEcd,
+            pastaDominioEcf: cliente.pastaDominioEcf,
+            pastaDominioContribuicoes: cliente.pastaDominioContribuicoes,
+            pastaDominioFiscal: cliente.pastaDominioFiscal,
+          }}
+        >
+          <p className="mb-3 text-xs text-slate-500">
+            Escolha na lista a pasta deste cliente dentro de <code className="font-mono">{raizArquivos}</code>. O
+            nome da pasta é só o nome do cliente (filial: <code className="font-mono">NOME - FILIAL 01</code>) —
+            sem esta escolha a plataforma não acha a pasta.
           </p>
           <label className="label" htmlFor="pastaLocal">
-            Pasta
+            Pasta do cliente
           </label>
           <select
             id="pastaLocal"
@@ -210,28 +217,7 @@ export default async function EditarClientePage({
               <span className="text-amber-700">— pasta não existe em disco</span>
             )}
           </p>
-
-          <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
-            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-              Razão dos impostos
-            </p>
-            <p className="mt-1 text-xs text-slate-600">
-              <code className="font-mono">{pastaRazaoCliente}</code>{" "}
-              {pastaRazaoExiste ? (
-                <span className="text-emerald-700">— criada</span>
-              ) : (
-                <span className="text-slate-500">— será criada ao salvar</span>
-              )}
-            </p>
-            <p className="mt-2 text-xs text-slate-500">
-              Um arquivo por tributo, com o nome dizendo qual é — o nome é o de-para, não há tabela
-              de contas pra preencher:
-            </p>
-            <p className="mt-1 font-mono text-[11px] leading-relaxed text-slate-500">
-              {NOMES_RAZAO_ESPERADOS.join(" · ")}
-            </p>
-          </div>
-        </section>
+        </PastasLocaisFields>
 
         {/* AcessoEcacFields aqui em cima ja usa o cliente existente pra upload */}
 

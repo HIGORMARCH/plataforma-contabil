@@ -15,7 +15,7 @@
  */
 
 import type { DemonstrativosExercicio, Maybe } from "./types";
-import { totaisBalanco, resultadosDRE } from "./compute";
+import { soma, totaisBalanco, resultadosDRE } from "./compute";
 import { moeda } from "./format";
 
 /** Uma linha do quadro comparativo. */
@@ -75,6 +75,21 @@ function linha(
   };
 }
 
+/**
+ * Nível 3 "Lucros ou Prejuízos Acumulados", igual nos dois lados: o Domínio
+ * separa lucros, resultado do exercício em curso e retiradas; a ECD costuma
+ * trazer tudo numa linha. Comparar campo a campo acusaria divergência falsa.
+ */
+function lucrosOuPrejuizos(ex: DemonstrativosExercicio): Maybe {
+  const pl = ex.balanco.patrimonioLiquido;
+  return soma(
+    pl.lucrosAcumulados,
+    pl.prejuizosAcumulados == null ? null : -pl.prejuizosAcumulados,
+    pl.resultadoExercicio ?? null,
+    pl.outros,
+  );
+}
+
 /** Compara dois exercícios já parseados. */
 export function conciliar(
   dominio: DemonstrativosExercicio,
@@ -114,8 +129,7 @@ export function conciliar(
     linha("detalhe", "passivo", "pnc.outros", "PNC — Outros", dominio.balanco.passivoNaoCirculante.outros, ecd.balanco.passivoNaoCirculante.outros),
     linha("detalhe", "pl", "pl.capitalSocial", "Capital Social", dominio.balanco.patrimonioLiquido.capitalSocial, ecd.balanco.patrimonioLiquido.capitalSocial),
     linha("detalhe", "pl", "pl.reservas", "Reservas", dominio.balanco.patrimonioLiquido.reservas, ecd.balanco.patrimonioLiquido.reservas),
-    linha("detalhe", "pl", "pl.lucrosAcumulados", "Lucros Acumulados", dominio.balanco.patrimonioLiquido.lucrosAcumulados, ecd.balanco.patrimonioLiquido.lucrosAcumulados),
-    linha("detalhe", "pl", "pl.prejuizosAcumulados", "Prejuízos Acumulados", dominio.balanco.patrimonioLiquido.prejuizosAcumulados, ecd.balanco.patrimonioLiquido.prejuizosAcumulados),
+    linha("detalhe", "pl", "pl.lucrosPrejuizos", "Lucros ou Prejuízos Acumulados", lucrosOuPrejuizos(dominio), lucrosOuPrejuizos(ecd)),
     // ---- Detalhes da DRE ----
     linha("detalhe", "resultado", "dre.receitaBrutaVendas", "Receita Bruta", dominio.dre.receitaBrutaVendas, ecd.dre.receitaBrutaVendas),
     linha("detalhe", "resultado", "dre.deducoes", "Deduções", dominio.dre.deducoes, ecd.dre.deducoes),

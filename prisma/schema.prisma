@@ -201,6 +201,25 @@ model Cliente {
   // pegar só os que são deste cliente.
   pastaGiam String?
 
+  // Uma pasta por tipo de SPED — como a equipe organiza em disco
+  // (SPED\ECD, SPED\ECF, SPED\EFD_CONTRIBUICOES, SPED\EFD_ICMS_IPI).
+  // Vazio = usa pastaFiscal (pasta geral).
+  pastaSpedEcd           String?
+  pastaSpedEcf           String?
+  pastaSpedContribuicoes String?
+  pastaSpedFiscal        String?
+
+  // Pasta CONTÁBIL do cliente (<CLIENTE>\CONTABIL\<ANO>\ — balanço, DRE e razões).
+  pastaContabil String?
+
+  // Arquivos SPED gerados no DOMÍNIO (FISCAL\DOMINIO\...), separados dos
+  // transmitidos. Organização definida pelo Higor em 13/09/2026.
+  pastaDominio              String?
+  pastaDominioEcd           String?
+  pastaDominioEcf           String?
+  pastaDominioContribuicoes String?
+  pastaDominioFiscal        String?
+
   escritorio   Escritorio @relation(fields: [escritorioId], references: [id])
   escritorioId String
 
@@ -1167,12 +1186,16 @@ model EcfApuracao {
   irpjApurado Decimal @default(0)
   csllApurada Decimal @default(0)
 
+  // TRANSMITIDO (FISCAL\SPED\ECF) | DOMINIO (FISCAL\DOMINIO\ECF). A transmitida
+  // e a gerada no Domínio do mesmo ano convivem — é justamente o que se compara.
+  fonte String @default("TRANSMITIDO")
+
   importacaoId String
 
   cliente    Cliente       @relation(fields: [clienteId], references: [id], onDelete: Cascade)
   importacao EcfImportacao @relation(fields: [importacaoId], references: [id], onDelete: Cascade)
 
-  @@unique([clienteId, ano, trimestre]) // uma apuração por trimestre por cliente
+  @@unique([clienteId, ano, trimestre, fonte]) // uma apuração por trimestre, por cliente e por fonte
   @@index([clienteId, ano])
   @@index([importacaoId])
 }
@@ -1198,6 +1221,8 @@ model EcfImportacao {
   dataFimArq    DateTime?
   ano           Int?
   regimeAno     String? // ex.: "PPPP" (4 chars, 1 por trimestre)
+
+  fonte String @default("TRANSMITIDO") // TRANSMITIDO | DOMINIO
 
   importadoEm  DateTime @default(now())
   importadoPor String?

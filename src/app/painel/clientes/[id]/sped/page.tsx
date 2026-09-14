@@ -23,9 +23,16 @@ const fmtDataHora = new Intl.DateTimeFormat("pt-BR", {
   timeStyle: "short",
 });
 
-export default async function SpedCliente({ params }: { params: Promise<{ id: string }> }) {
+export default async function SpedCliente({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<{ ano?: string }>;
+}) {
   const sessao = await requirePapel(PAPEIS_INTERNOS);
   const { id } = await params;
+  const { ano: anoStr } = await searchParams;
 
   const cliente = await prisma.cliente.findFirst({
     where: { id, escritorioId: sessao.escritorioId },
@@ -48,6 +55,21 @@ export default async function SpedCliente({ params }: { params: Promise<{ id: st
   });
   if (!cliente) notFound();
 
+  // Um ano por vez: o que está em tela é só a competência escolhida.
+  const anoDe = (d: Date) => d.getUTCFullYear();
+  const anosComDados = new Set<number>([
+    ...cliente.spedApuracoes.map((a) => anoDe(a.periodoApuracao)),
+    ...cliente.giamApuracoes.map((a) => anoDe(a.periodoApuracao)),
+    ...cliente.giamSefazApuracoes.map((a) => anoDe(a.periodoApuracao)),
+  ]);
+  const ano = anoStr ? Number(anoStr) : anoDefault(cliente);
+  anosComDados.add(ano);
+  const anosDisponiveis = [...anosComDados].sort((a, b) => b - a);
+
+  const spedAno = cliente.spedApuracoes.filter((a) => anoDe(a.periodoApuracao) === ano);
+  const giamAno = cliente.giamApuracoes.filter((a) => anoDe(a.periodoApuracao) === ano);
+  const giamSefazAno = cliente.giamSefazApuracoes.filter((a) => anoDe(a.periodoApuracao) === ano);
+
   return (
     <div>
       <div className="mb-6">
@@ -63,8 +85,22 @@ export default async function SpedCliente({ params }: { params: Promise<{ id: st
         </p>
       </div>
 
+      {/* Seletor de ano */}
+      <div className="mb-6 flex flex-wrap items-center gap-2">
+        <span className="text-sm text-slate-600">Ano:</span>
+        {anosDisponiveis.map((a) => (
+          <Link
+            key={a}
+            href={`/painel/clientes/${id}/sped?ano=${a}`}
+            className={`btn text-sm ${a === ano ? "btn-primary" : "btn-ghost"}`}
+          >
+            {a}
+          </Link>
+        ))}
+      </div>
+
       <div className="grid gap-6 md:grid-cols-2">
-        <VarrerPastaButton clienteId={id} pastaFiscal={cliente.pastaFiscal} />
+        <VarrerPastaButton clienteId={id} pastaFiscal={cliente.pastaSpedFiscal || cliente.pastaFiscal} ano={ano} />
         <UploadSpedForm clienteId={id} />
       </div>
 
@@ -73,6 +109,7 @@ export default async function SpedCliente({ params }: { params: Promise<{ id: st
           clienteId={id}
           pastaGiam={cliente.pastaGiam}
           pastaFiscal={cliente.pastaFiscal}
+          ano={ano}
         />
       </div>
 
@@ -87,22 +124,26 @@ export default async function SpedCliente({ params }: { params: Promise<{ id: st
 
         Cada tabela leva embaixo um <details> com o histórico de importações
         daquela fonte — fechado por padrão pra não poluir a leitura.
+
+        key={ano}: trocar de ano recria as tabelas inteiras — nenhum texto do
+        ano anterior sobrevive.
       */}
+      <div key={ano}>
       <section className="card mt-6 p-5">
         <h2 className="mb-1 text-sm font-bold uppercase tracking-wide text-slate-500">
-          Apurações SPED-Fiscal — {cliente.spedApuracoes.length}
+          Apurações SPED-Fiscal {ano} — {spedAno.length}
         </h2>
         <p className="mb-4 text-xs text-slate-400">
           Declarado à Receita Federal (registro E110 + soma dos C100 regulares).
         </p>
-        {cliente.spedApuracoes.length === 0 ? (
+        {spedAno.length === 0 ? (
           <p className="text-sm text-slate-500">
-            Nenhuma apuração ainda. Faça upload de um arquivo SPED-Fiscal (.txt) acima.
+            Nenhuma apuração de {ano}. Busque os SPEDs na pasta ou faça upload do arquivo (.txt) acima.
           </p>
         ) : (
           <div className="overflow-x-auto">
             <TabelaApuracoes
-              linhas={cliente.spedApuracoes.map((a) => ({
+              linhas={spedAno.map((a) => ({
                 key: a.id,
                 competencia: a.periodoApuracao,
                 revisao: null,
@@ -137,21 +178,21 @@ export default async function SpedCliente({ params }: { params: Promise<{ id: st
 
       <section className="card mt-6 p-5">
         <h2 className="mb-1 text-sm font-bold uppercase tracking-wide text-slate-500">
-          Apurações GIAM (arquivo do Domínio) — {cliente.giamApuracoes.length}
+          Apurações GIAM (arquivo do Domínio) {ano} — {giamAno.length}
         </h2>
         <p className="mb-4 text-xs text-slate-400">
           Declarado à SEFAZ-TO conforme o <strong>arquivo atualmente salvo no Domínio</strong>. Não
           é a GIAM que a SEFAZ recepcionou — pra isso, use o botão <b>&quot;Buscar no portal
           SEFAZ&quot;</b> (Etapa 2 — raspagem via robô Playwright).
         </p>
-        {cliente.giamApuracoes.length === 0 ? (
+        {giamAno.length === 0 ? (
           <p className="text-sm text-slate-500">
-            Nenhuma GIAM ainda. Clique em &quot;Buscar novas GIAMs na pasta&quot; acima.
+            Nenhuma GIAM de {ano}. Clique em &quot;Buscar novas GIAMs na pasta&quot; acima.
           </p>
         ) : (
           <div className="overflow-x-auto">
             <TabelaApuracoes
-              linhas={cliente.giamApuracoes.map((a) => ({
+              linhas={giamAno.map((a) => ({
                 key: a.id,
                 competencia: a.periodoApuracao,
                 revisao: a.retificacao,
@@ -191,24 +232,24 @@ export default async function SpedCliente({ params }: { params: Promise<{ id: st
         <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
           <div>
             <h2 className="mb-1 text-sm font-bold uppercase tracking-wide text-slate-500">
-              Apurações GIAM (portal SEFAZ) — {cliente.giamSefazApuracoes.length}
+              Apurações GIAM (portal SEFAZ) {ano} — {giamSefazAno.length}
             </h2>
             <p className="text-xs text-slate-400">
               O que a SEFAZ-TO efetivamente recepcionou — lido do portal{" "}
               <span className="font-mono text-xs">giam.sefaz.to.gov.br</span> pelo robô.
             </p>
           </div>
-          <BuscarNoPortalSefazButton clienteId={id} ano={anoDefault(cliente)} />
+          <BuscarNoPortalSefazButton clienteId={id} ano={ano} />
         </div>
-        {cliente.giamSefazApuracoes.length === 0 ? (
+        {giamSefazAno.length === 0 ? (
           <p className="text-sm text-slate-500">
-            Nenhuma apuração ainda. Clique em &quot;Buscar no portal SEFAZ&quot; para sincronizar
+            Nenhuma apuração de {ano}. Clique em &quot;Buscar no portal SEFAZ&quot; para sincronizar
             (precisa da IE + senha SEFAZ cadastrada na ficha do cliente).
           </p>
         ) : (
           <div className="overflow-x-auto">
             <TabelaApuracoes
-              linhas={cliente.giamSefazApuracoes.map((a) => ({
+              linhas={giamSefazAno.map((a) => ({
                 key: a.id,
                 competencia: a.periodoApuracao,
                 revisao: a.retificacao,
@@ -239,6 +280,7 @@ export default async function SpedCliente({ params }: { params: Promise<{ id: st
           }))}
         />
       </section>
+      </div>
 
       <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-xs leading-relaxed text-slate-600">
         As três tabelas usam <strong>as mesmas colunas</strong>: linhas do mesmo mês devem bater
@@ -385,8 +427,8 @@ function AccordionImportacoes({
   );
 }
 
-/** Ano padrão do input: usa a competência mais recente que o cliente já tem em
- *  SPED ou GIAM Domínio; se não tiver nada, usa o ano atual. */
+/** Ano padrão: a competência mais recente que o cliente já tem em SPED ou GIAM
+ *  Domínio; se não tiver nada, o ano atual. */
 function anoDefault(cliente: {
   spedApuracoes: { periodoApuracao: Date }[];
   giamApuracoes: { periodoApuracao: Date }[];

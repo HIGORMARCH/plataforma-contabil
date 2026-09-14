@@ -21,20 +21,32 @@ type Relatorio = {
   detalhes: DetalheArquivo[];
 };
 
+/** Ano do arquivo pelo caminho organizado: "<ANO>\012019.r1". */
+function anoDoCaminho(arquivo: string): number | null {
+  const m = /(?:^|[\\/])((?:19|20)\d{2})[\\/]/.exec(arquivo);
+  return m ? Number(m[1]) : null;
+}
+
 export function VarrerPastaGiamButton({
   clienteId,
   pastaGiam,
   pastaFiscal,
+  ano,
 }: {
   clienteId: string;
   pastaGiam: string | null;
   pastaFiscal: string | null;
+  /** Ano em tela — o resultado mostra só os arquivos deste período. */
+  ano: number;
 }) {
   const [rodando, setRodando] = useState(false);
   const [relatorio, setRelatorio] = useState<Relatorio | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   const [, startTransition] = useTransition();
   const router = useRouter();
+
+  const detalhesAno = (relatorio?.detalhes ?? []).filter((d) => anoDoCaminho(d.arquivo) === ano);
+  const contaStatus = (s: DetalheArquivo["status"]) => detalhesAno.filter((d) => d.status === s).length;
 
   const pastaEfetiva = pastaGiam || pastaFiscal;
 
@@ -100,18 +112,18 @@ export function VarrerPastaGiamButton({
       {relatorio && (
         <div className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
           <p className="font-semibold">
-            ✅ Varredura concluída — {relatorio.totalArquivos} arquivo(s) na pasta
+            ✅ Varredura concluída — ano {ano}: {detalhesAno.length} arquivo(s)
           </p>
           <p className="mt-1 text-xs">
-            {relatorio.novosImportados} nova(s) · {relatorio.substituidos} substituída(s) ·{" "}
-            {relatorio.arquivosPulados} pulado(s) · {relatorio.ieNaoBate} de outro cliente ·{" "}
-            {relatorio.erros} erro(s)
+            {contaStatus("novo")} nova(s) · {contaStatus("substituido")} substituída(s) ·{" "}
+            {contaStatus("duplicado") + contaStatus("ignorado")} pulado(s) · {contaStatus("ie-nao-bate")} de outro
+            cliente · {contaStatus("erro")} erro(s)
           </p>
-          {relatorio.detalhes.length > 0 && (
+          {detalhesAno.length > 0 && (
             <details className="mt-2 text-xs">
-              <summary className="cursor-pointer text-emerald-800">Ver detalhes</summary>
+              <summary className="cursor-pointer text-emerald-800">Ver detalhes ({ano})</summary>
               <ul className="mt-2 space-y-1">
-                {relatorio.detalhes.map((d, i) => (
+                {detalhesAno.map((d, i) => (
                   <li key={i} className="flex flex-wrap items-center gap-2">
                     <span
                       className={

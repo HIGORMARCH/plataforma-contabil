@@ -11,7 +11,22 @@ import {
 } from "@/lib/import";
 import type { Maybe } from "@/lib/accounting/types";
 import { ExtrairPDF } from "@/components/ExtrairPDF";
-import { TotalizadoresBalanco } from "@/components/TotalizadoresBalanco";
+import { CampoMoeda } from "@/components/CampoMoeda";
+import {
+  ConferenciaBalanco,
+  ConferenciaResultado,
+  TotalGrupo,
+  TotalLado,
+  type GrupoBalanco,
+} from "@/components/TotalizadoresBalanco";
+
+const GRUPO_TOTAL: Record<string, GrupoBalanco> = {
+  "Ativo Circulante": "ac",
+  "Ativo Não Circulante": "anc",
+  "Passivo Circulante": "pc",
+  "Passivo Não Circulante": "pnc",
+  "Patrimônio Líquido": "pl",
+};
 import { salvarExercicioManualAction, importarExercicioAction } from "../actions";
 
 function agrupar(campos: DefCampo[]) {
@@ -27,15 +42,7 @@ function CampoNumero({ def, valor }: { def: DefCampo; valor: Maybe }) {
   return (
     <div>
       <label className="label" htmlFor={def.chave}>{def.rotulo}</label>
-      <input
-        id={def.chave}
-        name={def.chave}
-        type="text"
-        inputMode="decimal"
-        className="input tabular-nums"
-        defaultValue={valor ?? ""}
-        placeholder="0,00"
-      />
+      <CampoMoeda id={def.chave} valorInicial={valor} />
     </div>
   );
 }
@@ -145,37 +152,49 @@ export default async function ExerciciosPage({
         </section>
 
         <div className="grid gap-6 lg:grid-cols-2">
-          <section className="card p-5">
-            <h2 className="mb-4 text-sm font-bold uppercase tracking-wide text-slate-500">
-              Balanço Patrimonial
-            </h2>
-            <div className="space-y-5">
-              {agrupar(CAMPOS_BALANCO).map(([grupo, campos]) => (
-                <div key={grupo}>
-                  <h3 className="mb-2 text-xs font-bold text-slate-600">{grupo}</h3>
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    {campos.map((c) => (
-                      <CampoNumero key={c.chave} def={c} valor={valores[c.chave] ?? null} />
-                    ))}
+        <section className="card p-5">
+          <h2 className="mb-4 text-sm font-bold uppercase tracking-wide text-slate-500">
+            Balanço Patrimonial
+          </h2>
+          {/* Como o balanço impresso: Ativo à esquerda, Passivo + PL à direita. */}
+          <div className="grid gap-8 md:grid-cols-2">
+            {(
+              [
+                ["Ativo", agrupar(CAMPOS_BALANCO).filter(([g]) => g.startsWith("Ativo"))],
+                ["Passivo", agrupar(CAMPOS_BALANCO).filter(([g]) => !g.startsWith("Ativo"))],
+              ] as const
+            ).map(([lado, grupos]) => (
+              <div key={lado} className="space-y-5">
+                <TotalLado formId="exercicio-form" lado={lado === "Ativo" ? "ativo" : "passivo"} titulo={lado} />
+                {grupos.map(([grupo, campos]) => (
+                  <div key={grupo}>
+                    <TotalGrupo formId="exercicio-form" grupo={GRUPO_TOTAL[grupo]} titulo={grupo} />
+                    <div className="grid gap-3">
+                      {campos.map((c) => (
+                        <CampoNumero key={c.chave} def={c} valor={valores[c.chave] ?? null} />
+                      ))}
+                    </div>
                   </div>
-                </div>
-              ))}
-            </div>
-          </section>
+                ))}
+              </div>
+            ))}
+          </div>
+          <ConferenciaBalanco formId="exercicio-form" />
+          <ConferenciaResultado formId="exercicio-form" />
+        </section>
 
-          <section className="card p-5">
-            <h2 className="mb-4 text-sm font-bold uppercase tracking-wide text-slate-500">
-              Demonstração do Resultado (DRE)
-            </h2>
-            <div className="grid gap-3 sm:grid-cols-2">
-              {CAMPOS_DRE.map((c) => (
-                <CampoNumero key={c.chave} def={c} valor={valores[c.chave] ?? null} />
-              ))}
-            </div>
-          </section>
+        <section className="card p-5">
+          <h2 className="mb-4 text-sm font-bold uppercase tracking-wide text-slate-500">
+            Demonstração do Resultado (DRE)
+          </h2>
+          <div className="grid gap-3 sm:grid-cols-2">
+            {CAMPOS_DRE.map((c) => (
+              <CampoNumero key={c.chave} def={c} valor={valores[c.chave] ?? null} />
+            ))}
+          </div>
+        </section>
         </div>
 
-        <TotalizadoresBalanco formId="exercicio-form" />
 
         <div className="flex justify-end gap-3">
           <Link href={`/painel/clientes/${id}`} className="btn btn-ghost">Cancelar</Link>

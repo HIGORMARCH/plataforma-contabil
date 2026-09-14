@@ -20,18 +20,30 @@ type Relatorio = {
   detalhes: DetalheArquivo[];
 };
 
+/** Ano do arquivo pelo caminho organizado: "<ANO>\arquivo.txt". */
+function anoDoCaminho(arquivo: string): number | null {
+  const m = /(?:^|[\\/])((?:19|20)\d{2})[\\/]/.exec(arquivo);
+  return m ? Number(m[1]) : null;
+}
+
 export function VarrerPastaButton({
   clienteId,
   pastaFiscal,
+  ano,
 }: {
   clienteId: string;
   pastaFiscal: string | null;
+  /** Ano em tela — o resultado mostra só os arquivos deste período. */
+  ano: number;
 }) {
   const [rodando, setRodando] = useState(false);
   const [relatorio, setRelatorio] = useState<Relatorio | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   const [, startTransition] = useTransition();
   const router = useRouter();
+
+  const detalhesAno = (relatorio?.detalhes ?? []).filter((d) => anoDoCaminho(d.arquivo) === ano);
+  const contaStatus = (s: DetalheArquivo["status"]) => detalhesAno.filter((d) => d.status === s).length;
 
   async function varrer() {
     setRodando(true);
@@ -98,18 +110,17 @@ export function VarrerPastaButton({
       {relatorio && (
         <div className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
           <p className="font-semibold">
-            ✅ Varredura concluída — {relatorio.totalArquivos} arquivo(s) .txt na pasta
+            ✅ Varredura concluída — ano {ano}: {detalhesAno.length} arquivo(s)
           </p>
           <p className="mt-1 text-xs">
-            {relatorio.arquivosProcessados} processado(s) · {relatorio.novosImportados} apuração(ões)
-            nova(s) · {relatorio.competenciasSubstituidas} substituída(s) ·{" "}
-            {relatorio.arquivosPulados} pulado(s) · {relatorio.erros} erro(s)
+            {contaStatus("novo")} novo(s) · {contaStatus("duplicado")} já importado(s) ·{" "}
+            {contaStatus("ignorado")} ignorado(s) · {contaStatus("erro")} erro(s)
           </p>
-          {relatorio.detalhes.length > 0 && (
+          {detalhesAno.length > 0 && (
             <details className="mt-2 text-xs">
-              <summary className="cursor-pointer text-emerald-800">Ver detalhes por arquivo</summary>
+              <summary className="cursor-pointer text-emerald-800">Ver detalhes por arquivo ({ano})</summary>
               <ul className="mt-2 space-y-1">
-                {relatorio.detalhes.map((d, i) => (
+                {detalhesAno.map((d, i) => (
                   <li key={i} className="flex flex-wrap items-center gap-2">
                     <span
                       className={
