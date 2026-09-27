@@ -39,7 +39,11 @@ export default async function ConciliacaoEcdPage({
   });
   if (!cliente) notFound();
 
-  const clienteRef = { razaoSocial: cliente.razaoSocial, cnpj: cliente.cnpj };
+  const clienteRef = {
+    razaoSocial: cliente.razaoSocial,
+    cnpj: cliente.cnpj,
+    pastaLocal: cliente.pastaLocal,
+  };
   const pastaClienteAbs = pastaCliente(clienteRef);
   const anosImportados = cliente.exercicios.map((e) => e.ano);
   const anoSelecionado = anoQ ? Number(anoQ) : anosImportados[0];

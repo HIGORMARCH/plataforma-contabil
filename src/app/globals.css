@@ -1203,3 +1203,101 @@ body {
     background: transparent !important;
   }
 }
+
+/* ---------------------------------------------------------------------------
+   Relatório — Divergências de ICMS no período (SPED-Fiscal × GIAM).
+   Mesmo padrão do relatório de Impostos a Pagar: timbre + blocos em preto e
+   branco. O mapa do período mantém um tom de cinza por status para que DIV e
+   falta se destaquem mesmo sem cor.
+   -------------------------------------------------------------------------- */
+@media print {
+  .icms-periodo,
+  .icms-periodo * { overflow: visible !important; }
+
+  .icms-periodo .icms-resumo {
+    display: flex !important;
+    flex-wrap: wrap;
+    gap: 6mm !important;
+    margin-bottom: 4mm !important;
+  }
+  .icms-periodo .icms-resumo > div {
+    border: none !important;
+    border-left: 1.5pt solid #000 !important;
+    border-radius: 0 !important;
+    padding: 0 0 0 2mm !important;
+    background: transparent !important;
+  }
+  .icms-periodo .icms-resumo > div * { color: #000 !important; }
+
+  .icms-periodo .icms-bloco {
+    border: none !important;
+    border-radius: 0 !important;
+    padding: 0 !important;
+    margin-bottom: 5mm !important;
+    background: transparent !important;
+  }
+  .icms-periodo .icms-titulo {
+    color: #000 !important;
+    font-size: 9pt !important;
+    border-bottom: 1pt solid #000;
+    padding-bottom: 1mm;
+    margin-bottom: 2mm !important;
+  }
+
+  .icms-periodo .icms-mapa { min-width: 0 !important; font-size: 7.5pt; page-break-inside: avoid; }
+  .icms-periodo .icms-mapa th { color: #000 !important; }
+  .icms-periodo .icms-cel {
+    border: 0.4pt solid #999 !important;
+    border-radius: 0 !important;
+    color: #000 !important;
+    background: #fff !important;
+    padding: 0.6mm 0 !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  .icms-periodo .icms-cel-divergente { background: #d0d0d0 !important; font-weight: 700 !important; }
+  .icms-periodo .icms-cel-falta { background: #eeeeee !important; }
+  .icms-periodo .icms-cel-vazio,
+  .icms-periodo .icms-cel-fora,
+  .icms-periodo .icms-cel-futuro { color: #999 !important; }
+
+  .icms-periodo .icms-tabela {
+    width: 100% !important;
+    min-width: 0 !important;
+    border-collapse: collapse;
+    font-family: "Times New Roman", Georgia, serif;
+    font-size: 8.5pt;
+  }
+  .icms-periodo .icms-tabela thead { display: table-header-group; }
+  .icms-periodo .icms-tabela tr { page-break-inside: avoid; }
+  /* Uma competência inteira nunca parte entre duas folhas */
+  .icms-periodo .icms-grupo { page-break-inside: avoid; }
+  .icms-periodo .icms-tabela thead th {
+    border-bottom: 1pt solid #000 !important;
+    color: #000 !important;
+    padding: 1.2mm 2mm !important;
+    font-size: 7.5pt;
+  }
+  .icms-periodo .icms-tabela tbody td {
+    padding: 0.8mm 2mm !important;
+    color: #000 !important;
+  }
+  .icms-periodo .icms-tabela a { color: #000 !important; text-decoration: none !important; }
+  /* Compras e vendas por ano: cabe numa folha e não parte */
+  .icms-periodo .icms-totais { page-break-inside: avoid; font-size: 8pt; }
+  .icms-periodo .icms-totais th { text-align: right; }
+  .icms-periodo .icms-totais tbody tr:last-child td { border-top: 1pt solid #000 !important; }
+  .icms-periodo .icms-detalhe tbody.icms-grupo tr:last-child td { border-bottom: 0.4pt solid #999 !important; }
+
+  .icms-periodo .icms-nota {
+    border: none !important;
+    border-top: 0.6pt solid #000 !important;
+    border-radius: 0 !important;
+    background: transparent !important;
+    padding: 2mm 0 0 !important;
+    font-size: 7.5pt !important;
+    color: #000 !important;
+    page-break-inside: avoid;
+  }
+  .icms-periodo p { color: #000 !important; }
+}

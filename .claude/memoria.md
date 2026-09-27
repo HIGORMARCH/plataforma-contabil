@@ -37,7 +37,8 @@ Ver `arquitetura.md` seção "Fluxo em cascata".
 4. **Análise de balanço até nível 3** — nunca descer nas analíticas em conciliação/indicadores.
 5. **Reclassificação ≠ divergência** — se subgrupo bate mas subconta muda = reclassificação. Só chamar divergência se saldo total diverge.
 6. **Regerar deleta cache das descendentes** — `revalidatePath(path, "layout")`, não só raiz.
-7. **Fonte única em `C:\PlataformaContabil\<CLIENTE>_<CNPJ>\<TIPO>\<ANO>\`** — plataforma NUNCA mexe em servidor de terceiro (Z:\, ReceitanetBX, Domínio). Sempre opera em cópia local.
+7. **Fonte única em `C:\PlataformaContabil\<NOME DO CLIENTE>\`** — a pasta vem do cadastro (`Cliente.pastaLocal`); a plataforma NÃO deriva caminho de nome nem de CNPJ, e nunca mexe em servidor de terceiro (Z:\, ReceitanetBX, Domínio). Sempre opera em cópia local.
+8. **Nada é criado, movido ou apagado em `C:\PlataformaContabil` sem ordem do Higor** — nem "só para organizar". Documento estranho: mostrar onde está e perguntar.
 
 ## Checklist obrigatório de fechamento de sessão
 
@@ -49,7 +50,30 @@ Quando Higor sinalizar fim de sessão ("vamos fechar", "boa noite", equivalente)
 
 Detalhe completo em `~/.claude/CLAUDE.md` global do Higor.
 
-## Última sessão (13–14/09/2026)
+## Última sessão (19, 25 e 27/09/2026)
+
+Relatório de divergências de ICMS do período inteiro, e o robô da SEFAZ parou de
+inventar número.
+
+- **Modelo de pastas NOVO** (definido pelo Higor em 19/09): `<CLIENTE>\Declaraçoes\<TIPO>\<ANO>`
+  (transmitido) × `<CLIENTE>\Dominio\Contabil|Fiscal\<TIPO>\<ANO>` (gerado no Domínio) +
+  `OBSERVAÇÃO\`. Substitui o CONTABIL/FISCAL de 13/09. **O código ainda grava no modelo antigo.**
+- **Casa São Paulo é o piloto** — nenhum outro cliente é tocado até ela fechar.
+- **Relatório novo:** `/painel/clientes/<id>/sped/relatorio` — período inteiro, mapa ano × mês,
+  compras e vendas por ano, detalhe por competência, papel timbrado, A4 paisagem.
+- **Robô da SEFAZ:** passou a LER saldo credor (6.4), deduções (7.2) e imposto a recolher (7.3)
+  do espelho. Antes gravava zero e calculava — 57 divergências falsas de saldo credor viraram 21
+  reais. 84 competências regravadas (2019–2025).
+- **Bug silencioso corrigido:** leitura CFOP a CFOP morria pelo worker do pdfjs (conflito com o
+  pdf-parse) e o erro era engolido.
+- **Pasta inventada acabou:** `pastaLocal` é obrigatório no `ClienteRef`; sem ele a tela avisa em
+  vez de criar `<RAZAO>_<CNPJ>`. Treze pontos corrigidos.
+- **Achado material:** a GIAM da SEFAZ acumula saldo credor que a escrituração não tem (R$ 676 mil
+  em 11/2025), por causa de seis competências com GIAM quase vazia (07/2020 e cinco meses de 2024).
+
+Ver `docs/RELATORIO-SESSAO-2026-09-27.md`.
+
+## Sessão anterior (13–14/09/2026)
 
 Pastas do cliente no modelo do Higor, telas por ano e ECF completa.
 

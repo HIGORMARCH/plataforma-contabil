@@ -102,6 +102,7 @@ export default async function BalanceteComparadoPage({
       id: true,
       razaoSocial: true,
       cnpj: true,
+      pastaLocal: true,
       regimeTributario: true,
     },
   });
@@ -127,6 +128,7 @@ export default async function BalanceteComparadoPage({
   const clienteRef: ClienteRef = {
     razaoSocial: cliente.razaoSocial,
     cnpj: cliente.cnpj,
+    pastaLocal: cliente.pastaLocal,
   };
   const pastaClienteAbs = pastaCliente(clienteRef);
   const { anosDominio, anosTransmitida } = detectarAnos(clienteRef);

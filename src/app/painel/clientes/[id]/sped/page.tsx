@@ -76,13 +76,20 @@ export default async function SpedCliente({
         <Link href={`/painel/clientes/${id}`} className="text-sm text-slate-500 hover:underline">
           ← Voltar para {cliente.nomeFantasia || cliente.razaoSocial}
         </Link>
-        <h1 className="mt-1 text-2xl font-bold text-slate-800">
-          Auditoria ICMS — SPED-Fiscal + GIAM
-        </h1>
-        <p className="text-sm text-slate-500">
-          Apuração declarada à Receita Federal (SPED) e à SEFAZ-TO (GIAM). Ambas devem bater —
-          divergência entre elas indica que declararam valores diferentes aos dois fiscos.
-        </p>
+        <div className="mt-1 flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h1 className="text-2xl font-bold text-slate-800">
+              Auditoria ICMS — SPED-Fiscal + GIAM
+            </h1>
+            <p className="text-sm text-slate-500">
+              Apuração declarada à Receita Federal (SPED) e à SEFAZ-TO (GIAM). Ambas devem bater —
+              divergência entre elas indica que declararam valores diferentes aos dois fiscos.
+            </p>
+          </div>
+          <Link href={`/painel/clientes/${id}/sped/relatorio`} className="btn btn-primary text-sm">
+            Relatório de divergências do período
+          </Link>
+        </div>
       </div>
 
       {/* Seletor de ano */}

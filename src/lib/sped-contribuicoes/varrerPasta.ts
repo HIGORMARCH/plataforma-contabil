@@ -69,11 +69,15 @@ export async function varrerPastaSpedContribuicoes(params: {
 
   const cliente = await prisma.cliente.findUnique({
     where: { id: clienteId },
-    select: { razaoSocial: true, cnpj: true },
+    select: { razaoSocial: true, cnpj: true, pastaLocal: true },
   });
   if (!cliente) throw new Error("Cliente não encontrado.");
   const cnpjCliente = soDigitos(cliente.cnpj);
-  const clienteRef: ClienteRef = { razaoSocial: cliente.razaoSocial, cnpj: cliente.cnpj };
+  const clienteRef: ClienteRef = {
+    razaoSocial: cliente.razaoSocial,
+    cnpj: cliente.cnpj,
+    pastaLocal: cliente.pastaLocal,
+  };
 
   const st = await stat(pasta).catch(() => null);
   if (!st || !st.isDirectory()) {

@@ -207,6 +207,11 @@ async function gravarApuracao(
     totalCompras: r.totalEntradas.valorContabil,
     totalVendas: r.totalSaidas.valorContabil,
     sincronizacaoId,
+    // Carimbo explícito: o @default(now()) do schema só vale na criação, e sem
+    // isto uma competência regravada continuava com a data da PRIMEIRA leitura
+    // — o relatório usa essa data pra saber se a apuração (saldo credor,
+    // deduções, imposto a recolher) veio do robô que lê esses campos.
+    sincronizadoEm: new Date(),
   };
 
   const apuracao = await prisma.giamSefazApuracao.upsert({

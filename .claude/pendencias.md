@@ -18,10 +18,24 @@
 - [ ] **ReceitanetBX Serviço como fonte de DCTF/DCTFWeb/recibos** (2019–2026, todos os clientes) — ler `C:\Dev\march-cofre\docs\MANUAL-RECEITANETBX-SERVICO.md` antes de qualquer robô. Extensão do Chrome no e-CAC descartada para lote.
 - [ ] **Varredura `FISCAL\DCTF` e `FISCAL\DCTFWEB` → `DctfWebDeclaracao`** usando `src/lib/dctf-pdf/`; nomes reais: `Impressão da Declaração - MMAAAA.pdf` (com/sem espaço) e `Recibo Declaracao MMAAAA.pdf`.
 - [ ] **Deploy 220** — código + `prisma db push` (pastas do cliente, `pastaContabil`, `fonte` da ECF + unique novo, período de atendimento) + apagar exercício 2026 errado da Casa São Paulo lá.
-- [ ] **`dctf-antiga/importarEVarrer.ts`** copia `.dec` para pasta com nome antigo (sem `pastaLocal`).
+- [x] ~~**`dctf-antiga/importarEVarrer.ts`** copia `.dec` para pasta com nome antigo (sem `pastaLocal`)~~ — resolvido em 19/09: `pastaLocal` virou campo obrigatório do `ClienteRef` e os 13 pontos que o omitiam foram corrigidos.
 - [ ] **Conciliação de Impostos** lendo razões de `CONTABIL\<ANO>`.
 - [ ] **Robô organizador + varredura do march-cofre** na estrutura nova (tarefa "March - Varredura Declaracoes Servidor" desabilitada) — sessões próprias.
 - [ ] **Senha por pasta de cliente** — Higor define o que exige senha, quem cadastra e recuperação.
+
+## Abertas em 27/09/2026 (Casa São Paulo — cliente-piloto)
+
+- [ ] **`pastaContabil` da Casa São Paulo aponta para pasta que não existe** — está `...\CASA SAO PAULO CALCADOS LTDA\CONTABIL`; no modelo novo é `Dominio\Contabil` (ou a subpasta `Balancete`/`DRE`/`Razao`). Os outros 12 campos de pasta estão certos.
+- [ ] **`Dominio\Fiscal\Giam` tem DCTF em PDF dentro, não GIAM** — 24 arquivos `Impressão da Declaração - MMAAAA.pdf` (2018 e 2019), com hash idêntico aos de `Declaraçoes\DCTF`. As GIAM do Domínio (`.r1`) não estão em nenhum lugar do `C:\PlataformaContabil`.
+- [ ] **`Dominio\Contabil\ECD` vazia** — o Higor vai colocar. A ECD do Domínio de 2018 (`sped_balancetediario00180.txt`, 66 KB) está guardada em `_QUARENTENA\CASA SAO PAULO - duplicatas (19-09-2026)`.
+- [ ] **Três DREs de 2019 com conteúdos diferentes** (`D. R. E. 2019.pdf`, ` -2`, ` -3`) sumiram na reorganização do Higor; anotado em `OBSERVAÇÃO\_A CONFERIR.md` do cliente.
+- [ ] **EFD-Contribuições de 2019 só tem dezembro** — faltam 11 meses.
+- [ ] **Código ainda grava no modelo de 13/09** (`CONTABIL\`, `FISCAL\SPED\`, `FISCAL\DOMINIO\`) — o modelo vigente é `Declaraçoes\<TIPO>\<ANO>` × `Dominio\Contabil|Fiscal\<TIPO>\<ANO>`. `destino.ts` (organizador) e `pastaTipoAno` (storage) precisam ser reapontados.
+- [ ] **Migração dos outros clientes: PARADA por ordem do Higor** — Casa São Paulo é o piloto. Quando liberar, faltam 4 decisões que o modelo novo não cobre: onde ficam `RECIBOS` (44 clientes), `GUIAS` (2), `OUTROS` (18) e a GIAM em PDF (`ESPELHO-GIAM-MM.AAAA.pdf`, documento diferente do `.r1`).
+- [ ] **Seis competências com GIAM quase vazia na SEFAZ** (07/2020, 05, 06, 08, 09 e 12/2024) — o SPED declara débito de R$ 114 mil a R$ 139 mil e a GIAM recepcionada traz R$ 1,7 mil a R$ 24 mil. É a causa do saldo credor de R$ 676 mil que a SEFAZ acumula e a escrituração não tem.
+- [ ] **03/2024 com R$ 12,1 milhões de compras e R$ 12,3 milhões de vendas** — cerca de 21 vezes um mês normal, e SPED e GIAM declaram o mesmo valor. Não é divergência entre fiscos; falta o Higor dizer se investigamos a origem.
+- [ ] **01/2019: saldo credor de R$ 8.093,89 só na GIAM da SEFAZ** — vem de 2018, que está fora do período de atendimento (começa 01/01/2019).
+- [ ] **Relatório de divergências de ICMS não foi conferido na impressão** — Ctrl+P para validar quebra de página e o mapa do período em preto e branco.
 
 ## Ideias não implementadas
 

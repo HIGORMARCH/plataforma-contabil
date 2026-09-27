@@ -86,13 +86,14 @@ export default async function RazaoContrapartidaPage({
 
   const cliente = await prisma.cliente.findFirst({
     where: { id, escritorioId: sessao.escritorioId },
-    select: { razaoSocial: true, cnpj: true, regimeTributario: true },
+    select: { razaoSocial: true, cnpj: true, pastaLocal: true, regimeTributario: true },
   });
   if (!cliente) notFound();
 
   const clienteRef: ClienteRef = {
     razaoSocial: cliente.razaoSocial,
     cnpj: cliente.cnpj,
+    pastaLocal: cliente.pastaLocal,
   };
 
   const anosDisponiveis = detectarAnos(clienteRef);

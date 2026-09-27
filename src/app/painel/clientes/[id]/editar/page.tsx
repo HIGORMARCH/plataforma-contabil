@@ -6,8 +6,8 @@ import { editarClienteAction } from "../../actions";
 import {
   existe,
   listarPastasDaRaiz,
-  nomearCliente,
-  pastaCliente,
+  
+  pastaClienteOuNull,
   pastaRaiz,
 } from "@/lib/storage/filesystem";
 import { AcessoEcacFields } from "../../_components/AcessoEcacFields";
@@ -66,9 +66,8 @@ export default async function EditarClientePage({
   // a convenção geraria e o caminho que está valendo agora.
   const raizArquivos = pastaRaiz();
   const pastasDisponiveis = listarPastasDaRaiz();
-  const nomeConvencionado = nomearCliente(cliente);
-  const pastaEmUso = pastaCliente(cliente);
-  const pastaExiste = existe(pastaEmUso);
+  const pastaEmUso = pastaClienteOuNull(cliente);
+  const pastaExiste = pastaEmUso ? existe(pastaEmUso) : false;
 
   return (
     <div>
@@ -170,7 +169,7 @@ export default async function EditarClientePage({
         />
 
         <PastasLocaisFields
-          pastaDoCliente={pastaEmUso}
+          pastaDoCliente={pastaEmUso ?? ""}
           iniciais={{
             pastaContabil: cliente.pastaContabil,
             pastaFiscal: cliente.pastaFiscal,
@@ -200,9 +199,10 @@ export default async function EditarClientePage({
             className="input"
             defaultValue={cliente.pastaLocal ?? ""}
           >
-            <option value="">
-              (usar a convenção: {nomeConvencionado})
-            </option>
+            {/* Sem opção de "usar a convenção": escolher nada fazia a plataforma
+                inventar a pasta <RAZAO>_<CNPJ> e criar uma segunda árvore de
+                arquivos por cliente. Sem escolha, ela simplesmente não lê. */}
+            <option value="">(nenhuma — a plataforma não vai achar os arquivos)</option>
             {pastasDisponiveis.map((nome) => (
               <option key={nome} value={nome}>
                 {nome}
@@ -210,11 +210,19 @@ export default async function EditarClientePage({
             ))}
           </select>
           <p className="mt-2 text-xs text-slate-500">
-            Hoje a plataforma lê de: <code className="font-mono">{pastaEmUso}</code>{" "}
-            {pastaExiste ? (
-              <span className="text-emerald-700">— pasta encontrada</span>
+            {pastaEmUso ? (
+              <>
+                Hoje a plataforma lê de: <code className="font-mono">{pastaEmUso}</code>{" "}
+                {pastaExiste ? (
+                  <span className="text-emerald-700">— pasta encontrada</span>
+                ) : (
+                  <span className="text-amber-700">— pasta não existe em disco</span>
+                )}
+              </>
             ) : (
-              <span className="text-amber-700">— pasta não existe em disco</span>
+              <span className="text-amber-700">
+                Nenhuma pasta escolhida — as telas que leem arquivos vão avisar que falta o cadastro.
+              </span>
             )}
           </p>
         </PastasLocaisFields>

@@ -44,8 +44,15 @@ export interface ClienteRef {
    * manda — a convenção `<RAZAO>_<CNPJ>` é só o palpite para quem ainda não
    * escolheu. As pastas de verdade foram criadas à mão, com o apelido da equipe
    * ("LUPO - PALMAS QUIOSQUE ..."), e nenhum nome derivado acerta isso.
+   *
+   * OBRIGATÓRIO no tipo (pode ser null), de propósito: enquanto era opcional,
+   * seis telas montavam o ClienteRef sem ele — o `select` do Prisma não trazia o
+   * campo e ninguém percebia. O resultado foi uma SEGUNDA árvore de pastas por
+   * cliente, no formato `<RAZAO>_<CNPJ>`, recebendo arquivo enquanto a pasta
+   * escolhida no cadastro ficava vazia. Com o campo obrigatório, esquecer vira
+   * erro de compilação.
    */
-  pastaLocal?: string | null;
+  pastaLocal: string | null;
 }
 
 /** Raiz da pasta única — configurável via env, default no C:\. */
@@ -70,17 +77,34 @@ export function nomearCliente(cliente: ClienteRef): string {
 }
 
 /**
- * Path da pasta raiz do cliente (não cria — só compõe).
+ * Path da pasta do cliente (não cria — só compõe). É SEMPRE a pasta escolhida
+ * no cadastro (`pastaLocal`), absoluta ou relativa à raiz.
  *
- * `pastaLocal` do cadastro tem precedência: é o caminho que o contador apontou.
- * Aceita tanto caminho absoluto quanto só o nome da pasta dentro da raiz.
+ * Sem `pastaLocal`, ERRA de propósito. Até 19/09/2026 esta função caía na
+ * convenção `<RAZAO>_<CNPJ>`, e o palpite virava pasta de verdade: o sistema
+ * criava uma segunda árvore por cliente e gravava documento nela, enquanto a
+ * pasta organizada pelo contador ficava para trás. Pasta errada é pior que
+ * pasta faltando — melhor a tela reclamar do cadastro incompleto.
+ *
+ * Para exibir o nome que a convenção geraria (placeholder do cadastro), use
+ * `nomearCliente`; para checar sem quebrar a tela, `pastaClienteOuNull`.
  */
 export function pastaCliente(cliente: ClienteRef): string {
-  const escolhida = cliente.pastaLocal?.trim();
-  if (escolhida) {
-    return path.isAbsolute(escolhida) ? escolhida : path.join(pastaRaiz(), escolhida);
+  const p = pastaClienteOuNull(cliente);
+  if (!p) {
+    throw new Error(
+      `Cliente "${cliente.razaoSocial}" está sem a pasta configurada. ` +
+        `Defina em Cadastros → editar cliente → Pastas do cliente.`,
+    );
   }
-  return path.join(pastaRaiz(), nomearCliente(cliente));
+  return p;
+}
+
+/** Igual a `pastaCliente`, mas devolve null em vez de erro. */
+export function pastaClienteOuNull(cliente: ClienteRef): string | null {
+  const escolhida = cliente.pastaLocal?.trim();
+  if (!escolhida) return null;
+  return path.isAbsolute(escolhida) ? escolhida : path.join(pastaRaiz(), escolhida);
 }
 
 /**

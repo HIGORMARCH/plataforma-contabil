@@ -55,13 +55,14 @@ export default async function RazaoComparadoPage({
 
   const cliente = await prisma.cliente.findFirst({
     where: { id, escritorioId: sessao.escritorioId },
-    select: { razaoSocial: true, cnpj: true },
+    select: { razaoSocial: true, cnpj: true, pastaLocal: true },
   });
   if (!cliente) notFound();
 
   const clienteRef: ClienteRef = {
     razaoSocial: cliente.razaoSocial,
     cnpj: cliente.cnpj,
+    pastaLocal: cliente.pastaLocal,
   };
   const arqDom = caminhoArquivo(clienteRef, "SPED-ECD-DOMINIO", ano, null, "txt");
   const arqEcd = caminhoArquivo(clienteRef, "SPED-ECD", ano, null, "txt");

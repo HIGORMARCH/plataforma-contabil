@@ -106,7 +106,13 @@ export default async function ClienteDetalhe({ params }: { params: Promise<{ id:
               </Link>
             </div>
           )}
-          <CardPastaUnica cliente={{ razaoSocial: cliente.razaoSocial, cnpj: cliente.cnpj }} />
+          <CardPastaUnica
+            cliente={{
+              razaoSocial: cliente.razaoSocial,
+              cnpj: cliente.cnpj,
+              pastaLocal: cliente.pastaLocal,
+            }}
+          />
         </section>
       </div>
 

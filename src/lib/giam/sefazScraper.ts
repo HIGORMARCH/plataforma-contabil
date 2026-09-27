@@ -25,7 +25,7 @@
  */
 import { chromium, type Browser, type BrowserContext } from "playwright";
 import { PDFParse } from "pdf-parse";
-import { extrairLinhasEspelhoPdfjs } from "./parseEspelhoPdfjs";
+import { extrairLinhasEspelhoPdfjs, extrairApuracaoEspelhoPdfjs } from "./parseEspelhoPdfjs";
 
 export interface GiamSefazApuracaoRaspada {
   ano: number;
@@ -273,6 +273,22 @@ async function baixarEspelhoDoMes(
         } catch {}
       }
       const totais = parseEspelhoPdf(dados.text, alvo.mes, alvo.ano);
+
+      // Apuração do ICMS (itens 5 a 9) lida do PDF por coordenadas. É o que
+      // manda: o parser texto não alcança esses campos e o robô antes gravava
+      // zero no saldo credor / deduções e calculava o imposto a recolher.
+      const apuracao = await extrairApuracaoEspelhoPdfjs(buf);
+      if (!apuracao) {
+        throw new SefazPortalError(
+          "Espelho fora do layout esperado: não foi possível ler a apuração do ICMS (itens 5 a 7).",
+          "parse-apuracao",
+        );
+      }
+      totais.debitoSaidas = apuracao.debitoSaidas;
+      totais.creditoEntradas = apuracao.creditoEntradas;
+      totais.saldoCredorAnterior = apuracao.saldoCredorAnterior;
+      totais.deducoes = apuracao.deducoes;
+      totais.icmsARecolherNormal = apuracao.icmsARecolherNormal;
       // Complementa as linhas Segmento B via pdfjs (coordenadas X/Y — muito
       // mais robusto que o texto do pdf-parse). Se falhar, cai silente pra
       // não regressar: os totais do parser texto continuam corretos.
@@ -377,9 +393,13 @@ function parseEspelhoPdf(texto: string, mes: number, ano: number): GiamSefazApur
   const totalVendasVC = (item12[0] ?? 0) + (item12[1] ?? 0);
   const debitoSaidas = (item12[4] ?? 0) + (item12[5] ?? 0);
 
+  // Placeholders: quem chama SOBRESCREVE os cinco campos da apuração com o que
+  // `extrairApuracaoEspelhoPdfjs` lê dos itens 5 a 7 do espelho. O parser texto
+  // não alcança esses campos, e chutar valor aqui já custou divergência falsa
+  // em todo mês com saldo credor.
   const saldoCredorAnterior = 0;
   const deducoes = 0;
-  const icmsARecolherNormal = Math.max(0, debitoSaidas - creditoEntradas - saldoCredorAnterior - deducoes);
+  const icmsARecolherNormal = 0;
 
   // Linhas por CFOP: DESLIGADAS por enquanto. O pdf-parse embaralha a ordem
   // das colunas em linhas com descrição longa — a leitura fica errada (viu

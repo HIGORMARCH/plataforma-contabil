@@ -49,7 +49,7 @@ export async function uploadSpedEcdAction(
 
     const cliente = await prisma.cliente.findFirst({
       where: { id: clienteId, escritorioId: sessao.escritorioId },
-      select: { razaoSocial: true, cnpj: true },
+      select: { razaoSocial: true, cnpj: true, pastaLocal: true },
     });
     if (!cliente) return { ok: false, erro: "Cliente não encontrado." };
 
@@ -82,6 +82,7 @@ export async function uploadSpedEcdAction(
     const clienteRef: ClienteRef = {
       razaoSocial: cliente.razaoSocial,
       cnpj: cliente.cnpj,
+      pastaLocal: cliente.pastaLocal,
     };
     const tipo = lado === "DOMINIO" ? "SPED-ECD-DOMINIO" : "SPED-ECD";
     const destino = caminhoArquivo(clienteRef, tipo, ano, null, "txt");
@@ -144,7 +145,7 @@ export async function varrerPastaEcdAction(
 
     const cliente = await prisma.cliente.findFirst({
       where: { id: clienteId, escritorioId: sessao.escritorioId },
-      select: { razaoSocial: true, cnpj: true },
+      select: { razaoSocial: true, cnpj: true, pastaLocal: true },
     });
     if (!cliente) return { ok: false, erro: "Cliente não encontrado." };
 
@@ -152,6 +153,7 @@ export async function varrerPastaEcdAction(
     const clienteRef: ClienteRef = {
       razaoSocial: cliente.razaoSocial,
       cnpj: cliente.cnpj,
+      pastaLocal: cliente.pastaLocal,
     };
     const tipoDoc = lado === "DOMINIO" ? "SPED-ECD-DOMINIO" : "SPED-ECD";
 
@@ -247,13 +249,14 @@ export async function exportarXlsxAction(
 
     const cliente = await prisma.cliente.findFirst({
       where: { id: clienteId, escritorioId: sessao.escritorioId },
-      select: { razaoSocial: true, cnpj: true },
+      select: { razaoSocial: true, cnpj: true, pastaLocal: true },
     });
     if (!cliente) return { ok: false, erro: "Cliente não encontrado." };
 
     const clienteRef: ClienteRef = {
       razaoSocial: cliente.razaoSocial,
       cnpj: cliente.cnpj,
+      pastaLocal: cliente.pastaLocal,
     };
     const arqDom = caminhoArquivo(clienteRef, "SPED-ECD-DOMINIO", ano, null, "txt");
     const arqEcd = caminhoArquivo(clienteRef, "SPED-ECD", ano, null, "txt");

@@ -1,6 +1,6 @@
 import { existsSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
-import { pastaCliente, type ClienteRef, type TipoDocumento } from "@/lib/storage/filesystem";
+import { pastaClienteOuNull, type ClienteRef, type TipoDocumento } from "@/lib/storage/filesystem";
 
 const TIPOS: Array<{ tipo: TipoDocumento; rotulo: string; emoji: string }> = [
   { tipo: "DCTF-ANTIGA", rotulo: "DCTF antiga (.dec)", emoji: "📄" },
@@ -41,7 +41,22 @@ function contarArquivos(basePath: string): { total: number; anos: number[] } {
  * mensagem de "ainda não populada".
  */
 export function CardPastaUnica({ cliente }: { cliente: ClienteRef }) {
-  const raiz = pastaCliente(cliente);
+  // Sem pasta no cadastro não há o que inventariar — e NÃO se adivinha um
+  // caminho: adivinhar foi o que criou pasta duplicada por cliente.
+  const raiz = pastaClienteOuNull(cliente);
+  if (!raiz) {
+    return (
+      <section className="card p-5">
+        <h2 className="mb-2 text-sm font-bold uppercase tracking-wide text-slate-500">
+          Arquivos locais (pasta única)
+        </h2>
+        <p className="text-sm text-slate-500">
+          Este cliente ainda não tem a pasta definida no cadastro. Escolha em Cadastros → editar
+          cliente → Pastas do cliente.
+        </p>
+      </section>
+    );
+  }
   const pastaExiste = existsSync(raiz);
 
   const inventario = TIPOS.map((t) => {

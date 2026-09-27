@@ -19,7 +19,36 @@
  * Marcador do 4.2: linha "4.2 SAÍDAS E/OU PRESTAÇÕES".
  */
 
-import { getDocument } from "pdfjs-dist/legacy/build/pdf.mjs";
+import { createRequire } from "node:module";
+import { pathToFileURL } from "node:url";
+import { getDocument, GlobalWorkerOptions } from "pdfjs-dist/legacy/build/pdf.mjs";
+
+/**
+ * Fixa o worker do pdfjs na MESMA versão da API que importamos aqui.
+ *
+ * O `pdf-parse` embute a própria cópia do pdfjs (5.4.296) e, ao ser usado antes
+ * deste parser no mesmo processo, pendura o worker dele em
+ * `globalThis.pdfjsWorker`. O pdfjs prefere esse worker global a carregar o
+ * arquivo do `workerSrc`, então o nosso pdfjs 6.x rodava com o worker 5.x e
+ * morria com "API version does not match Worker version" — e o scraper engolia
+ * o erro, gravando a apuração SEM as linhas por CFOP.
+ */
+function fixarWorkerDoPdfjs() {
+  // Solta o worker do pdf-parse: ele o registra de novo na próxima leitura.
+  delete (globalThis as { pdfjsWorker?: unknown }).pdfjsWorker;
+  // `workerPort` tem precedência sobre `workerSrc`: se já houver um aberto,
+  // trocar só o `workerSrc` não adianta.
+  (GlobalWorkerOptions as { workerPort: unknown }).workerPort = null;
+  try {
+    const require = createRequire(import.meta.url);
+    GlobalWorkerOptions.workerSrc = pathToFileURL(
+      require.resolve("pdfjs-dist/legacy/build/pdf.worker.mjs"),
+    ).href;
+  } catch {
+    // Sem resolver o worker, o pdfjs cai no worker falso (mais lento, correto).
+    GlobalWorkerOptions.workerSrc = "";
+  }
+}
 
 interface ItemPdf {
   x: number;
@@ -66,9 +95,14 @@ function toNumeroBR(s: string): number {
  * Extrai as páginas do PDF como listas de linhas (agrupando itens por Y).
  */
 async function extrairLinhas(buffer: Buffer | ArrayBuffer): Promise<LinhaPdf[][]> {
-  const src = buffer instanceof ArrayBuffer
+  // CÓPIA, sempre: o pdfjs transfere o buffer para o worker e o deixa detached.
+  // Sem copiar, a segunda leitura do mesmo PDF (apuração e depois CFOP a CFOP)
+  // recebe um buffer vazio e falha com "detached ArrayBuffer".
+  const bytes = buffer instanceof ArrayBuffer
     ? new Uint8Array(buffer)
     : new Uint8Array(buffer.buffer, buffer.byteOffset, buffer.byteLength);
+  const src = new Uint8Array(bytes);
+  fixarWorkerDoPdfjs();
   const loadingTask = getDocument({ data: src, useSystemFonts: true });
   const pdf = await loadingTask.promise;
 
@@ -194,4 +228,85 @@ export async function extrairLinhasEspelhoPdfjs(
   const saidas = extrairCFOPsEntre(linhasP1, yQuadro42 - 1, yFimQuadro4 + 1, "1");
 
   return [...entradas, ...saidas];
+}
+
+/**
+ * Apuração do ICMS lida do próprio espelho (itens 5 a 9), pelas coordenadas.
+ *
+ * Antes destes campos serem lidos, o scraper gravava zero no saldo credor e nas
+ * deduções e CALCULAVA o imposto a recolher como débito − crédito. Com saldo
+ * credor do período anterior, o valor calculado ficava maior que o declarado —
+ * divergência inventada pela plataforma. Agora vem tudo do documento.
+ *
+ * Layout validado com CASA SAO PAULO ago/2021 (`scripts/inspecionar-pdf-espelho.ts`):
+ *
+ *   5.1 - POR SAÍDAS/PRESTAÇÕES COM DÉBITO DO IMPOSTO          100.760,99
+ *   6.1 - POR ENTRADAS/AQUISIÇÕES COM CRÉDITO DO IMPOSTO        90.935,49
+ *   6.4 - SALDO CREDOR DO PERÍODO ANTERIOR                       5.209,71
+ *   7.2 - DEDUÇÕES                                                   0,00
+ *   7.3 - IMPOSTO A RECOLHER                                     4.615,79
+ *
+ * Armadilha do 7.3: o valor é desenhado uma linha ACIMA do rótulo (mesma
+ * coluna). Por isso `valorDoItem` procura na linha do rótulo e, se não achar,
+ * na linha imediatamente acima — sempre na faixa X das colunas de valor.
+ */
+export interface ApuracaoEspelhoExtraida {
+  debitoSaidas: number;
+  creditoEntradas: number;
+  saldoCredorAnterior: number;
+  deducoes: number;
+  icmsARecolherNormal: number;
+}
+
+/** X mínimo das colunas de valor da apuração (rótulos ficam em X ≈ 40). */
+const X_VALOR_APURACAO = 450;
+const RX_NUMERO_BR = /^-?[\d.]+,\d{2}$/;
+
+function valorDoItem(paginas: LinhaPdf[][], rx: RegExp): number | null {
+  for (const linhas of paginas) {
+    for (let i = 0; i < linhas.length; i++) {
+      if (!rx.test(linhas[i].texto)) continue;
+      // Na própria linha; senão na de cima (o 7.3 desenha o valor acima).
+      for (const candidata of [linhas[i], linhas[i - 1]]) {
+        if (!candidata) continue;
+        const valores = candidata.itens.filter(
+          (it) => it.x >= X_VALOR_APURACAO && RX_NUMERO_BR.test(it.str.trim()),
+        );
+        if (valores.length === 0) continue;
+        // A linha de cima só vale se for SÓ o valor solto — se tiver rótulo,
+        // é outro item do espelho e o número pertence a ele.
+        if (candidata !== linhas[i] && candidata.itens.length !== valores.length) continue;
+        return toNumeroBR(valores[valores.length - 1].str.trim());
+      }
+      return null;
+    }
+  }
+  return null;
+}
+
+export async function extrairApuracaoEspelhoPdfjs(
+  buffer: Buffer,
+): Promise<ApuracaoEspelhoExtraida | null> {
+  const paginas = await extrairLinhas(buffer);
+
+  const debitoSaidas = valorDoItem(paginas, /^5\.1\s*[-–]/);
+  const creditoEntradas = valorDoItem(paginas, /^6\.1\s*[-–]/);
+  const saldoCredorAnterior = valorDoItem(paginas, /^6\.4\s*[-–]/);
+  const deducoes = valorDoItem(paginas, /^7\.2\s*[-–]\s*DEDU/i);
+  // 7.3 é o imposto a recolher; 9.1 (demonstrativo) repete o mesmo total e
+  // serve de rede quando o 7.3 não é localizado.
+  const icms =
+    valorDoItem(paginas, /^7\.3\s*[-–]/) ?? valorDoItem(paginas, /^9\.1\s*[-–]\s*ICMS NORMAL/i);
+
+  // Sem os três campos estruturais, o PDF não está no layout esperado: devolve
+  // null para o chamador tratar como erro, em vez de gravar número chutado.
+  if (debitoSaidas === null || creditoEntradas === null || saldoCredorAnterior === null) return null;
+
+  return {
+    debitoSaidas,
+    creditoEntradas,
+    saldoCredorAnterior,
+    deducoes: deducoes ?? 0,
+    icmsARecolherNormal: icms ?? 0,
+  };
 }
