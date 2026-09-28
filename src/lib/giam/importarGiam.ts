@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db";
+import { acharPorIe, garantirMatriz, listarEstabelecimentos } from "@/lib/estabelecimento";
 import { parseGiam, GiamFormatError, type GiamApuracaoParsed } from "./parseGiam";
 
 export interface ResultadoImportacaoGiam {
@@ -14,12 +15,14 @@ export interface ResultadoImportacaoGiam {
 
 /**
  * Importa um arquivo GIAM (conteúdo textual) e persiste como GiamApuracao +
- * GiamIcmsARecolher. Idempotente por (clienteId, periodoApuracao, retificacao) —
- * reimport substitui.
+ * GiamIcmsARecolher. Idempotente por (estabelecimento, periodoApuracao,
+ * retificacao) — reimport substitui.
  *
- * SANITY CHECK: se o cliente tem IE cadastrada e ela NÃO bate com a IE do arquivo,
- * marca como erro (evita associar GIAM de outro cliente por engano — importante
- * pra pastas compartilhadas onde vários clientes têm arquivos juntos).
+ * ESTABELECIMENTO: a GIAM é por inscrição estadual, então vai para o
+ * estabelecimento do cadastro cuja IE é a do arquivo. Se nenhuma IE bate e o
+ * cadastro tem alguma IE preenchida, marca como erro (evita associar GIAM de
+ * outro cliente por engano — importante pra pastas compartilhadas onde vários
+ * clientes têm arquivos juntos). Cadastro sem nenhuma IE: vai para a matriz.
  */
 export async function importarGiam(params: {
   clienteId: string;
@@ -32,6 +35,7 @@ export async function importarGiam(params: {
 }): Promise<ResultadoImportacaoGiam> {
   const { clienteId, nomeArquivo, conteudo, importadoPor, hashArquivo, origem = "UPLOAD", caminhoOrigem } = params;
   const tamanhoBytes = Buffer.byteLength(conteudo, "utf8");
+  const matrizId = await garantirMatriz(clienteId);
 
   let parseResult: GiamApuracaoParsed;
   try {
@@ -41,6 +45,7 @@ export async function importarGiam(params: {
     const imp = await prisma.giamImportacao.create({
       data: {
         clienteId,
+        estabelecimentoId: matrizId,
         nomeArquivo,
         tamanhoBytes,
         hashArquivo,
@@ -63,24 +68,25 @@ export async function importarGiam(params: {
     };
   }
 
-  // Sanity: IE do arquivo bate com IE cadastrada no cliente?
-  const cliente = await prisma.cliente.findUnique({
-    where: { id: clienteId },
-    select: { inscricaoEstadual: true },
-  });
-  const ieCadastrada = (cliente?.inscricaoEstadual ?? "").replace(/\D/g, "");
+  // Estabelecimento da GIAM, pela IE do arquivo.
   const ieArquivo = parseResult.inscricaoEstadual.replace(/\D/g, "");
-  if (ieCadastrada && ieArquivo && ieCadastrada !== ieArquivo) {
+  const estab = ieArquivo ? await acharPorIe(clienteId, ieArquivo) : null;
+  const iesCadastradas = (await listarEstabelecimentos(clienteId))
+    .map((e) => (e.inscricaoEstadual ?? "").replace(/\D/g, ""))
+    .filter(Boolean);
+  const estabelecimentoId = estab?.id ?? matrizId;
+  if (!estab && ieArquivo && iesCadastradas.length > 0) {
     const imp = await prisma.giamImportacao.create({
       data: {
         clienteId,
+        estabelecimentoId: matrizId,
         nomeArquivo,
         tamanhoBytes,
         hashArquivo,
         origem,
         caminhoOrigem,
         sucesso: false,
-        mensagem: `IE do arquivo (${ieArquivo}) não bate com IE cadastrada do cliente (${ieCadastrada}) — arquivo de outro cliente?`,
+        mensagem: `IE do arquivo (${ieArquivo}) não é de nenhum estabelecimento do cadastro (${iesCadastradas.join(", ")}) — arquivo de outro cliente?`,
         ieArquivo,
         periodoArquivo: parseResult.periodoMMAAAA,
         retificacaoArquivo: parseResult.retificacao,
@@ -105,6 +111,7 @@ export async function importarGiam(params: {
   const importacao = await prisma.giamImportacao.create({
     data: {
       clienteId,
+      estabelecimentoId,
       nomeArquivo,
       tamanhoBytes,
       hashArquivo,
@@ -121,16 +128,15 @@ export async function importarGiam(params: {
     },
   });
 
-  // Upsert da apuração (chave: cliente + competência + revisão)
-  const existente = await prisma.giamApuracao.findUnique({
-    where: {
-      clienteId_periodoApuracao_retificacao: {
-        clienteId,
-        periodoApuracao: parseResult.periodoApuracao,
-        retificacao: parseResult.retificacao,
-      },
+  // Upsert da apuração (chave: estabelecimento + competência + revisão)
+  const chave = {
+    estabelecimentoId_periodoApuracao_retificacao: {
+      estabelecimentoId,
+      periodoApuracao: parseResult.periodoApuracao,
+      retificacao: parseResult.retificacao,
     },
-  });
+  };
+  const existente = await prisma.giamApuracao.findUnique({ where: chave });
 
   const dadosApur = {
     debitoSaidas: parseResult.debitoSaidas,
@@ -174,15 +180,10 @@ export async function importarGiam(params: {
   }
 
   const apuracao = await prisma.giamApuracao.upsert({
-    where: {
-      clienteId_periodoApuracao_retificacao: {
-        clienteId,
-        periodoApuracao: parseResult.periodoApuracao,
-        retificacao: parseResult.retificacao,
-      },
-    },
+    where: chave,
     create: {
       clienteId,
+      estabelecimentoId,
       periodoApuracao: parseResult.periodoApuracao,
       retificacao: parseResult.retificacao,
       ...dadosApur,

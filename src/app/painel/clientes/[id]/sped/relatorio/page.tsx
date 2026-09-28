@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requirePapel, PAPEIS_INTERNOS } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import { listarEstabelecimentos } from "@/lib/estabelecimento";
 import { PrintHeaderMarch } from "@/components/print/PrintHeaderMarch";
 import {
   anosComDadosIcms,
@@ -27,13 +28,19 @@ import { BotaoImprimir } from "../../impostos-declarados/_components/BotaoImprim
 
 const fmtBrl = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
 const MESES = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
+const ROTULO_CURTO: Record<Fonte, string> = {
+  sped: "SPED",
+  siagri: "Siagri",
+  dominio: "GIAM Domínio",
+  sefaz: "GIAM SEFAZ",
+};
 
 export default async function RelatorioIcmsPeriodo({
   params,
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ anoInicial?: string; anoFinal?: string; movimento?: string }>;
+  searchParams: Promise<{ anoInicial?: string; anoFinal?: string; movimento?: string; estab?: string }>;
 }) {
   const sessao = await requirePapel(PAPEIS_INTERNOS);
   const { id } = await params;
@@ -67,8 +74,16 @@ export default async function RelatorioIcmsPeriodo({
     },
   });
 
+  // ICMS é por estabelecimento: o relatório é de um de cada vez (matriz por padrão).
+  const estabelecimentos = await listarEstabelecimentos(id);
+  const estab = estabelecimentos.find((e) => e.id === q.estab) ?? estabelecimentos[0];
+  const temFiliais = estabelecimentos.length > 1;
+  const qsEstab = temFiliais ? `?estab=${estab.id}` : "";
+  const cnpjEstab = estab.cnpj.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, "$1.$2.$3/$4-$5");
+  const ieEstab = estab.inscricaoEstadual;
+
   // Período padrão: do primeiro ao último ano com apuração importada.
-  const anos = await anosComDadosIcms(id);
+  const anos = await anosComDadosIcms(id, estab.id);
   const anoCorrente = new Date().getUTCFullYear();
   const anoInicial = Number(q.anoInicial) || anos[0] || anoCorrente;
   const anoFinal = Number(q.anoFinal) || anos[anos.length - 1] || anoCorrente;
@@ -77,7 +92,14 @@ export default async function RelatorioIcmsPeriodo({
   // construção que se repete todo mês.
   const incluirMovimento = q.movimento !== "0";
 
-  const relatorio = await levantarDivergenciasIcms({ clienteId: id, anoInicial, anoFinal });
+  const relatorio = await levantarDivergenciasIcms({
+    clienteId: id,
+    estabelecimentoId: estab.id,
+    anoInicial,
+    anoFinal,
+  });
+  // Colunas: só as fontes que existem para este estabelecimento.
+  const fontes = relatorio.fontesExibidas;
   const competencias = incluirMovimento
     ? relatorio.competencias
     : relatorio.competencias.map(semMovimento);
@@ -102,18 +124,19 @@ export default async function RelatorioIcmsPeriodo({
       <PrintHeaderMarch
         escritorio={escritorio}
         cliente={cliente.razaoSocial}
-        cnpj={cliente.cnpj}
+        cnpj={temFiliais ? cnpjEstab : cliente.cnpj}
         titulo="Divergências de ICMS — SPED-Fiscal × GIAM"
         subtitulo="Confronto, competência a competência, do ICMS declarado à Receita Federal (SPED-Fiscal, registro E110) e à SEFAZ-TO (GIAM). Lista apenas o que não bate e as declarações que não foram localizadas."
         meta={[
-          ...(cliente.inscricaoEstadual ? [{ label: "IE", valor: cliente.inscricaoEstadual }] : []),
+          ...(temFiliais ? [{ label: "Estabelecimento", valor: `${estab.rotulo}${estab.uf ? ` · ${estab.uf}` : ""}` }] : []),
+          ...(ieEstab ? [{ label: "IE", valor: ieEstab }] : []),
           ...(cliente.regimeTributario ? [{ label: "Regime", valor: cliente.regimeTributario }] : []),
           { label: "Período", valor: periodo },
         ]}
       />
 
       <div className="mb-6 no-print">
-        <Link href={`/painel/clientes/${id}/sped`} className="text-sm text-slate-500 hover:underline">
+        <Link href={`/painel/clientes/${id}/sped${qsEstab}`} className="text-sm text-slate-500 hover:underline">
           ← Voltar para Auditoria ICMS
         </Link>
         <div className="mt-1 flex flex-wrap items-start justify-between gap-3">
@@ -122,8 +145,9 @@ export default async function RelatorioIcmsPeriodo({
               Divergências de ICMS no período — SPED-Fiscal × GIAM
             </h1>
             <p className="text-sm text-slate-500">
-              {cliente.razaoSocial} · CNPJ {cliente.cnpj}
-              {cliente.inscricaoEstadual && <> · IE {cliente.inscricaoEstadual}</>}
+              {cliente.razaoSocial}
+              {temFiliais && <> · {estab.rotulo}</>} · CNPJ {temFiliais ? cnpjEstab : cliente.cnpj}
+              {ieEstab && <> · IE {ieEstab}</>}
               {cliente.regimeTributario && <> · {cliente.regimeTributario}</>}
             </p>
           </div>
@@ -133,6 +157,19 @@ export default async function RelatorioIcmsPeriodo({
 
       <div className="mb-6 rounded-xl border border-slate-200 bg-white p-4 no-print">
         <form className="flex flex-wrap items-end gap-3">
+          {temFiliais && (
+            <label className="flex flex-col text-sm">
+              <span className="mb-1 text-xs text-slate-500">Estabelecimento</span>
+              <select name="estab" defaultValue={estab.id} className="rounded border border-slate-300 px-2 py-1">
+                {estabelecimentos.map((e) => (
+                  <option key={e.id} value={e.id}>
+                    {e.rotulo}
+                    {e.uf ? ` · ${e.uf}` : ""}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
           <label className="flex flex-col text-sm">
             <span className="mb-1 text-xs text-slate-500">Ano inicial</span>
             <input
@@ -169,7 +206,7 @@ export default async function RelatorioIcmsPeriodo({
           <button type="submit" className="btn btn-primary">
             Atualizar
           </button>
-          <Link href={`/painel/clientes/${id}/sped/relatorio`} className="btn text-sm">
+          <Link href={`/painel/clientes/${id}/sped/relatorio${qsEstab}`} className="btn text-sm">
             Período completo
           </Link>
         </form>
@@ -241,21 +278,21 @@ export default async function RelatorioIcmsPeriodo({
                 <th className="py-1 pr-3" rowSpan={2}>
                   Ano
                 </th>
-                <th className="border-b border-slate-200 py-1 pr-3 text-center" colSpan={4}>
+                <th className="border-b border-slate-200 py-1 pr-3 text-center" colSpan={fontes.length + 1}>
                   Total de compras
                 </th>
-                <th className="border-b border-slate-200 py-1 text-center" colSpan={4}>
+                <th className="border-b border-slate-200 py-1 text-center" colSpan={fontes.length + 1}>
                   Total de vendas
                 </th>
               </tr>
               <tr className="border-b border-slate-200 text-left text-[10px] uppercase text-slate-400">
-                <th className="py-1 pr-3 text-right">SPED</th>
-                <th className="py-1 pr-3 text-right">GIAM Domínio</th>
-                <th className="py-1 pr-3 text-right">GIAM SEFAZ</th>
+                {fontes.map((f) => (
+                  <th key={`c-${f}`} className="py-1 pr-3 text-right">{ROTULO_CURTO[f]}</th>
+                ))}
                 <th className="py-1 pr-3 text-right">Dif.</th>
-                <th className="py-1 pr-3 text-right">SPED</th>
-                <th className="py-1 pr-3 text-right">GIAM Domínio</th>
-                <th className="py-1 pr-3 text-right">GIAM SEFAZ</th>
+                {fontes.map((f) => (
+                  <th key={`v-${f}`} className="py-1 pr-3 text-right">{ROTULO_CURTO[f]}</th>
+                ))}
                 <th className="py-1 text-right">Dif.</th>
               </tr>
             </thead>
@@ -272,13 +309,13 @@ export default async function RelatorioIcmsPeriodo({
                   <td className="py-1.5 pr-3 font-medium text-slate-700">
                     {t.ano ?? `${periodo} (total)`}
                   </td>
-                  <CelTotal t={t.compras.sped} />
-                  <CelTotal t={t.compras.dominio} />
-                  <CelTotal t={t.compras.sefaz} />
+                  {fontes.map((f) => (
+                    <CelTotal key={`c-${f}`} t={t.compras[f]} />
+                  ))}
                   <CelDiferenca v={t.difCompras} />
-                  <CelTotal t={t.vendas.sped} />
-                  <CelTotal t={t.vendas.dominio} />
-                  <CelTotal t={t.vendas.sefaz} />
+                  {fontes.map((f) => (
+                    <CelTotal key={`v-${f}`} t={t.vendas[f]} />
+                  ))}
                   <CelDiferenca v={t.difVendas} ultima />
                 </tr>
               ))}
@@ -313,7 +350,7 @@ export default async function RelatorioIcmsPeriodo({
                 <tr key={c.campo} className="border-b border-slate-100">
                   <td className="py-2 pr-3 font-medium text-slate-700">{c.rotulo}</td>
                   <td className="py-2 pr-3 text-xs text-slate-500">
-                    SPED · GIAM Domínio · GIAM SEFAZ
+                    {fontes.map((f) => ROTULO_CURTO[f]).join(" · ")}
                     {def.exigeSefazAtualizada && semLeituraNova > 0 && (
                       <span className="ml-1 text-amber-700">
                         (SEFAZ fora em {semLeituraNova} competência{semLeituraNova === 1 ? "" : "s"} não relida{semLeituraNova === 1 ? "" : "s"})
@@ -347,9 +384,9 @@ export default async function RelatorioIcmsPeriodo({
                 <tr className="border-b border-slate-200 text-left text-xs uppercase text-slate-500">
                   <th className="py-2 pr-3">Competência</th>
                   <th className="py-2 pr-3">Campo</th>
-                  <th className="py-2 pr-3 text-right">SPED-Fiscal</th>
-                  <th className="py-2 pr-3 text-right">GIAM (Domínio)</th>
-                  <th className="py-2 pr-3 text-right">GIAM (SEFAZ)</th>
+                  {fontes.map((f) => (
+                    <th key={f} className="py-2 pr-3 text-right">{ROTULO_FONTE[f]}</th>
+                  ))}
                   <th className="py-2 pr-3 text-right">Diferença</th>
                   <th className="print-only py-2 text-center">Conferido</th>
                 </tr>
@@ -376,16 +413,18 @@ export default async function RelatorioIcmsPeriodo({
                         )}
                       </td>
                       <td className="py-1.5 pr-3 text-slate-700">{d.rotulo}</td>
-                      <ValorFonte v={d.valores.sped} />
-                      <ValorFonte v={d.valores.dominio} />
-                      <ValorFonte
-                        v={d.valores.sefaz}
-                        naoLido={
-                          c.presentes.sefaz &&
-                          !c.sefazApuracaoLida &&
-                          CAMPOS.find((x) => x.campo === d.campo)!.exigeSefazAtualizada
-                        }
-                      />
+                      {fontes.map((f) => (
+                        <ValorFonte
+                          key={f}
+                          v={d.valores[f]}
+                          naoLido={
+                            f === "sefaz" &&
+                            c.presentes.sefaz &&
+                            !c.sefazApuracaoLida &&
+                            CAMPOS.find((x) => x.campo === d.campo)!.exigeSefazAtualizada
+                          }
+                        />
+                      ))}
                       <td className="py-1.5 pr-3 text-right font-semibold tabular-nums text-red-700">
                         {fmtBrl.format(d.diferenca)}
                       </td>
@@ -426,7 +465,7 @@ export default async function RelatorioIcmsPeriodo({
                     {c.faltando.map((f) => ROTULO_FONTE[f]).join(" e ")}
                   </td>
                   <td className="py-1.5 pr-3 text-slate-500">
-                    {(["sped", "dominio", "sefaz"] as Fonte[])
+                    {fontes
                       .filter((f) => c.presentes[f])
                       .map((f) => ROTULO_FONTE[f])
                       .join(", ") || "nenhuma fonte"}

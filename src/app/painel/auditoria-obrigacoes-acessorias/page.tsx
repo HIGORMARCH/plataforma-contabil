@@ -78,11 +78,15 @@ export default async function AuditoriaObrigacoesAcessoriasPage() {
       atendimentoFim: true,
       ieInicio: true,
       ieFim: true,
+      // Visão por cliente = a MATRIZ (dados de cadastro são dela). Filiais têm
+      // ICMS próprio e aparecem na tela de ICMS do cliente, uma a uma.
       spedApuracoes: {
+        where: { estabelecimento: { numero: 0 } },
         select: { periodoApuracao: true, icmsARecolher: true },
         orderBy: { periodoApuracao: "asc" },
       },
       giamApuracoes: {
+        where: { estabelecimento: { numero: 0 } },
         select: {
           periodoApuracao: true,
           // Precisa do detalhe por tipo: só o "N" é comparável com o E110 do SPED.

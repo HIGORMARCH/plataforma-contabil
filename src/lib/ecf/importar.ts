@@ -57,7 +57,7 @@ export async function importarSpedEcf(params: {
   if (parsed.apuracoes.length === 0) {
     return {
       ok: false,
-      mensagem: "Arquivo sem apurações trimestrais (Presumido: bloco P · Lucro Real trimestral: bloco N)",
+      mensagem: "Arquivo sem período de apuração (Presumido: bloco P · Lucro Real: bloco N, trimestral ou anual)",
     };
   }
 
@@ -116,6 +116,7 @@ export async function importarSpedEcf(params: {
         data: {
           clienteId,
           ano: parsed.ano!,
+          periodo: a.periodo,
           trimestre: a.trimestre,
           dataInicial: a.dataInicial,
           dataFinal: a.dataFinal,
@@ -138,8 +139,8 @@ export async function importarSpedEcf(params: {
     apuracoesGravadas: parsed.apuracoes.length,
     substituiu,
     mensagem: substituiu
-      ? `Substituiu importação anterior de ${parsed.ano}. ${parsed.apuracoes.length} trimestres gravados.`
-      : `${parsed.apuracoes.length} trimestres gravados.`,
+      ? `Substituiu importação anterior de ${parsed.ano}. ${parsed.apuracoes.length} período(s) gravado(s).`
+      : `${parsed.apuracoes.length} período(s) gravado(s).`,
   };
 }
 

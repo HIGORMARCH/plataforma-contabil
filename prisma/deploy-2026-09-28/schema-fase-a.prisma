@@ -766,7 +766,7 @@ model RazaoImportacao {
 model SpedApuracao {
   id                String @id @default(cuid())
   clienteId         String
-  estabelecimentoId String
+  estabelecimentoId String?
 
   // Período de apuração (do registro E100)
   periodoApuracao DateTime // primeiro dia do mês de apuração
@@ -801,10 +801,10 @@ model SpedApuracao {
   importacaoId String
 
   cliente         Cliente         @relation(fields: [clienteId], references: [id], onDelete: Cascade)
-  estabelecimento Estabelecimento @relation(fields: [estabelecimentoId], references: [id], onDelete: Cascade)
+  estabelecimento Estabelecimento? @relation(fields: [estabelecimentoId], references: [id], onDelete: Cascade)
   importacao      SpedImportacao  @relation(fields: [importacaoId], references: [id], onDelete: Cascade)
 
-  @@unique([estabelecimentoId, periodoApuracao]) // uma apuração por estabelecimento/competência (reimport substitui)
+  @@unique([clienteId, periodoApuracao]) // uma apuração por estabelecimento/competência (reimport substitui)
   @@index([clienteId, periodoApuracao])
   @@index([importacaoId])
 }
@@ -814,7 +814,7 @@ model SpedApuracao {
 model SpedImportacao {
   id                String @id @default(cuid())
   clienteId         String
-  estabelecimentoId String
+  estabelecimentoId String?
 
   nomeArquivo           String
   tamanhoBytes          Int     @default(0)
@@ -839,7 +839,7 @@ model SpedImportacao {
   importadoPor String? // userId
 
   cliente         Cliente         @relation(fields: [clienteId], references: [id], onDelete: Cascade)
-  estabelecimento Estabelecimento @relation(fields: [estabelecimentoId], references: [id], onDelete: Cascade)
+  estabelecimento Estabelecimento? @relation(fields: [estabelecimentoId], references: [id], onDelete: Cascade)
   apuracoes       SpedApuracao[]
 
   @@index([clienteId, importadoEm])
@@ -1000,7 +1000,7 @@ model SpedContribImportacao {
 model GiamApuracao {
   id                String @id @default(cuid())
   clienteId         String
-  estabelecimentoId String
+  estabelecimentoId String?
 
   periodoApuracao DateTime // primeiro dia do mês
   retificacao     String   @default("00") // do campo A4 (00 = original)
@@ -1050,12 +1050,12 @@ model GiamApuracao {
   importacaoId String
 
   cliente         Cliente              @relation(fields: [clienteId], references: [id], onDelete: Cascade)
-  estabelecimento Estabelecimento      @relation(fields: [estabelecimentoId], references: [id], onDelete: Cascade)
+  estabelecimento Estabelecimento?      @relation(fields: [estabelecimentoId], references: [id], onDelete: Cascade)
   importacao      GiamImportacao       @relation(fields: [importacaoId], references: [id], onDelete: Cascade)
   icmsARecolher   GiamIcmsARecolher[]
   linhasSegmentoB GiamLinhaSegmentoB[]
 
-  @@unique([estabelecimentoId, periodoApuracao, retificacao])
+  @@unique([clienteId, periodoApuracao, retificacao])
   @@index([clienteId, periodoApuracao])
   @@index([importacaoId])
 }
@@ -1073,7 +1073,7 @@ model GiamApuracao {
 model GiamSefazApuracao {
   id                String @id @default(cuid())
   clienteId         String
-  estabelecimentoId String
+  estabelecimentoId String?
 
   periodoApuracao DateTime // primeiro dia do mês
   retificacao     String   @default("00")
@@ -1111,11 +1111,11 @@ model GiamSefazApuracao {
   sincronizacaoId String
 
   cliente         Cliente                   @relation(fields: [clienteId], references: [id], onDelete: Cascade)
-  estabelecimento Estabelecimento           @relation(fields: [estabelecimentoId], references: [id], onDelete: Cascade)
+  estabelecimento Estabelecimento?           @relation(fields: [estabelecimentoId], references: [id], onDelete: Cascade)
   sincronizacao   GiamSefazSincronizacao    @relation(fields: [sincronizacaoId], references: [id], onDelete: Cascade)
   linhasSegmentoB GiamSefazLinhaSegmentoB[]
 
-  @@unique([estabelecimentoId, periodoApuracao, retificacao])
+  @@unique([clienteId, periodoApuracao, retificacao])
   @@index([clienteId, periodoApuracao])
   @@index([sincronizacaoId])
 }
@@ -1218,7 +1218,7 @@ model GiamSefazLinhaSegmentoB {
 model GiamSefazSincronizacao {
   id                String @id @default(cuid())
   clienteId         String
-  estabelecimentoId String
+  estabelecimentoId String?
 
   ano                      Int
   mesInicial               Int // 1-12
@@ -1233,7 +1233,7 @@ model GiamSefazSincronizacao {
   executadoPor String?
 
   cliente         Cliente             @relation(fields: [clienteId], references: [id], onDelete: Cascade)
-  estabelecimento Estabelecimento     @relation(fields: [estabelecimentoId], references: [id], onDelete: Cascade)
+  estabelecimento Estabelecimento?     @relation(fields: [estabelecimentoId], references: [id], onDelete: Cascade)
   apuracoes       GiamSefazApuracao[]
 
   @@index([clienteId, executadoEm])
@@ -1282,7 +1282,7 @@ model GiamIcmsARecolher {
 model GiamImportacao {
   id                String @id @default(cuid())
   clienteId         String
-  estabelecimentoId String
+  estabelecimentoId String?
 
   nomeArquivo   String
   tamanhoBytes  Int     @default(0)
@@ -1304,7 +1304,7 @@ model GiamImportacao {
   importadoPor String?
 
   cliente         Cliente         @relation(fields: [clienteId], references: [id], onDelete: Cascade)
-  estabelecimento Estabelecimento @relation(fields: [estabelecimentoId], references: [id], onDelete: Cascade)
+  estabelecimento Estabelecimento? @relation(fields: [estabelecimentoId], references: [id], onDelete: Cascade)
   apuracoes       GiamApuracao[]
 
   @@index([clienteId, importadoEm])
@@ -1359,7 +1359,7 @@ model EcfApuracao {
   cliente    Cliente       @relation(fields: [clienteId], references: [id], onDelete: Cascade)
   importacao EcfImportacao @relation(fields: [importacaoId], references: [id], onDelete: Cascade)
 
-  @@unique([clienteId, ano, periodo, fonte]) // uma apuração por período, por cliente e por fonte
+  @@unique([clienteId, ano, trimestre, fonte]) // uma apuração por período, por cliente e por fonte
   @@index([clienteId, ano])
   @@index([importacaoId])
 }

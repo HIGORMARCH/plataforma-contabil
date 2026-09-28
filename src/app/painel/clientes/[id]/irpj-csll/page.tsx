@@ -163,7 +163,12 @@ export default async function IrpjCsllPage({
   });
   const linhas: Record<1 | 2 | 3 | 4, Linha> = { 1: vazia(1), 2: vazia(2), 3: vazia(3), 4: vazia(4) };
 
+  // Lucro Real anual (A00 + estimativas A01..A12) vai para a tabela mensal abaixo.
+  const ecfsAnuais = ecfs.filter((e) => e.trimestre === 0);
+  // Ano só com Real anual: a tabela trimestral ficaria vazia com "Total OK (0)".
+  const soAnual = ecfsAnuais.length > 0 && ecfs.every((e) => e.trimestre === 0);
   for (const e of ecfs) {
+    if (e.trimestre === 0) continue;
     const l = linhas[e.trimestre as 1 | 2 | 3 | 4];
     l.regime ??= e.regime;
     const irpj = Number(e.irpjApurado.toString());
@@ -234,6 +239,7 @@ export default async function IrpjCsllPage({
       {/* Tabela de confronto trimestral */}
       {/* key={ano}: troca de ano recria a tabela inteira — nenhum texto do ano
           anterior sobrevive (nem a cópia que o tradutor do Chrome congela). */}
+      {!soAnual && (
       <div key={ano} className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
         <table className="w-full text-sm">
           <thead className="bg-slate-50">
@@ -318,6 +324,11 @@ export default async function IrpjCsllPage({
           </tfoot>
         </table>
       </div>
+      )}
+
+      {ecfsAnuais.length > 0 && (
+        <TabelaRealAnual ano={ano} ecfs={ecfsAnuais} dctfs={dctfs} />
+      )}
 
       {ecfs.length === 0 && dctfs.length === 0 && (
         <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
@@ -326,6 +337,117 @@ export default async function IrpjCsllPage({
           (mesmo arquivo).
         </div>
       )}
+    </div>
+  );
+}
+
+const MESES = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
+
+/**
+ * Lucro Real ANUAL: a ECF traz a estimativa de cada mês (A01..A12 — N620 26 /
+ * N660 18) e o ajuste do ano (A00 — N630 26 / N670 21). A estimativa é
+ * confessada na DCTF/DCTFWeb do próprio mês, então o confronto é mês a mês.
+ * O ajuste anual vence no ano seguinte — fica só com o valor da ECF.
+ */
+function TabelaRealAnual({
+  ano,
+  ecfs,
+  dctfs,
+}: {
+  ano: number;
+  ecfs: Array<{ periodo: string; fonte: string; irpjApurado: { toString(): string }; csllApurada: { toString(): string } }>;
+  dctfs: Array<{ periodoApuracao: Date; payloadBruto: unknown }>;
+}) {
+  type Mes = { ecf?: { irpj: number; csll: number }; dom?: { irpj: number; csll: number }; dctf?: { irpj: number; csll: number } };
+  const meses: Mes[] = Array.from({ length: 12 }, () => ({}));
+  let ajuste: { irpj: number; csll: number } | undefined;
+  let ajusteDom: { irpj: number; csll: number } | undefined;
+
+  for (const e of ecfs) {
+    const v = { irpj: Number(e.irpjApurado.toString()), csll: Number(e.csllApurada.toString()) };
+    const dominio = e.fonte === "DOMINIO";
+    if (e.periodo === "A00") {
+      if (dominio) ajusteDom = v;
+      else ajuste = v;
+      continue;
+    }
+    const m = Number(e.periodo.slice(1)) - 1;
+    if (m < 0 || m > 11) continue;
+    if (dominio) meses[m].dom = v;
+    else meses[m].ecf = v;
+  }
+  for (const d of dctfs) {
+    const m = d.periodoApuracao.getMonth();
+    const acc = (meses[m].dctf ??= { irpj: 0, csll: 0 });
+    const pb = d.payloadBruto as { debitos?: Array<{ codigo: string; valor: number }> } | null;
+    for (const deb of pb?.debitos ?? []) {
+      if (CODIGOS_IRPJ.has(deb.codigo)) acc.irpj += Number(deb.valor);
+      if (CODIGOS_CSLL.has(deb.codigo)) acc.csll += Number(deb.valor);
+    }
+  }
+
+  const temDominio = meses.some((m) => m.dom) || Boolean(ajusteDom);
+  const celula = (v: number | undefined) => (v === undefined ? AUSENTE : brl(v));
+
+  return (
+    <div key={`anual-${ano}`} className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
+      <p className="border-b border-slate-100 px-3 py-2 text-sm font-semibold text-slate-700">
+        Lucro Real anual — estimativas mensais e ajuste de {ano}
+        <span className="ml-2 text-xs font-normal text-slate-500">
+          ECF: estimativa = N620 item 26 / N660 item 18; ajuste = N630 item 26 / N670 item 21
+        </span>
+      </p>
+      <table className="w-full text-sm">
+        <thead className="bg-slate-50 text-xs">
+          <tr>
+            <th className="px-3 py-2 text-left font-semibold text-slate-600">Período</th>
+            <th className="border-l border-slate-200 px-3 py-2 text-right font-semibold text-blue-700">IRPJ · ECF</th>
+            {temDominio && <th className="px-3 py-2 text-right font-semibold text-blue-700">IRPJ · Domínio</th>}
+            <th className="px-3 py-2 text-right font-semibold text-blue-700">IRPJ · DCTF</th>
+            <th className="px-3 py-2 text-center font-semibold text-slate-600">ECF × DCTF</th>
+            <th className="border-l border-slate-200 px-3 py-2 text-right font-semibold text-purple-700">CSLL · ECF</th>
+            {temDominio && <th className="px-3 py-2 text-right font-semibold text-purple-700">CSLL · Domínio</th>}
+            <th className="px-3 py-2 text-right font-semibold text-purple-700">CSLL · DCTF</th>
+            <th className="px-3 py-2 text-center font-semibold text-slate-600">ECF × DCTF</th>
+          </tr>
+        </thead>
+        <tbody>
+          {meses.map((m, i) => {
+            const dI = calcularDivergencia(m.ecf?.irpj ?? 0, m.dctf?.irpj ?? 0, Boolean(m.ecf), Boolean(m.dctf));
+            const dC = calcularDivergencia(m.ecf?.csll ?? 0, m.dctf?.csll ?? 0, Boolean(m.ecf), Boolean(m.dctf));
+            return (
+              <tr key={i} className="border-t border-slate-100">
+                <td className="px-3 py-2 font-medium">
+                  A{String(i + 1).padStart(2, "0")} <span className="text-[11px] font-normal text-slate-500">{MESES[i]}/{ano} · estimativa</span>
+                </td>
+                <td className="border-l border-slate-100 px-3 py-2 text-right font-mono">{celula(m.ecf?.irpj)}</td>
+                {temDominio && <td className="px-3 py-2 text-right font-mono">{celula(m.dom?.irpj)}</td>}
+                <td className="px-3 py-2 text-right font-mono">{celula(m.dctf?.irpj)}</td>
+                <td className={`px-3 py-2 text-center text-xs ${dI.classe}`}>{dI.rotulo}</td>
+                <td className="border-l border-slate-100 px-3 py-2 text-right font-mono">{celula(m.ecf?.csll)}</td>
+                {temDominio && <td className="px-3 py-2 text-right font-mono">{celula(m.dom?.csll)}</td>}
+                <td className="px-3 py-2 text-right font-mono">{celula(m.dctf?.csll)}</td>
+                <td className={`px-3 py-2 text-center text-xs ${dC.classe}`}>{dC.rotulo}</td>
+              </tr>
+            );
+          })}
+        </tbody>
+        <tfoot className="bg-slate-50 font-semibold">
+          <tr className="border-t-2 border-slate-300">
+            <td className="px-3 py-2">
+              A00 <span className="text-[11px] font-normal text-slate-500">ajuste anual {ano}</span>
+            </td>
+            <td className="border-l border-slate-200 px-3 py-2 text-right font-mono">{celula(ajuste?.irpj)}</td>
+            {temDominio && <td className="px-3 py-2 text-right font-mono">{celula(ajusteDom?.irpj)}</td>}
+            <td className="px-3 py-2 text-right text-xs font-normal text-slate-400">vence em {ano + 1}</td>
+            <td />
+            <td className="border-l border-slate-200 px-3 py-2 text-right font-mono">{celula(ajuste?.csll)}</td>
+            {temDominio && <td className="px-3 py-2 text-right font-mono">{celula(ajusteDom?.csll)}</td>}
+            <td className="px-3 py-2 text-right text-xs font-normal text-slate-400">vence em {ano + 1}</td>
+            <td />
+          </tr>
+        </tfoot>
+      </table>
     </div>
   );
 }

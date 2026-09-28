@@ -26,6 +26,7 @@ export async function POST(req: Request) {
 
   let body: {
     clienteId?: string;
+    estabelecimentoId?: string;
     ano?: number;
     meses?: number[];
     headless?: boolean;
@@ -36,7 +37,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ erro: "Body inválido — envie JSON." }, { status: 400 });
   }
 
-  const { clienteId, ano, meses, headless = true } = body;
+  const { clienteId, estabelecimentoId, ano, meses, headless = true } = body;
   if (!clienteId) return NextResponse.json({ erro: "clienteId é obrigatório." }, { status: 400 });
   if (!ano || !Number.isInteger(ano) || ano < 2009 || ano > 2100) {
     return NextResponse.json({ erro: "ano inválido (2009-2100)." }, { status: 400 });
@@ -48,6 +49,7 @@ export async function POST(req: Request) {
   try {
     const resumo = await sincronizarGiamSefaz({
       clienteId,
+      estabelecimentoId,
       ano,
       meses,
       executadoPor: sessao.userId,

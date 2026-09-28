@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import { requireSessao, PAPEIS_INTERNOS } from "@/lib/auth";
 import { cifrar } from "@/lib/crypto";
+import { garantirMatriz } from "@/lib/estabelecimento";
 
 function campo(fd: FormData, nome: string): string | null {
   const v = fd.get(nome);
@@ -104,6 +105,9 @@ export async function criarClienteAction(fd: FormData) {
       escritorioId: sessao.escritorioId,
     },
   });
+
+  // Todo cadastro nasce com o estabelecimento MATRIZ (âncora das apurações de ICMS).
+  await garantirMatriz(cliente.id);
 
   // Sócios (QSA) — vem do BuscarCNPJ via hidden input. Formato: SocioReceita[].
   const qsaJson = campo(fd, "qsaJson");

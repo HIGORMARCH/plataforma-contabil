@@ -95,6 +95,16 @@ const URL_APPS_LOGIN_PARAMS = (ie: string, mes: number, ano: number) =>
  * @param meses       Meses a buscar (1-12). Se omitido, busca todos que o portal listar.
  * @param headless    Rodar navegador oculto (default true). Passe false pra debugar visualmente.
  */
+/** Quantas vezes cada competência é tentada antes de virar erro. */
+const TENTATIVAS_POR_MES = 3;
+const PAUSA_ENTRE_TENTATIVAS_MS = 5000;
+
+export interface ResultadoRaspagem {
+  apuracoes: GiamSefazApuracaoRaspada[];
+  /** Competências que falharam em todas as tentativas. */
+  erros: Array<{ mes: number; ano: number; motivo: string }>;
+}
+
 export async function raspaGiamSefaz(opts: {
   ie: string;
   senha: string;
@@ -104,7 +114,7 @@ export async function raspaGiamSefaz(opts: {
   /** Se informado, salva cada PDF baixado nesta pasta (debug/investigação
    *  de layout). Não usar em produção — plataforma não armazena arquivos originais. */
   salvarPdfEm?: string;
-}): Promise<GiamSefazApuracaoRaspada[]> {
+}): Promise<ResultadoRaspagem> {
   const { ie, senha, ano, meses, headless = true, salvarPdfEm } = opts;
 
   const browser: Browser = await chromium.launch({ headless });
@@ -162,29 +172,42 @@ export async function raspaGiamSefaz(opts: {
     }
 
     // ---------- ETAPA 2: pra cada mês, login duplo no apps.sefaz e baixar PDF ----------
-    // Erros por mês NÃO abortam a batch — outros meses seguem. Retorna array
-    // parcial; o chamador decide o que fazer com erros individuais.
+    // Erros por mês NÃO abortam a batch — outros meses seguem.
+    //
+    // "Sempre tem que tentar" (Higor, 27/09/2026): o download do espelho às
+    // vezes estoura o tempo no portal (caso CONEXAO: 4 meses isolados em 48
+    // anos-filial). Antes o mês sumia calado e a tela dizia "ok · 11 novas".
+    // Agora os meses que falharam ganham mais passadas, com pausa antes; o que
+    // falhar em todas volta em `erros` para o chamador mostrar.
     const resultados: GiamSefazApuracaoRaspada[] = [];
-    const erros: Array<{ mes: number; ano: number; motivo: string }> = [];
+    let pendentes = alvos;
+    let erros: Array<{ mes: number; ano: number; motivo: string }> = [];
 
-    for (const alvo of alvos) {
-      try {
-        const parsed = await baixarEspelhoDoMes(page, ie, senha, alvo, headless, salvarPdfEm);
-        resultados.push(parsed);
-      } catch (e) {
-        const motivo = e instanceof Error ? e.message : String(e);
-        console.warn(`[warn] ${String(alvo.mes).padStart(2, "0")}/${alvo.ano}: ${motivo}`);
-        erros.push({ mes: alvo.mes, ano: alvo.ano, motivo });
+    for (let passada = 1; passada <= TENTATIVAS_POR_MES && pendentes.length > 0; passada++) {
+      if (passada > 1) await page.waitForTimeout(PAUSA_ENTRE_TENTATIVAS_MS);
+      erros = [];
+      const falharam: typeof alvos = [];
+      for (const alvo of pendentes) {
+        try {
+          const parsed = await baixarEspelhoDoMes(page, ie, senha, alvo, headless, salvarPdfEm);
+          resultados.push(parsed);
+        } catch (e) {
+          const motivo = e instanceof Error ? e.message : String(e);
+          console.warn(`[warn] ${String(alvo.mes).padStart(2, "0")}/${alvo.ano} (tentativa ${passada}): ${motivo}`);
+          erros.push({ mes: alvo.mes, ano: alvo.ano, motivo });
+          falharam.push(alvo);
+        }
       }
+      pendentes = falharam;
     }
 
     if (resultados.length === 0 && erros.length > 0) {
       throw new SefazPortalError(
-        `Nenhum PDF baixado. Primeiro erro: ${erros[0].motivo}`,
+        `Nenhum PDF baixado após ${TENTATIVAS_POR_MES} tentativas. Primeiro erro: ${erros[0].motivo}`,
         "download-pdf",
       );
     }
-    return resultados;
+    return { apuracoes: resultados, erros };
   } finally {
     await context.close();
     await browser.close();

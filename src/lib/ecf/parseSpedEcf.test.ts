@@ -39,6 +39,42 @@ describe("parseSpedEcf — Lucro Real (bloco N)", () => {
   });
 });
 
+// Lucro Real anual — layout da CONEXAO AGRICOLA (2022): A00 = ajuste anual,
+// A01..A12 = estimativas mensais, com os itens N620/N660 de estimativa.
+const REAL_ANUAL = [
+  "|0000|LECF|0009|01066625000119|CONEXAO AGRICOLA|0|0|||01012022|31122022|N||0||",
+  "|0010|AF8C7B01822F76A13078A1AFF40F388348688432|N|1|A|01|RRRR|BBBBBBBBBBBB||||||",
+  "|N030|01012022|31122022|A00|",
+  "|N630|26|IMPOSTO DE RENDA A PAGAR|12.345,67|",
+  "|N670|21|CSLL A PAGAR|4.444,44|",
+  "|N030|01012022|31012022|A01|",
+  "|N620|26|IMPOSTO DEVIDO NO MÊS|1.000,00|",
+  "|N620|27|Imposto Pago a Título de Estimativa Mensal que Exceda ao Legalmente Determinado|99,00|",
+  "|N660|18|CSLL DEVIDA NO MÊS|360,00|",
+  "|N030|01012022|28022022|A02|",
+  "|N620|26|IMPOSTO DEVIDO NO MÊS|0|",
+  "|N660|18|CSLL DEVIDA NO MÊS|0|",
+].join("\n");
+
+describe("parseSpedEcf — Lucro Real anual (A00 + estimativas)", () => {
+  const r = parseSpedEcf(REAL_ANUAL);
+  it("um período por N030, na ordem", () =>
+    expect(r.apuracoes.map((a) => a.periodo)).toEqual(["A00", "A01", "A02"]));
+  it("regime anual e trimestre 0", () => {
+    expect(r.apuracoes.every((a) => a.regime === "REAL_ANUAL")).toBe(true);
+    expect(r.apuracoes.every((a) => a.trimestre === 0)).toBe(true);
+  });
+  it("ajuste anual = N630 26 / N670 21", () => {
+    expect(r.apuracoes[0].irpjApurado).toBe(12345.67);
+    expect(r.apuracoes[0].csllApurado).toBe(4444.44);
+  });
+  it("estimativa = N620 26 / N660 18 (item 27 não entra)", () => {
+    expect(r.apuracoes[1].irpjApurado).toBe(1000);
+    expect(r.apuracoes[1].csllApurado).toBe(360);
+  });
+  it("lê o IND_APUR_LP no layout sem OPT_PAES", () => expect(r.regimeAno).toBe("RRRR"));
+});
+
 describe("parseSpedEcf — Presumido (bloco P) continua igual", () => {
   const r = parseSpedEcf(PRESUMIDO);
   it("IRPJ e CSLL do P300/P500", () => {

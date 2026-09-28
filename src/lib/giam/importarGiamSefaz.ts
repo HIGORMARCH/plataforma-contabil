@@ -2,6 +2,7 @@ import { prisma } from "@/lib/db";
 import { decifrar } from "@/lib/crypto";
 import { raspaGiamSefaz, SefazPortalError, type GiamSefazApuracaoRaspada } from "./sefazScraper";
 import { foraDoPeriodo, competenciaUtc } from "@/lib/atendimento";
+import { garantirMatriz, obterEstabelecimento } from "@/lib/estabelecimento";
 
 export interface ResumoSincronizacaoSefaz {
   sincronizacaoId: string;
@@ -13,15 +14,18 @@ export interface ResumoSincronizacaoSefaz {
 }
 
 /**
- * Roda o robô SEFAZ para um cliente/ano e persiste os resultados.
+ * Roda o robô SEFAZ para um estabelecimento/ano e persiste os resultados.
+ * O login no portal é por inscrição estadual, então cada estabelecimento do
+ * cadastro roda separado; sem `estabelecimentoId`, roda a matriz.
  *
  * Regra de sessão:
- *   - Decifra a senha SEFAZ do cliente APENAS aqui, dentro do processo. Nunca
- *     loga a senha, nunca devolve pra tela.
- *   - Se o cliente não tem IE ou senha cadastrada, retorna erro claro (não roda).
+ *   - Decifra a senha SEFAZ APENAS aqui, dentro do processo. Nunca loga a
+ *     senha, nunca devolve pra tela.
+ *   - Se o estabelecimento não tem IE ou senha cadastrada, retorna erro claro (não roda).
  */
 export async function sincronizarGiamSefaz(opts: {
   clienteId: string;
+  estabelecimentoId?: string;
   ano: number;
   meses?: number[];
   executadoPor?: string;
@@ -33,38 +37,43 @@ export async function sincronizarGiamSefaz(opts: {
     where: { id: clienteId },
     select: {
       id: true,
-      inscricaoEstadual: true,
-      senhaSefaz: true,
       razaoSocial: true,
       atendimentoInicio: true,
       atendimentoFim: true,
-      ieInicio: true,
-      ieFim: true,
     },
   });
   if (!cliente) {
     throw new Error("Cliente não encontrado.");
   }
-  if (!cliente.inscricaoEstadual) {
-    return criarErro(clienteId, ano, meses, executadoPor, "Cliente sem Inscrição Estadual cadastrada.");
+  const estabelecimentoId = opts.estabelecimentoId ?? (await garantirMatriz(clienteId));
+  const estab = await obterEstabelecimento(clienteId, estabelecimentoId);
+  if (!estab) {
+    throw new Error("Estabelecimento não pertence a este cliente.");
   }
-  if (!cliente.senhaSefaz) {
-    return criarErro(clienteId, ano, meses, executadoPor, "Cliente sem senha SEFAZ cadastrada.");
+  const erro = (msg: string) => criarErro(clienteId, estabelecimentoId, ano, meses, executadoPor, msg);
+  if (!estab.inscricaoEstadual) {
+    return erro(`${estab.rotulo} sem Inscrição Estadual cadastrada.`);
   }
+  if (!estab.senhaSefaz) {
+    return erro(`${estab.rotulo} sem senha SEFAZ cadastrada.`);
+  }
+  // Período de atendimento é da empresa; vigência da IE é do estabelecimento.
+  const periodo = {
+    atendimentoInicio: cliente.atendimentoInicio,
+    atendimentoFim: cliente.atendimentoFim,
+    ieInicio: estab.ieInicio,
+    ieFim: estab.ieFim,
+  };
 
   // GUARD DE PERÍODO — a GIAM é obrigação ESTADUAL, então além do período de
   // atendimento vale a vigência da inscrição estadual: antes de existir IE não
   // há GIAM a buscar no portal (caso LUPO QUIOSQUE, 07/2019).
   const mesesPedidos = meses ?? [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
   const mesesNoPeriodo = mesesPedidos.filter(
-    (m) => foraDoPeriodo(cliente, competenciaUtc(ano, m), { exigeIe: true }) === null,
+    (m) => foraDoPeriodo(periodo, competenciaUtc(ano, m), { exigeIe: true }) === null,
   );
   if (mesesNoPeriodo.length === 0) {
-    return criarErro(
-      clienteId,
-      ano,
-      meses,
-      executadoPor,
+    return erro(
       `Nenhuma competência de ${ano} está dentro do período de atendimento / vigência da inscrição estadual — o portal não foi consultado.`,
     );
   }
@@ -72,14 +81,15 @@ export async function sincronizarGiamSefaz(opts: {
 
   let senha: string;
   try {
-    senha = decifrar(cliente.senhaSefaz);
+    senha = decifrar(estab.senhaSefaz);
   } catch (e) {
-    return criarErro(clienteId, ano, meses, executadoPor, "Falha ao decifrar senha SEFAZ. Verifique ENCRYPTION_KEY.");
+    return erro("Falha ao decifrar senha SEFAZ. Verifique ENCRYPTION_KEY.");
   }
 
   const sync = await prisma.giamSefazSincronizacao.create({
     data: {
       clienteId,
+      estabelecimentoId,
       ano,
       mesInicial: Math.min(...mesesNoPeriodo),
       mesFinal: Math.max(...mesesNoPeriodo),
@@ -94,17 +104,22 @@ export async function sincronizarGiamSefaz(opts: {
   let substituidas = 0;
 
   try {
-    const raspadas = await raspaGiamSefaz({
-      ie: cliente.inscricaoEstadual,
+    const { apuracoes: raspadas, erros: naoBaixadas } = await raspaGiamSefaz({
+      ie: estab.inscricaoEstadual,
       senha,
       ano,
       meses: mesesNoPeriodo,
       headless,
     });
+    // Mês que o portal lista mas não baixou em nenhuma tentativa: a sincronização
+    // fica "com erro" e diz qual — nunca some calado.
+    for (const n of naoBaixadas) {
+      erros.push(`${String(n.mes).padStart(2, "0")}/${n.ano}: não baixou após as tentativas (${n.motivo})`);
+    }
 
     for (const r of raspadas) {
       try {
-        const feito = await gravarApuracao(clienteId, sync.id, r);
+        const feito = await gravarApuracao(clienteId, estabelecimentoId, sync.id, r);
         if (feito.substituiu) substituidas++;
         else importadas++;
       } catch (e) {
@@ -162,20 +177,20 @@ export async function sincronizarGiamSefaz(opts: {
 
 async function gravarApuracao(
   clienteId: string,
+  estabelecimentoId: string,
   sincronizacaoId: string,
   r: GiamSefazApuracaoRaspada,
 ): Promise<{ substituiu: boolean }> {
   const periodoApuracao = new Date(Date.UTC(r.ano, r.mes - 1, 1));
 
-  const existente = await prisma.giamSefazApuracao.findUnique({
-    where: {
-      clienteId_periodoApuracao_retificacao: {
-        clienteId,
-        periodoApuracao,
-        retificacao: r.retificacao,
-      },
+  const chave = {
+    estabelecimentoId_periodoApuracao_retificacao: {
+      estabelecimentoId,
+      periodoApuracao,
+      retificacao: r.retificacao,
     },
-  });
+  };
+  const existente = await prisma.giamSefazApuracao.findUnique({ where: chave });
 
   if (existente) {
     await prisma.giamSefazLinhaSegmentoB.deleteMany({ where: { apuracaoId: existente.id } });
@@ -183,6 +198,7 @@ async function gravarApuracao(
 
   const dados = {
     clienteId,
+    estabelecimentoId,
     periodoApuracao,
     retificacao: r.retificacao,
     numeroControle: r.numeroControle,
@@ -215,13 +231,7 @@ async function gravarApuracao(
   };
 
   const apuracao = await prisma.giamSefazApuracao.upsert({
-    where: {
-      clienteId_periodoApuracao_retificacao: {
-        clienteId,
-        periodoApuracao,
-        retificacao: r.retificacao,
-      },
-    },
+    where: chave,
     create: dados,
     update: dados,
   });
@@ -247,6 +257,7 @@ async function gravarApuracao(
 
 async function criarErro(
   clienteId: string,
+  estabelecimentoId: string,
   ano: number,
   meses: number[] | undefined,
   executadoPor: string | undefined,
@@ -255,6 +266,7 @@ async function criarErro(
   const sync = await prisma.giamSefazSincronizacao.create({
     data: {
       clienteId,
+      estabelecimentoId,
       ano,
       mesInicial: meses ? Math.min(...meses) : 1,
       mesFinal: meses ? Math.max(...meses) : 12,

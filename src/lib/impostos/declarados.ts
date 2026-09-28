@@ -23,6 +23,7 @@
  */
 
 import { prisma } from "@/lib/db";
+import { rotuloEstabelecimento } from "@/lib/estabelecimento";
 import { tributoDeCodigo } from "@/lib/serpro/mapeamento-tributos";
 
 export type OrigemDeclaracao = "GIAM" | "SPED_FISCAL" | "DCTFWEB" | "ECF" | "PGDASD";
@@ -98,12 +99,17 @@ export async function levantarImpostosDeclarados(params: {
   const [giams, speds, dctfs, ecfs, pgdas] = await Promise.all([
     prisma.giamApuracao.findMany({
       where: { clienteId, retificacao: "00", periodoApuracao: { gte: de, lte: ate } },
-      include: { icmsARecolher: true },
+      include: { icmsARecolher: true, estabelecimento: { select: { tipo: true, numero: true } } },
       orderBy: { periodoApuracao: "asc" },
     }),
     prisma.spedApuracao.findMany({
       where: { clienteId, periodoApuracao: { gte: de, lte: ate } },
-      select: { periodoApuracao: true, icmsARecolher: true },
+      select: {
+        periodoApuracao: true,
+        icmsARecolher: true,
+        estabelecimentoId: true,
+        estabelecimento: { select: { tipo: true, numero: true } },
+      },
       orderBy: { periodoApuracao: "asc" },
     }),
     prisma.dctfWebDeclaracao.findMany({
@@ -122,10 +128,17 @@ export async function levantarImpostosDeclarados(params: {
 
   const itens: ItemAPagar[] = [];
 
+  // ICMS é por estabelecimento. Com filiais, o detalhe diz de qual é — e a
+  // regra "SPED só onde não há GIAM" vale estabelecimento a estabelecimento
+  // (a GIAM de uma filial do TO não cobre o SPED da matriz de outro estado).
+  const temFiliais = [...giams, ...speds].some((x) => x.estabelecimento.numero > 0);
+  const deQuem = (e: { tipo: string; numero: number }) =>
+    temFiliais ? `${rotuloEstabelecimento(e)} — ` : "";
+
   // --- ICMS pela GIAM (Segmento E, uma linha por tipo) ---
-  const competenciasComGiam = new Set<number>();
+  const competenciasComGiam = new Set<string>();
   for (const g of giams) {
-    competenciasComGiam.add(g.periodoApuracao.getTime());
+    competenciasComGiam.add(`${g.estabelecimentoId}:${g.periodoApuracao.getTime()}`);
     for (const linha of g.icmsARecolher) {
       const valor = Number(linha.valor);
       if (valor === 0) continue; // linha zerada não é obrigação a pagar
@@ -135,7 +148,7 @@ export async function levantarImpostosDeclarados(params: {
         origem: "GIAM",
         esfera: "ESTADUAL",
         tributo: "ICMS",
-        detalhe: legendaTipoIcms(linha.tipo),
+        detalhe: deQuem(g.estabelecimento) + legendaTipoIcms(linha.tipo),
         valor,
         vencimento: linha.dataVencimento,
       });
@@ -144,7 +157,7 @@ export async function levantarImpostosDeclarados(params: {
 
   // --- ICMS pelo SPED-Fiscal, só onde não houver GIAM ---
   for (const s of speds) {
-    if (competenciasComGiam.has(s.periodoApuracao.getTime())) continue;
+    if (competenciasComGiam.has(`${s.estabelecimentoId}:${s.periodoApuracao.getTime()}`)) continue;
     const valor = Number(s.icmsARecolher);
     if (valor === 0) continue;
     itens.push({
@@ -153,7 +166,7 @@ export async function levantarImpostosDeclarados(params: {
       origem: "SPED_FISCAL",
       esfera: "ESTADUAL",
       tributo: "ICMS",
-      detalhe: "Apuração normal (E110) — competência sem GIAM importada",
+      detalhe: deQuem(s.estabelecimento) + "Apuração normal (E110) — competência sem GIAM importada",
       valor,
       vencimento: null,
     });
@@ -214,10 +227,23 @@ export async function levantarImpostosDeclarados(params: {
     }
   }
 
-  // --- IRPJ / CSLL pela ECF (trimestral) ---
+  // --- IRPJ / CSLL pela ECF ---
+  // Trimestral: um item por trimestre. Lucro Real anual: estimativa de cada mês
+  // (A01..A12, competência = o mês) e o ajuste do ano (A00, competência = dez).
   for (const e of ecfs) {
-    const competencia = e.dataInicial;
-    const label = `${e.trimestre}º tri/${e.ano}`;
+    const anual = e.trimestre === 0;
+    const estimativa = anual && e.periodo !== "A00";
+    const competencia = estimativa || !anual ? e.dataInicial : new Date(e.ano, 11, 1);
+    const label = !anual
+      ? `${e.trimestre}º tri/${e.ano}`
+      : estimativa
+        ? `${e.periodo.slice(1)}/${e.ano}`
+        : `ajuste ${e.ano}`;
+    const quando = !anual
+      ? `no ${e.trimestre}º trimestre`
+      : estimativa
+        ? `por estimativa em ${e.periodo.slice(1)}/${e.ano}`
+        : `no ajuste anual de ${e.ano}`;
     const irpj = Number(e.irpjApurado);
     const csll = Number(e.csllApurada);
     if (irpj !== 0) {
@@ -227,7 +253,7 @@ export async function levantarImpostosDeclarados(params: {
         origem: "ECF",
         esfera: "FEDERAL",
         tributo: "IRPJ",
-        detalhe: `Apurado no ${e.trimestre}º trimestre (${e.regime})`,
+        detalhe: `Apurado ${quando} (${e.regime})`,
         valor: irpj,
         vencimento: null,
       });
@@ -239,7 +265,7 @@ export async function levantarImpostosDeclarados(params: {
         origem: "ECF",
         esfera: "FEDERAL",
         tributo: "CSLL",
-        detalhe: `Apurado no ${e.trimestre}º trimestre (${e.regime})`,
+        detalhe: `Apurado ${quando} (${e.regime})`,
         valor: csll,
         vencimento: null,
       });

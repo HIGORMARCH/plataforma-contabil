@@ -2,10 +2,12 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requirePapel, PAPEIS_INTERNOS } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import { listarEstabelecimentos, type EstabelecimentoInfo } from "@/lib/estabelecimento";
 import { UploadSpedForm } from "./_components/UploadSpedForm";
 import { VarrerPastaButton } from "./_components/VarrerPastaButton";
 import { VarrerPastaGiamButton } from "./_components/VarrerPastaGiamButton";
 import { BuscarNoPortalSefazButton } from "./_components/BuscarNoPortalSefazButton";
+import { UploadRaicmsSiagri } from "./_components/UploadRaicmsSiagri";
 
 const fmtBrl = new Intl.NumberFormat("pt-BR", {
   style: "currency",
@@ -28,32 +30,51 @@ export default async function SpedCliente({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ ano?: string }>;
+  searchParams: Promise<{ ano?: string; estab?: string }>;
 }) {
   const sessao = await requirePapel(PAPEIS_INTERNOS);
   const { id } = await params;
-  const { ano: anoStr } = await searchParams;
+  const { ano: anoStr, estab: estabParam } = await searchParams;
 
-  const cliente = await prisma.cliente.findFirst({
+  const existe = await prisma.cliente.findFirst({
     where: { id, escritorioId: sessao.escritorioId },
+    select: { id: true },
+  });
+  if (!existe) notFound();
+
+  // O ICMS é por estabelecimento: a tela mostra um de cada vez (matriz por padrão).
+  const estabelecimentos = await listarEstabelecimentos(id);
+  const estab = estabelecimentos.find((e) => e.id === estabParam) ?? estabelecimentos[0];
+  const doEstab = { estabelecimentoId: estab.id };
+
+  const cliente = await prisma.cliente.findFirstOrThrow({
+    where: { id },
     include: {
-      spedApuracoes: { orderBy: { periodoApuracao: "desc" } },
-      spedImportacoes: { orderBy: { importadoEm: "desc" }, take: 10 },
+      spedApuracoes: { where: doEstab, orderBy: { periodoApuracao: "desc" } },
+      spedImportacoes: { where: doEstab, orderBy: { importadoEm: "desc" }, take: 10 },
       giamApuracoes: {
+        where: doEstab,
         orderBy: [{ periodoApuracao: "desc" }, { retificacao: "desc" }],
         include: { icmsARecolher: true },
       },
-      giamImportacoes: { orderBy: { importadoEm: "desc" }, take: 10 },
+      giamImportacoes: { where: doEstab, orderBy: { importadoEm: "desc" }, take: 10 },
       giamSefazApuracoes: {
+        where: doEstab,
         orderBy: [{ periodoApuracao: "desc" }, { retificacao: "desc" }],
       },
       giamSefazSincronizacoes: {
+        where: doEstab,
         orderBy: { executadoEm: "desc" },
         take: 10,
       },
+      siagriApuracoes: { where: doEstab, orderBy: { periodoApuracao: "desc" } },
     },
   });
-  if (!cliente) notFound();
+  // Lado "sistema da empresa" quando não é o Domínio (CONEXAO: Siagri).
+  const usaSiagri = cliente.sistemaGestao === "SIAGRI" || cliente.siagriApuracoes.length > 0;
+  const qsEstab = estabelecimentos.length > 1 ? `&estab=${estab.id}` : "";
+  // GIAM é declaração da SEFAZ-TO: estabelecimento de outro estado não entrega.
+  const entregaGiam = !estab.uf || estab.uf === "TO";
 
   // Um ano por vez: o que está em tela é só a competência escolhida.
   const anoDe = (d: Date) => d.getUTCFullYear();
@@ -69,6 +90,7 @@ export default async function SpedCliente({
   const spedAno = cliente.spedApuracoes.filter((a) => anoDe(a.periodoApuracao) === ano);
   const giamAno = cliente.giamApuracoes.filter((a) => anoDe(a.periodoApuracao) === ano);
   const giamSefazAno = cliente.giamSefazApuracoes.filter((a) => anoDe(a.periodoApuracao) === ano);
+  const siagriAno = cliente.siagriApuracoes.filter((a) => anoDe(a.periodoApuracao) === ano);
 
   return (
     <div>
@@ -86,11 +108,22 @@ export default async function SpedCliente({
               divergência entre elas indica que declararam valores diferentes aos dois fiscos.
             </p>
           </div>
-          <Link href={`/painel/clientes/${id}/sped/relatorio`} className="btn btn-primary text-sm">
+          <Link
+            href={`/painel/clientes/${id}/sped/relatorio${estabelecimentos.length > 1 ? `?estab=${estab.id}` : ""}`}
+            className="btn btn-primary text-sm"
+          >
             Relatório de divergências do período
           </Link>
         </div>
       </div>
+
+      {estabelecimentos.length > 1 && (
+        <SeletorEstabelecimento
+          hrefBase={`/painel/clientes/${id}/sped?ano=${anoStr ?? ""}`}
+          estabelecimentos={estabelecimentos}
+          atual={estab}
+        />
+      )}
 
       {/* Seletor de ano */}
       <div className="mb-6 flex flex-wrap items-center gap-2">
@@ -98,7 +131,7 @@ export default async function SpedCliente({
         {anosDisponiveis.map((a) => (
           <Link
             key={a}
-            href={`/painel/clientes/${id}/sped?ano=${a}`}
+            href={`/painel/clientes/${id}/sped?ano=${a}${qsEstab}`}
             className={`btn text-sm ${a === ano ? "btn-primary" : "btn-ghost"}`}
           >
             {a}
@@ -111,14 +144,16 @@ export default async function SpedCliente({
         <UploadSpedForm clienteId={id} />
       </div>
 
-      <div className="mt-6">
-        <VarrerPastaGiamButton
-          clienteId={id}
-          pastaGiam={cliente.pastaGiam}
-          pastaFiscal={cliente.pastaFiscal}
-          ano={ano}
-        />
-      </div>
+      {entregaGiam && (
+        <div className="mt-6">
+          <VarrerPastaGiamButton
+            clienteId={id}
+            pastaGiam={cliente.pastaGiam}
+            pastaFiscal={cliente.pastaFiscal}
+            ano={ano}
+          />
+        </div>
+      )}
 
       {/*
         Colunas CANÔNICAS do confronto (idênticas nas 3 tabelas — a
@@ -183,6 +218,60 @@ export default async function SpedCliente({
         />
       </section>
 
+      {usaSiagri && (
+        <section className="card mt-6 p-5">
+          <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h2 className="mb-1 text-sm font-bold uppercase tracking-wide text-slate-500">
+                Apuração Siagri (sistema da empresa) {ano} — {siagriAno.length}
+              </h2>
+              <p className="text-xs text-slate-400">
+                Livro Registro de Apuração do ICMS (RAICMS, modelo P9) gerado no Siagri. Compras e
+                vendas = valor contábil de todas as entradas e saídas do livro (o SPED soma só as
+                notas do C100).
+              </p>
+            </div>
+            <UploadRaicmsSiagri clienteId={id} />
+          </div>
+          {siagriAno.length === 0 ? (
+            <p className="text-sm text-slate-500">Nenhum RAICMS do Siagri de {ano} importado.</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <TabelaApuracoes
+                linhas={siagriAno.map((a) => ({
+                  key: a.id,
+                  competencia: a.periodoApuracao,
+                  revisao: null,
+                  totalCompras: Number(a.entradasValorContabil),
+                  totalVendas: Number(a.saidasValorContabil),
+                  creditoEntradas: Number(a.creditoEntradas),
+                  debitoSaidas: Number(a.debitoSaidas),
+                  saldoCredorAnterior: Number(a.saldoCredorAnterior),
+                  deducoes: Number(a.deducoes),
+                  icmsARecolher: Number(a.icmsARecolher),
+                }))}
+              />
+              {siagriAno.some((a) => Array.isArray(a.alertas) && a.alertas.length > 0) && (
+                <ul className="mt-2 space-y-0.5 text-xs text-amber-800">
+                  {siagriAno.flatMap((a) =>
+                    (Array.isArray(a.alertas) ? (a.alertas as string[]) : []).map((t) => (
+                      <li key={`${a.id}-${t}`}>⚠ {fmtMesAno.format(a.periodoApuracao)}: {t}</li>
+                    )),
+                  )}
+                </ul>
+              )}
+            </div>
+          )}
+        </section>
+      )}
+
+      {!entregaGiam ? (
+        <div className="mt-6 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+          {estab.rotulo} fica em <strong>{estab.uf}</strong>: não entrega GIAM, que é declaração
+          da SEFAZ-TO. O confronto deste estabelecimento é só o SPED-Fiscal.
+        </div>
+      ) : (
+      <>
       <section className="card mt-6 p-5">
         <h2 className="mb-1 text-sm font-bold uppercase tracking-wide text-slate-500">
           Apurações GIAM (arquivo do Domínio) {ano} — {giamAno.length}
@@ -246,7 +335,7 @@ export default async function SpedCliente({
               <span className="font-mono text-xs">giam.sefaz.to.gov.br</span> pelo robô.
             </p>
           </div>
-          <BuscarNoPortalSefazButton clienteId={id} ano={ano} />
+          <BuscarNoPortalSefazButton clienteId={id} estabelecimentoId={estab.id} ano={ano} />
         </div>
         {giamSefazAno.length === 0 ? (
           <p className="text-sm text-slate-500">
@@ -287,6 +376,8 @@ export default async function SpedCliente({
           }))}
         />
       </section>
+      </>
+      )}
       </div>
 
       <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-xs leading-relaxed text-slate-600">
@@ -431,6 +522,45 @@ function AccordionImportacoes({
         )}
       </div>
     </details>
+  );
+}
+
+/**
+ * Seletor de estabelecimento (só aparece quando o cadastro tem filiais). A
+ * EFD ICMS/IPI e a GIAM são por inscrição estadual — cada estabelecimento tem
+ * as suas, e nunca se somam na tela.
+ */
+function SeletorEstabelecimento({
+  hrefBase,
+  estabelecimentos,
+  atual,
+}: {
+  hrefBase: string;
+  estabelecimentos: EstabelecimentoInfo[];
+  atual: EstabelecimentoInfo;
+}) {
+  const fmtCnpj = (d: string) => d.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, "$1.$2.$3/$4-$5");
+  return (
+    <div className="mb-4 rounded-lg border border-slate-200 bg-white p-3">
+      <div className="mb-2 flex flex-wrap items-center gap-2">
+        <span className="text-sm text-slate-600">Estabelecimento:</span>
+        {estabelecimentos.map((e) => (
+          <Link
+            key={e.id}
+            href={`${hrefBase}&estab=${e.id}`}
+            className={`btn text-sm ${e.id === atual.id ? "btn-primary" : "btn-ghost"}`}
+          >
+            {e.rotulo}
+            {e.uf ? ` · ${e.uf}` : ""}
+          </Link>
+        ))}
+      </div>
+      <p className="text-xs text-slate-500">
+        {atual.rotulo} · CNPJ {fmtCnpj(atual.cnpj)}
+        {atual.inscricaoEstadual ? ` · IE ${atual.inscricaoEstadual}` : ""}
+        {atual.uf ? ` · ${atual.uf}` : ""}
+      </p>
+    </div>
   );
 }
 

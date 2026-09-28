@@ -8,6 +8,9 @@ import { ResumoSituacao } from "@/components/Analise";
 import { CardPastaUnica } from "@/components/CardPastaUnica";
 import { StatusBadge } from "@/components/ui";
 import { gerarRelatorioAction } from "./actions";
+import { salvarSenhaSefazEstabelecimentoAction } from "./estabelecimentos-actions";
+import { listarEstabelecimentos } from "@/lib/estabelecimento";
+import { BuscarNaPlanilhaButton } from "./_components/BuscarNaPlanilhaButton";
 import { excluirRelatorioAction } from "../../relatorios/actions";
 
 export default async function ClienteDetalhe({ params }: { params: Promise<{ id: string }> }) {
@@ -24,6 +27,8 @@ export default async function ClienteDetalhe({ params }: { params: Promise<{ id:
   if (!cliente) notFound();
 
   const exercicios = await carregarExercicios(id);
+  const estabelecimentos = await listarEstabelecimentos(id);
+  const fmtCnpj = (d: string) => d.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, "$1.$2.$3/$4-$5");
   const analise = exercicios.length ? analisar(exercicios) : null;
 
   const infos: [string, string | null][] = [
@@ -53,6 +58,8 @@ export default async function ClienteDetalhe({ params }: { params: Promise<{ id:
             >
               editar cadastro
             </Link>
+            <span className="mx-2 text-xs text-slate-300">·</span>
+            <BuscarNaPlanilhaButton clienteId={id} />
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
@@ -90,6 +97,75 @@ export default async function ClienteDetalhe({ params }: { params: Promise<{ id:
               </div>
             ))}
           </dl>
+
+          {estabelecimentos.length > 1 && (
+            <div className="mt-6 border-t border-slate-100 pt-4">
+              <h3 className="mb-1 text-xs font-bold uppercase tracking-wide text-slate-500">
+                Estabelecimentos — {estabelecimentos.length}
+              </h3>
+              <p className="mb-3 text-xs text-slate-400">
+                ECD, ECF, EFD-Contribuições e DCTFWeb são da empresa (entregues pela matriz). EFD
+                ICMS/IPI e GIAM são de cada estabelecimento. GIAM só existe no TO. A senha SEFAZ da
+                matriz fica em &quot;editar cadastro&quot;; a das filiais, aqui.
+              </p>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="border-b border-slate-200 text-left text-xs uppercase text-slate-500">
+                    <tr>
+                      <th className="pb-2 pr-3">Estabelecimento</th>
+                      <th className="pb-2 pr-3">CNPJ</th>
+                      <th className="pb-2 pr-3">IE</th>
+                      <th className="pb-2 pr-3">UF</th>
+                      <th className="pb-2 pr-3">Senha SEFAZ-TO</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {estabelecimentos.map((e) => (
+                      <tr key={e.id} className="border-b border-slate-100 align-top">
+                        <td className="py-2 pr-3 font-medium text-slate-700">
+                          <Link href={`/painel/clientes/${id}/sped?estab=${e.id}`} className="hover:underline">
+                            {e.rotulo}
+                          </Link>
+                          {e.pastaLocal && e.tipo === "FILIAL" && (
+                            <p className="text-[11px] font-normal text-slate-400">{e.pastaLocal}</p>
+                          )}
+                        </td>
+                        <td className="py-2 pr-3 font-mono text-xs">{fmtCnpj(e.cnpj)}</td>
+                        <td className="py-2 pr-3 font-mono text-xs">{e.inscricaoEstadual ?? "—"}</td>
+                        <td className="py-2 pr-3">{e.uf ?? "—"}</td>
+                        <td className="py-2 pr-3 text-xs">
+                          {e.uf && e.uf !== "TO" ? (
+                            <span className="text-slate-400">não entrega GIAM</span>
+                          ) : e.tipo === "MATRIZ" ? (
+                            <span className="text-slate-500">
+                              {e.senhaSefaz ? "cadastrada" : "não cadastrada"} · no cadastro
+                            </span>
+                          ) : (
+                            <form
+                              action={salvarSenhaSefazEstabelecimentoAction.bind(null, id, e.id)}
+                              className="flex items-center gap-2"
+                            >
+                              <span className={e.senhaSefaz ? "text-emerald-700" : "text-slate-500"}>
+                                {e.senhaSefaz ? "cadastrada" : "não cadastrada"}
+                              </span>
+                              <input
+                                type="password"
+                                name="senhaSefaz"
+                                autoComplete="new-password"
+                                placeholder={e.senhaSefaz ? "trocar senha" : "senha"}
+                                className="w-28 rounded border border-slate-300 px-2 py-1 text-xs"
+                              />
+                              <button className="btn btn-ghost text-xs">Salvar</button>
+                            </form>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
         </section>
 
         <section className="space-y-4">

@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db";
+import { acharPorCnpj, garantirMatriz } from "@/lib/estabelecimento";
 import {
   parseEfdIcms,
   competenciaDeApuracao,
@@ -8,6 +9,7 @@ import {
 
 export interface ResultadoImportacaoSped {
   importacaoId: string;
+  estabelecimentoId: string;
   sucesso: boolean;
   mensagem: string;
   totalLinhas: number;
@@ -22,9 +24,15 @@ export interface ResultadoImportacaoSped {
  * as apurações extraídas. Grava um `SpedImportacao` por chamada (mesmo em caso
  * de erro, pra manter trilha do que foi tentado).
  *
- * Idempotência: se já existir uma `SpedApuracao` pro mesmo (cliente, competência),
- * é substituída pela nova (upsert por `@@unique([clienteId, periodoApuracao])`).
- * Isso permite reimportar quando o contador gerar SPED retificador.
+ * Estabelecimento: a EFD ICMS/IPI é por estabelecimento, então o arquivo vai
+ * para o estabelecimento do cadastro cujo CNPJ é o do registro 0000. CNPJ que
+ * não é de nenhum estabelecimento do cadastro é recusado (fica a trilha, com a
+ * mensagem) — nunca gravado na matriz "por aproximação".
+ *
+ * Idempotência: se já existir uma `SpedApuracao` pro mesmo (estabelecimento,
+ * competência), é substituída pela nova (upsert por
+ * `@@unique([estabelecimentoId, periodoApuracao])`). Isso permite reimportar
+ * quando o contador gerar SPED retificador.
  */
 export async function importarSped(params: {
   clienteId: string;
@@ -46,6 +54,8 @@ export async function importarSped(params: {
   } = params;
   const tamanhoBytes = Buffer.byteLength(conteudo, "utf8");
 
+  const matrizId = await garantirMatriz(clienteId);
+
   let parseResult: EfdIcmsParseResult;
   try {
     parseResult = parseEfdIcms(conteudo);
@@ -54,6 +64,7 @@ export async function importarSped(params: {
     const imp = await prisma.spedImportacao.create({
       data: {
         clienteId,
+        estabelecimentoId: matrizId,
         nomeArquivo,
         tamanhoBytes,
         hashArquivo,
@@ -70,6 +81,7 @@ export async function importarSped(params: {
     });
     return {
       importacaoId: imp.id,
+      estabelecimentoId: matrizId,
       sucesso: false,
       mensagem: imp.mensagem ?? "erro no parser",
       totalLinhas: 0,
@@ -88,9 +100,53 @@ export async function importarSped(params: {
     };
   }
 
+  // Estabelecimento do arquivo, pelo CNPJ do 0000. SPED sem CNPJ (produtor
+  // pessoa física, CPF) fica na matriz.
+  let estabelecimentoId = matrizId;
+  const cnpjArquivo = parseResult.metadata.cnpj;
+  if (cnpjArquivo) {
+    const estab = await acharPorCnpj(clienteId, cnpjArquivo);
+    if (!estab) {
+      const imp = await prisma.spedImportacao.create({
+        data: {
+          clienteId,
+          estabelecimentoId: matrizId,
+          nomeArquivo,
+          tamanhoBytes,
+          hashArquivo,
+          origem,
+          caminhoOrigem,
+          totalLinhas: parseResult.totalLinhas,
+          registrosE110: parseResult.apuracoes.length,
+          sucesso: false,
+          mensagem: `CNPJ do arquivo (${cnpjArquivo}) não é de nenhum estabelecimento deste cadastro — nada gravado.`,
+          cnpjArquivo,
+          ieArquivo: parseResult.metadata.ie,
+          uf: parseResult.metadata.uf,
+          dataInicioArq: parseResult.metadata.dataInicial,
+          dataFimArq: parseResult.metadata.dataFinal,
+          importadoPor,
+        },
+      });
+      return {
+        importacaoId: imp.id,
+        estabelecimentoId: matrizId,
+        sucesso: false,
+        mensagem: imp.mensagem ?? "CNPJ fora do cadastro",
+        totalLinhas: parseResult.totalLinhas,
+        registrosE110: parseResult.apuracoes.length,
+        apuracoesGravadas: 0,
+        apuracoesSubstituidas: 0,
+        metadata: parseResult.metadata,
+      };
+    }
+    estabelecimentoId = estab.id;
+  }
+
   const importacao = await prisma.spedImportacao.create({
     data: {
       clienteId,
+      estabelecimentoId,
       nomeArquivo,
       tamanhoBytes,
       hashArquivo,
@@ -113,9 +169,10 @@ export async function importarSped(params: {
 
   for (const apur of parseResult.apuracoes) {
     const competencia = competenciaDeApuracao(apur);
-    const existente = await prisma.spedApuracao.findUnique({
-      where: { clienteId_periodoApuracao: { clienteId, periodoApuracao: competencia } },
-    });
+    const chave = {
+      estabelecimentoId_periodoApuracao: { estabelecimentoId, periodoApuracao: competencia },
+    };
+    const existente = await prisma.spedApuracao.findUnique({ where: chave });
     if (existente) substituidas++;
     else gravadas++;
 
@@ -143,8 +200,8 @@ export async function importarSped(params: {
       importacaoId: importacao.id,
     };
     await prisma.spedApuracao.upsert({
-      where: { clienteId_periodoApuracao: { clienteId, periodoApuracao: competencia } },
-      create: { clienteId, periodoApuracao: competencia, ...dadosApur },
+      where: chave,
+      create: { clienteId, estabelecimentoId, periodoApuracao: competencia, ...dadosApur },
       update: dadosApur,
     });
   }
@@ -160,6 +217,7 @@ export async function importarSped(params: {
 
   return {
     importacaoId: importacao.id,
+    estabelecimentoId,
     sucesso: true,
     mensagem: `${gravadas} nova(s), ${substituidas} substituída(s)`,
     totalLinhas: parseResult.totalLinhas,

@@ -3,6 +3,7 @@ import { notFound, redirect } from "next/navigation";
 import { requireSessao, PAPEIS_INTERNOS } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { ehSimples } from "@/lib/regime";
+import { garantirMatriz, obterEstabelecimento } from "@/lib/estabelecimento";
 
 /**
  * Confronto de UMA competência (cliente × ano × mês) entre as 3 fontes:
@@ -54,8 +55,10 @@ function somaTipos(
 
 export default async function ConfrontoCompetencia({
   params,
+  searchParams,
 }: {
   params: Promise<{ clienteId: string; ano: string; mes: string }>;
+  searchParams: Promise<{ estab?: string }>;
 }) {
   const sessao = await requireSessao();
   if (!PAPEIS_INTERNOS.includes(sessao.papel)) redirect("/painel");
@@ -86,19 +89,24 @@ export default async function ConfrontoCompetencia({
   // é essa a linha principal do confronto pra ela.
   const simples = ehSimples(cliente.regimeTributario);
 
+  // Confronto de UM estabelecimento (ICMS é por IE); sem ?estab=, a matriz.
+  const { estab: estabParam } = await searchParams;
+  const estabelecimentoId =
+    (estabParam && (await obterEstabelecimento(clienteId, estabParam))?.id) || (await garantirMatriz(clienteId));
+
   const [sped, giamDominio, giamSefaz] = await Promise.all([
     prisma.spedApuracao.findFirst({
-      where: { clienteId, periodoApuracao: competencia },
+      where: { clienteId, estabelecimentoId, periodoApuracao: competencia },
     }),
     prisma.giamApuracao.findFirst({
-      where: { clienteId, periodoApuracao: competencia, retificacao: "00" },
+      where: { clienteId, estabelecimentoId, periodoApuracao: competencia, retificacao: "00" },
       include: {
         icmsARecolher: true,
         linhasSegmentoB: { orderBy: [{ natureza: "asc" }, { cfop: "asc" }] },
       },
     }),
     prisma.giamSefazApuracao.findFirst({
-      where: { clienteId, periodoApuracao: competencia, retificacao: "00" },
+      where: { clienteId, estabelecimentoId, periodoApuracao: competencia, retificacao: "00" },
       include: {
         linhasSegmentoB: { orderBy: [{ natureza: "asc" }, { cfop: "asc" }] },
       },

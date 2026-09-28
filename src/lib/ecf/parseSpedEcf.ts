@@ -13,13 +13,24 @@
  *     |P300|15|IMPOSTO DE RENDA A PAGAR|valor|   → IRPJ apurado do trimestre
  *     |P500|13|CSLL A PAGAR|valor|               → CSLL apurada do trimestre
  *
- * Bloco M/N (Lucro Real) — não coberto na v1 mas o parser deixa hooks.
+ *   Bloco N (Lucro Real), período aberto pelo |N030|dtIni|dtFim|PER|:
+ *     T01..T04 (trimestral) → N630 item 26 (IRPJ a pagar) / N670 item 21 (CSLL a pagar)
+ *     A00 (ajuste anual)    → N630 item 26 / N670 item 21
+ *     A01..A12 (estimativa) → N620 item 26 (IMPOSTO DEVIDO NO MÊS) /
+ *                             N660 item 18 (CSLL DEVIDA NO MÊS)
+ *   Conferido nas ECF da CONEXAO AGRICOLA (Lucro Real anual, 2019–2024).
+ *
+ * O regime de cada período sai do próprio período (T = trimestral, A = anual)
+ * e não do 0010: a posição do IND_APUR_LP no 0010 muda entre versões do layout.
  *
  * Valores no ECF vêm com vírgula como decimal ("11545,07"). Convertemos.
  */
 
 export interface ApuracaoTrimestral {
-  trimestre: 1 | 2 | 3 | 4;
+  /** Como vem no N030/P030: T01..T04, A00, A01..A12. */
+  periodo: string;
+  /** 1..4 no trimestral; 0 nos períodos do Lucro Real anual. */
+  trimestre: 0 | 1 | 2 | 3 | 4;
   dataInicial: Date;
   dataFinal: Date;
   regime: "PRESUMIDO" | "REAL_TRIMESTRAL" | "REAL_ANUAL";
@@ -66,7 +77,7 @@ export function parseSpedEcf(conteudo: string): EcfParsed {
 
   // Estado durante a varredura
   let trimestreAtual: ApuracaoTrimestral | undefined;
-  const trimestres: Map<number, ApuracaoTrimestral> = new Map();
+  const trimestres: Map<string, ApuracaoTrimestral> = new Map();
 
   for (const linhaRaw of linhas) {
     const linha = linhaRaw.trim();
@@ -83,8 +94,9 @@ export function parseSpedEcf(conteudo: string): EcfParsed {
       res.dataFinal = parseDataDDMMYYYY(campos[11] ?? "");
       if (res.dataInicial) res.ano = res.dataInicial.getFullYear();
     } else if (reg === "0010") {
-      // Campo IND_APUR_LP fica na posição 7 (após |0010||N|5|T|01|)
-      res.regimeAno = campos[7]; // ex.: "PPPP"
+      // IND_APUR_LP: 4 letras, uma por trimestre. A posição muda com o layout
+      // (o OPT_PAES saiu a partir de 2020), então procura pelo formato.
+      res.regimeAno = campos.slice(2).find((c) => /^[PRAEI]{4}$/.test(c)) ?? campos[7]; // ex.: "PPPP"
     } else if (reg === "P030") {
       // |P030|dtIni|dtFim|T0N|
       const dtIni = parseDataDDMMYYYY(campos[2] ?? "");
@@ -94,6 +106,7 @@ export function parseSpedEcf(conteudo: string): EcfParsed {
       if (dtIni && dtFim && nTri >= 1 && nTri <= 4) {
         const regime = regimeDoCodigo((res.regimeAno ?? "PPPP")[nTri - 1] ?? "P");
         trimestreAtual = {
+          periodo: `T0${nTri}`,
           trimestre: nTri,
           dataInicial: dtIni,
           dataFinal: dtFim,
@@ -101,7 +114,7 @@ export function parseSpedEcf(conteudo: string): EcfParsed {
           irpjApurado: 0,
           csllApurado: 0,
         };
-        trimestres.set(nTri, trimestreAtual);
+        trimestres.set(trimestreAtual.periodo, trimestreAtual);
       }
     } else if (reg === "P300" && trimestreAtual) {
       // |P300|COD|DESC|VALOR|  — item 15 é "IMPOSTO DE RENDA A PAGAR"
@@ -114,38 +127,56 @@ export function parseSpedEcf(conteudo: string): EcfParsed {
         trimestreAtual.csllApurado = parseValor(campos[4] ?? "0");
       }
     } else if (reg === "N030") {
-      // Lucro Real — |N030|dtIni|dtFim|T0N|. Conferido nas ECF da Casa São Paulo
-      // (layouts 0006 a 0010): trimestral vem como T01..T04. Estimativa mensal
-      // (A01..A12) fica fora por enquanto: fecha o trimestre corrente.
+      // Lucro Real — |N030|dtIni|dtFim|PER|. Trimestral: T01..T04 (Casa São
+      // Paulo). Anual: A00 = ajuste do ano, A01..A12 = estimativas mensais
+      // (CONEXAO AGRICOLA).
       const dtIni = parseDataDDMMYYYY(campos[2] ?? "");
       const dtFim = parseDataDDMMYYYY(campos[3] ?? "");
-      const m = /^T0([1-4])$/.exec(campos[4] ?? "");
-      if (dtIni && dtFim && m) {
+      const per = campos[4] ?? "";
+      const tri = /^T0([1-4])$/.exec(per);
+      const anual = /^A(0\d|1[0-2])$/.exec(per);
+      if (dtIni && dtFim && (tri || anual)) {
         trimestreAtual = {
-          trimestre: Number(m[1]) as 1 | 2 | 3 | 4,
+          periodo: per,
+          trimestre: tri ? (Number(tri[1]) as 1 | 2 | 3 | 4) : 0,
           dataInicial: dtIni,
           dataFinal: dtFim,
-          regime: "REAL_TRIMESTRAL",
+          regime: tri ? "REAL_TRIMESTRAL" : "REAL_ANUAL",
           irpjApurado: 0,
           csllApurado: 0,
         };
-        trimestres.set(trimestreAtual.trimestre, trimestreAtual);
+        trimestres.set(per, trimestreAtual);
       } else {
         trimestreAtual = undefined;
       }
-    } else if (reg === "N630" && trimestreAtual) {
+    } else if (reg === "N630" && trimestreAtual && !ehEstimativa(trimestreAtual)) {
       // |N630|COD|DESC|VALOR| — item 26 é "IMPOSTO DE RENDA A PAGAR" (Lucro Real)
       if (campos[2] === "26") {
         trimestreAtual.irpjApurado = parseValor(campos[4] ?? "0");
       }
-    } else if (reg === "N670" && trimestreAtual) {
+    } else if (reg === "N670" && trimestreAtual && !ehEstimativa(trimestreAtual)) {
       // |N670|COD|DESC|VALOR| — item 21 é "CSLL A PAGAR" (Lucro Real)
       if (campos[2] === "21") {
+        trimestreAtual.csllApurado = parseValor(campos[4] ?? "0");
+      }
+    } else if (reg === "N620" && trimestreAtual && ehEstimativa(trimestreAtual)) {
+      // |N620|COD|DESC|VALOR| — item 26 é "IMPOSTO DEVIDO NO MÊS" (estimativa)
+      if (campos[2] === "26") {
+        trimestreAtual.irpjApurado = parseValor(campos[4] ?? "0");
+      }
+    } else if (reg === "N660" && trimestreAtual && ehEstimativa(trimestreAtual)) {
+      // |N660|COD|DESC|VALOR| — item 18 é "CSLL DEVIDA NO MÊS" (estimativa)
+      if (campos[2] === "18") {
         trimestreAtual.csllApurado = parseValor(campos[4] ?? "0");
       }
     }
   }
 
-  res.apuracoes = [...trimestres.values()].sort((a, b) => a.trimestre - b.trimestre);
+  res.apuracoes = [...trimestres.values()].sort((a, b) => a.periodo.localeCompare(b.periodo));
   return res;
+}
+
+/** A01..A12 — estimativa mensal do Lucro Real anual (A00 é o ajuste do ano). */
+export function ehEstimativa(a: { periodo: string }): boolean {
+  return /^A(0[1-9]|1[0-2])$/.test(a.periodo);
 }

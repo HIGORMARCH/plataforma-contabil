@@ -9,9 +9,11 @@ import { useRouter } from "next/navigation";
  */
 export function BuscarNoPortalSefazButton({
   clienteId,
+  estabelecimentoId,
   ano: anoDefault,
 }: {
   clienteId: string;
+  estabelecimentoId: string;
   ano: number;
 }) {
   const router = useRouter();
@@ -28,7 +30,7 @@ export function BuscarNoPortalSefazButton({
       const r = await fetch("/api/giam-sefaz/sincronizar", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ clienteId, ano }),
+        body: JSON.stringify({ clienteId, estabelecimentoId, ano }),
       });
       const j = await r.json();
       if (!r.ok || j.sucesso === false) {

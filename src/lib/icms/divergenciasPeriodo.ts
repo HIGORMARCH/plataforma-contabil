@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db";
+import { garantirMatriz, obterEstabelecimento } from "@/lib/estabelecimento";
 
 /**
  * Divergências de ICMS no período — SPED-Fiscal × GIAM (Domínio e SEFAZ).
@@ -27,10 +28,19 @@ export const TOLERANCIA = 0.01;
 /** Quando o robô passou a ler a apuração (itens 6.4, 7.2 e 7.3) do espelho. */
 export const LEITURA_APURACAO_SEFAZ_DESDE = new Date("2026-09-19T00:00:00.000Z");
 
-export type Fonte = "sped" | "dominio" | "sefaz";
+/**
+ * `siagri` = apuração do sistema da empresa (RAICMS do Siagri) — o "lado
+ * sistema" para quem não usa o Domínio (CONEXAO AGRICOLA, 27/09/2026).
+ * Como a GIAM do Domínio, é conferência: faltar não é pendência de entrega.
+ */
+export type Fonte = "sped" | "siagri" | "dominio" | "sefaz";
+
+/** Ordem das colunas no relatório. */
+export const FONTES: Fonte[] = ["sped", "siagri", "dominio", "sefaz"];
 
 export const ROTULO_FONTE: Record<Fonte, string> = {
   sped: "SPED-Fiscal",
+  siagri: "Siagri (RAICMS)",
   dominio: "GIAM (Domínio)",
   sefaz: "GIAM (SEFAZ)",
 };
@@ -109,6 +119,8 @@ export interface RelatorioIcmsPeriodo {
   competencias: CompetenciaIcms[];
   porCampo: ResumoCampo[];
   anosComDados: number[];
+  /** Fontes que o relatório deve mostrar para este estabelecimento. */
+  fontesExibidas: Fonte[];
 }
 
 const chave = (d: Date) => d.getUTCFullYear() * 100 + d.getUTCMonth() + 1;
@@ -127,6 +139,8 @@ function ultimaPorCompetencia<T extends { periodoApuracao: Date; retificacao: st
 
 export async function levantarDivergenciasIcms(params: {
   clienteId: string;
+  /** ICMS é por estabelecimento; sem ele, a matriz. */
+  estabelecimentoId?: string;
   anoInicial: number;
   anoFinal: number;
   /** Primeiro dia do mês corrente — competências a partir dele são "futuro". */
@@ -136,22 +150,30 @@ export async function levantarDivergenciasIcms(params: {
   const inicio = new Date(Date.UTC(anoInicial, 0, 1));
   const fimExcl = new Date(Date.UTC(anoFinal + 1, 0, 1));
   const periodo = { gte: inicio, lt: fimExcl };
+  const estabelecimentoId = params.estabelecimentoId ?? (await garantirMatriz(clienteId));
+  const estab = await obterEstabelecimento(clienteId, estabelecimentoId);
+  if (!estab) throw new Error("Estabelecimento não pertence a este cliente.");
+  // GIAM é declaração da SEFAZ-TO: fora do TO, faltar GIAM não é pendência.
+  const exigeGiam = !estab.uf || estab.uf === "TO";
+  const doEstab = { clienteId, estabelecimentoId };
 
-  const [cliente, sped, dominio, sefaz, anos] = await Promise.all([
+  const [cliente, sped, dominio, sefaz, anos, siagri] = await Promise.all([
     prisma.cliente.findUniqueOrThrow({
       where: { id: clienteId },
       select: { atendimentoInicio: true, atendimentoFim: true },
     }),
-    prisma.spedApuracao.findMany({ where: { clienteId, periodoApuracao: periodo } }),
+    prisma.spedApuracao.findMany({ where: { ...doEstab, periodoApuracao: periodo } }),
     prisma.giamApuracao.findMany({
-      where: { clienteId, periodoApuracao: periodo },
+      where: { ...doEstab, periodoApuracao: periodo },
       include: { icmsARecolher: true },
     }),
-    prisma.giamSefazApuracao.findMany({ where: { clienteId, periodoApuracao: periodo } }),
-    anosComDadosIcms(clienteId),
+    prisma.giamSefazApuracao.findMany({ where: { ...doEstab, periodoApuracao: periodo } }),
+    anosComDadosIcms(clienteId, estabelecimentoId),
+    prisma.siagriApuracao.findMany({ where: { ...doEstab, periodoApuracao: periodo } }),
   ]);
 
   const S = new Map(sped.map((a) => [chave(a.periodoApuracao), a]));
+  const G = new Map(siagri.map((a) => [chave(a.periodoApuracao), a]));
   const D = ultimaPorCompetencia(dominio);
   const F = ultimaPorCompetencia(sefaz);
 
@@ -167,8 +189,19 @@ export async function levantarDivergenciasIcms(params: {
       const s = S.get(k);
       const d = D.get(k);
       const f = F.get(k);
+      const g = G.get(k);
 
       const valores: Partial<Record<Fonte, Valores>> = {};
+      if (g)
+        valores.siagri = {
+          totalCompras: Number(g.entradasValorContabil),
+          totalVendas: Number(g.saidasValorContabil),
+          creditoEntradas: Number(g.creditoEntradas),
+          debitoSaidas: Number(g.debitoSaidas),
+          saldoCredorAnterior: Number(g.saldoCredorAnterior),
+          deducoes: Number(g.deducoes),
+          icmsARecolher: Number(g.icmsARecolher),
+        };
       if (s)
         valores.sped = {
           totalCompras: Number(s.totalCompras),
@@ -208,7 +241,7 @@ export async function levantarDivergenciasIcms(params: {
       const divergencias: DivergenciaCampo[] = [];
       for (const c of CAMPOS) {
         const doCampo: Partial<Record<Fonte, number>> = {};
-        for (const fonte of ["sped", "dominio", "sefaz"] as Fonte[]) {
+        for (const fonte of FONTES) {
           if (fonte === "sefaz" && c.exigeSefazAtualizada && !sefazApuracaoLida) continue;
           const v = valores[fonte];
           if (v) doCampo[fonte] = v[c.campo];
@@ -225,9 +258,9 @@ export async function levantarDivergenciasIcms(params: {
       // é só o arquivo local — faltar não é pendência do cliente.
       const faltando: Fonte[] = [];
       if (!s) faltando.push("sped");
-      if (!f) faltando.push("sefaz");
+      if (!f && exigeGiam) faltando.push("sefaz");
 
-      const temAlguma = Boolean(s || d || f);
+      const temAlguma = Boolean(s || d || f || g);
       const foraAtendimento = (atendIni !== null && k < atendIni) || (atendFim !== null && k > atendFim);
 
       let status: StatusCompetencia;
@@ -244,7 +277,7 @@ export async function levantarDivergenciasIcms(params: {
         ano,
         mes,
         label: `${pad(mes)}/${ano}`,
-        presentes: { sped: Boolean(s), dominio: Boolean(d), sefaz: Boolean(f) },
+        presentes: { sped: Boolean(s), siagri: Boolean(g), dominio: Boolean(d), sefaz: Boolean(f) },
         valores,
         sefazApuracaoLida,
         retificacao: {
@@ -269,7 +302,12 @@ export async function levantarDivergenciasIcms(params: {
     };
   });
 
-  return { anoInicial, anoFinal, competencias, porCampo, anosComDados: anos };
+  // SPED sempre; GIAM SEFAZ onde há GIAM; Siagri e GIAM Domínio só se houver dado.
+  const fontesExibidas = FONTES.filter(
+    (fo) => fo === "sped" || (fo === "sefaz" && exigeGiam) || competencias.some((c) => c.presentes[fo]),
+  );
+
+  return { anoInicial, anoFinal, competencias, porCampo, anosComDados: anos, fontesExibidas };
 }
 
 /** Um total anual de uma fonte: a soma e de quantos meses ela saiu. */
@@ -308,7 +346,7 @@ function montarTotal(ano: number | null, competencias: CompetenciaIcms[]): Total
   const acumular = (campo: Campo) => {
     const acc: Partial<Record<Fonte, TotalFonte>> = {};
     for (const c of competencias) {
-      for (const fonte of ["sped", "dominio", "sefaz"] as Fonte[]) {
+      for (const fonte of FONTES) {
         const v = c.valores[fonte];
         if (!v) continue;
         const atual = acc[fonte] ?? { valor: 0, meses: 0 };
@@ -331,12 +369,13 @@ function diferencaComparavel(totais: Partial<Record<Fonte, TotalFonte>>): number
   return Math.max(...valores) - Math.min(...valores);
 }
 
-/** Anos em que o cliente tem qualquer apuração de ICMS importada. */
-export async function anosComDadosIcms(clienteId: string): Promise<number[]> {
+/** Anos em que o estabelecimento (sem ele, o cliente todo) tem apuração de ICMS importada. */
+export async function anosComDadosIcms(clienteId: string, estabelecimentoId?: string): Promise<number[]> {
+  const where = estabelecimentoId ? { clienteId, estabelecimentoId } : { clienteId };
   const [s, d, f] = await Promise.all([
-    prisma.spedApuracao.findMany({ where: { clienteId }, select: { periodoApuracao: true } }),
-    prisma.giamApuracao.findMany({ where: { clienteId }, select: { periodoApuracao: true } }),
-    prisma.giamSefazApuracao.findMany({ where: { clienteId }, select: { periodoApuracao: true } }),
+    prisma.spedApuracao.findMany({ where, select: { periodoApuracao: true } }),
+    prisma.giamApuracao.findMany({ where, select: { periodoApuracao: true } }),
+    prisma.giamSefazApuracao.findMany({ where, select: { periodoApuracao: true } }),
   ]);
   return [...new Set([...s, ...d, ...f].map((x) => x.periodoApuracao.getUTCFullYear()))].sort((a, b) => a - b);
 }
